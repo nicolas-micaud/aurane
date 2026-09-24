@@ -7,14 +7,17 @@ import type { SystemDetailView } from '@aurane/sim';
 import { FACTION_COLOR, RESOURCE_COLOR } from './GalaxyMap.js';
 import { cargoTexture, coreTexture, glowTexture, shipTexture, stationTexture, structureTexture } from './textures.js';
 import { hasSprite, lightsFrame, loadSprites, spriteFrame, spriteRadius } from './sprites.js';
-import { PlanetFilter, planetTypeFor } from './PlanetFilter.js';
+import { PlanetFilter, planetTypeFor, type PlanetType } from './PlanetFilter.js';
 
 export type SceneSelection =
   | { kind: 'structure'; id: string }
   | { kind: 'fleet'; id: string }
   | { kind: 'station' }
   | { kind: 'slot'; orbit: 1 | 2 | 3; angle: number }
+  | { kind: 'poi'; id: string }
   | null;
+type PoiView = SystemDetailView['pois'][number];
+interface LaneShip { node: Container; ax: number; ay: number; bx: number; by: number; departAt: number; arriveAt: number }
 
 export interface SceneCallbacks { onSelect(sel: SceneSelection): void }
 export interface SceneContext { me: string; allies: Set<string>; factionOf: Map<string, string> }
@@ -58,6 +61,14 @@ export class SystemScene {
   private planetSprite: Sprite | null = null;
   /** The station sits in orbit beside the planet (the plateau's centre in the simulation). */
   private static readonly STATION_VIS = { r: 1.15, a: 325 };
+  /** Point of interest whose plateau is shown; null shows the system map. */
+  private focus: string | null = null;
+  private mapUnit = 30;
+  private laneShips: LaneShip[] = [];
+  private mapPlanets: PlanetFilter[] = [];
+  private mapLayer = new Container();
+  private mapFx = new Graphics();
+  private mapPulse: Graphics[] = [];
 
   /** Orbit captions, set by the UI in the player's language. */
   orbitNames: string[] = ['I', 'II', 'III'];
@@ -69,7 +80,7 @@ export class SystemScene {
     el.appendChild(this.app.canvas);
     this.tex = { glow: glowTexture(), core: coreTexture(), ship: shipTexture(), cargo: cargoTexture(), station: stationTexture() };
     this.plateau.addChild(this.bg, this.rings, this.slots, this.structures, this.stationLayer, this.fleets, this.fx, this.reticle);
-    this.root.addChild(this.plateau, this.orbitLabels);
+    this.root.addChild(this.plateau, this.orbitLabels, this.mapLayer, this.mapFx);
     this.app.stage.addChild(this.root);
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -102,6 +113,15 @@ export class SystemScene {
 
   setSelection(sel: SceneSelection): void { this.selection = sel; }
 
+  /** Show one point of interest's plateau, or the whole system map (null). */
+  setFocus(poi: string | null): void {
+    if (this.focus === poi) return;
+    this.focus = poi;
+    this.anims.clear(); this.lastAnimPos.clear(); this.particles = []; this.shots = [];
+    if (this.ready && this.view && this.ctx) this.render(this.view, this.ctx);
+  }
+  get focused(): string | null { return this.focus; }
+
   update(view: SystemDetailView, ctx: SceneContext): void {
     this.view = view; this.ctx = ctx;
     this.lastFrameAt = performance.now();
@@ -113,7 +133,34 @@ export class SystemScene {
     const narrow = w < 700;
     const top = narrow ? 150 : 100; // the title bar overlays the top of the scene
     this.unit = Math.max(22, Math.min(w / 2 / 4.6, (h - top) / 2 / 4.5));
+    this.mapUnit = Math.max(10, Math.min(w / 2 / 10.2, (h - top) / 2 / 10.2));
     this.root.position.set(w / 2, top + (h - top) / 2);
+  }
+
+  /** The view narrowed to the focused point of interest, so the plateau code stays one-plateau. */
+  private focusedView(v: SystemDetailView): { view: SystemDetailView; poi: PoiView | null } {
+    const poi = v.pois.find((p) => p.id === this.focus) ?? v.pois.find((p) => p.id === v.mainPoi) ?? null;
+    if (!poi) return { view: v, poi: null };
+    const view: SystemDetailView = {
+      ...v,
+      structures: poi.structures, station: poi.station, orbitSlots: poi.orbitSlots, shield: poi.shield, battle: poi.battle, engaged: poi.engaged,
+      fleets: v.fleets.filter((f) => f.poi === poi.id),
+      buildQueue: v.buildQueue ? v.buildQueue.filter((j) => j.poi === poi.id) : null,
+      blockade: poi.id === v.mainPoi ? v.blockade : null,
+    };
+    return { view, poi };
+  }
+
+  private mapXY(p: { x: number; y: number }): { x: number; y: number } { return { x: p.x * this.mapUnit, y: p.y * this.mapUnit }; }
+
+  private static planetTypeForPoi(p: PoiView, resource: string): PlanetType | null {
+    switch (p.kind) {
+      case 'rocky': return resource === 'energy' ? (p.hue % 2 ? 'lava' : 'desert') : p.hue % 3 === 0 ? 'ocean' : p.hue % 3 === 1 ? 'rocky' : 'desert';
+      case 'gas': return 'gas';
+      case 'moon': return p.hue % 2 ? 'ice' : 'rocky';
+      case 'ice': return 'ice';
+      default: return null;
+    }
   }
 
   /** Polar (orbit units, degrees) → scene pixels. */
@@ -124,8 +171,16 @@ export class SystemScene {
 
   // --- rendering -----------------------------------------------------------
 
-  private render(v: SystemDetailView, ctx: SceneContext): void {
-    this.drawBackground(v);
+  private render(v0: SystemDetailView, ctx: SceneContext): void {
+    if (this.focus === null) {
+      this.plateau.visible = false; this.orbitLabels.visible = false; this.mapLayer.visible = true; this.mapFx.visible = true;
+      this.renderMap(v0, ctx);
+      return;
+    }
+    this.plateau.visible = true; this.orbitLabels.visible = true; this.mapLayer.visible = false; this.mapFx.visible = false;
+    this.mapFx.clear(); this.laneShips = []; this.mapPulse = [];
+    const { view: v, poi } = this.focusedView(v0);
+    this.drawBackground(v, poi);
     this.drawRings(v);
     this.drawSlots(v);
     this.drawStructures(v, ctx);
@@ -134,8 +189,174 @@ export class SystemScene {
     this.planShots(v, ctx);
   }
 
-  private drawBackground(v: SystemDetailView): void {
+  // --- the system map ---------------------------------------------------------
+
+  private renderMap(v: SystemDetailView, ctx: SceneContext): void {
+    this.mapLayer.removeChildren();
+    this.mapPlanets = [];
+    this.laneShips = [];
+    this.mapPulse = [];
+    this.labels = [];
+    const u = this.mapUnit;
+    const color = RESOURCE_COLOR[v.resource] ?? 0xffffff;
+    const ownerColor = v.owner ? (v.owner === ctx.me ? SIGNAL : FACTION_COLOR[ctx.factionOf.get(v.owner) ?? ''] ?? 0xaaaaaa) : 0x8899aa;
+    // The star at the centre of the map.
+    const corona = new Sprite(this.tex.glow); corona.anchor.set(0.5); corona.tint = color; corona.blendMode = 'add'; corona.alpha = 0.55; corona.width = corona.height = u * 7;
+    const star = new Sprite(this.tex.core); star.anchor.set(0.5); star.tint = 0xffffff; star.width = star.height = u * 1.3;
+    const halo = new Sprite(this.tex.glow); halo.anchor.set(0.5); halo.tint = v.engaged ? DANGER : SIGNAL; halo.blendMode = 'add'; halo.alpha = v.engaged ? 0.12 : 0.06; halo.width = halo.height = u * 22;
+    this.mapLayer.addChild(halo, corona, star);
+    // Faint orbit guides and the rim.
+    const guides = new Graphics();
+    for (const r of [2.6, 4.4, 6.4]) { guides.circle(0, 0, r * u); guides.stroke({ color: 0x1c2744, width: 1, alpha: 0.8 }); }
+    guides.circle(0, 0, 8.6 * u); guides.stroke({ color: 0x27345a, width: 1.5, alpha: 0.9 });
+    this.mapLayer.addChild(guides);
+    // Lanes.
+    const lanes = new Graphics();
+    const byId = new Map(v.pois.map((p) => [p.id, p]));
+    for (const l of v.lanes) {
+      const a = byId.get(l.a), b = byId.get(l.b);
+      if (!a || !b) continue;
+      const pa = this.mapXY(a), pb = this.mapXY(b);
+      const jumpLane = a.kind === 'jump' || b.kind === 'jump';
+      lanes.moveTo(pa.x, pa.y).lineTo(pb.x, pb.y);
+      lanes.stroke({ color: jumpLane ? 0xffb060 : v.mine || v.allied ? SIGNAL : 0x6f7fa8, width: jumpLane ? 1.5 : 2, alpha: jumpLane ? 0.45 : 0.35 });
+    }
+    this.mapLayer.addChild(lanes);
+    // Route of the selected (or any moving) friendly fleet: its remaining hops.
+    const routeG = new Graphics();
+    for (const f of v.fleets) {
+      if (f.owner !== ctx.me || !f.hop) continue;
+      const a = byId.get(f.hop.from), b = byId.get(f.hop.to);
+      if (a && b) { const pa = this.mapXY(a), pb = this.mapXY(b); routeG.moveTo(pa.x, pa.y).lineTo(pb.x, pb.y); routeG.stroke({ color: 0xffffff, width: 2.5, alpha: 0.5 }); }
+    }
+    this.mapLayer.addChild(routeG);
+    // Points of interest.
+    for (const p of v.pois) {
+      const node = new Container();
+      const pos = this.mapXY(p);
+      node.position.set(pos.x, pos.y);
+      const R = u * (p.kind === 'gas' ? 1.05 : p.kind === 'rocky' ? 0.75 : p.kind === 'moon' ? 0.42 : p.kind === 'derelict' ? 0.6 : 0.7) * (0.8 + p.size * 0.12);
+      if (!p.known) {
+        const q = new Graphics(); q.circle(0, 0, R * 0.9); q.stroke({ color: 0xffb060, width: 1.5, alpha: 0.7 });
+        for (let i = 0; i < 8; i++) { const a0 = (i / 8) * Math.PI * 2; q.arc(0, 0, R * 1.25, a0, a0 + 0.35); q.stroke({ color: 0xffb060, width: 1.5, alpha: 0.5 }); }
+        node.addChild(q);
+        const t = new Text({ text: '?', style: new TextStyle({ fill: 0xffb060, fontSize: Math.max(12, R), fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '700' }) });
+        t.anchor.set(0.5); node.addChild(t); this.labels.push(t);
+      } else if (p.kind === 'jump') {
+        const g = new Graphics();
+        g.moveTo(0, -R * 0.8).lineTo(R * 0.8, 0).lineTo(0, R * 0.8).lineTo(-R * 0.8, 0).closePath();
+        g.stroke({ color: 0xffb060, width: 2, alpha: 0.95 });
+        g.moveTo(0, -R * 0.4).lineTo(R * 0.4, 0).lineTo(0, R * 0.4).lineTo(-R * 0.4, 0).closePath(); g.fill({ color: 0xffb060, alpha: 0.5 });
+        node.addChild(g);
+        const glow = new Sprite(this.tex.glow); glow.anchor.set(0.5); glow.tint = 0xffb060; glow.blendMode = 'add'; glow.alpha = 0.35; glow.width = glow.height = R * 4; node.addChildAt(glow, 0);
+      } else if (p.kind === 'belt') {
+        const g = new Graphics();
+        let seed = p.hue * 131 + 7;
+        const rnd = (): number => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+        for (let i = 0; i < 46; i++) { const a = rnd() * Math.PI * 2, rr = R * (0.55 + rnd() * 0.9); g.circle(Math.cos(a) * rr, Math.sin(a) * rr * 0.55, 1 + rnd() * 2.6); g.fill({ color: [0x8a93a6, 0x6e7688, 0xa8b0c0][i % 3]!, alpha: 0.9 }); }
+        node.addChild(g);
+      } else if (p.kind === 'nebula') {
+        const n = new Sprite(this.tex.glow); n.anchor.set(0.5); n.tint = p.hue % 2 ? 0x8a46c9 : 0x2a8f9d; n.blendMode = 'add'; n.alpha = 0.55; n.width = n.height = R * 4.2; node.addChild(n);
+        const n2 = new Sprite(this.tex.glow); n2.anchor.set(0.5); n2.tint = 0x5a4bd6; n2.blendMode = 'add'; n2.alpha = 0.35; n2.width = R * 3; n2.height = R * 2; n2.rotation = 0.6; node.addChild(n2);
+      } else if (p.kind === 'wreck' || p.kind === 'derelict') {
+        const model = hasSprite(p.kind === 'wreck' ? 'cruiser' : 'station') ? this.spriteNode(p.kind === 'wreck' ? 'cruiser' : 'station', (p.hue * Math.PI) / 180, R * 2.2, p.kind === 'wreck' ? 0x333940 : 0x556070, p.kind === 'wreck' ? 0.55 : 0.8) : null;
+        if (model) node.addChild(model);
+        else { const g = new Graphics(); g.circle(0, 0, R * 0.6); g.stroke({ color: 0x8a93a6, width: 2 }); node.addChild(g); }
+      } else {
+        const type = SystemScene.planetTypeForPoi(p, v.resource);
+        if (type) {
+          const pf = new PlanetFilter(type, (p.hue % 97) * 0.37 + 1.3 + p.x, { ring: type === 'gas' && p.size === 3 });
+          pf.padding = 0;
+          const sp = new Sprite(Texture.WHITE); sp.anchor.set(0.5); sp.width = sp.height = R * 2 * (1 + 2 * pf.padFraction); sp.filters = [pf];
+          node.addChild(sp); this.mapPlanets.push(pf);
+        }
+      }
+      // What stands here: owner ring, station, structure count, engagement, fleets.
+      if (p.known && p.kind !== 'jump') {
+        if (p.structures.length || p.station) { const ring = new Graphics(); ring.circle(0, 0, R * 1.35); ring.stroke({ color: ownerColor, width: p.main ? 2.5 : 1.5, alpha: 0.9 }); node.addChild(ring); }
+        if (p.station) {
+          const sm = hasSprite('station') ? this.spriteNode('station', 0, R * 1.1, p.station.hp > 0 ? ownerColor : 0x444a55, p.station.hp > 0 ? 1 : 0.5) : null;
+          if (sm) { sm.position.set(R * 1.15, -R * 0.9); node.addChild(sm); }
+        }
+        const relay = p.structures.find((x) => x.kind === 'relay');
+        if (relay) { const rm = hasSprite('relay') ? this.spriteNode('relay', 0, R * 0.9, ownerColor) : null; if (rm) { rm.position.set(R * 1.1, -R * 0.8); node.addChild(rm); } }
+        const guns = p.structures.filter((x) => x.armed).length;
+        if (p.structures.length) {
+          const badge = new Text({ text: `${p.structures.length}${guns ? ` ⚔${guns}` : ''}`, style: new TextStyle({ fill: 0xe6ecf7, fontSize: 12, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '700', stroke: { color: 0x04060d, width: 4 } }) });
+          badge.anchor.set(0.5, 0); badge.position.set(0, R * 1.4); node.addChild(badge); this.labels.push(badge);
+        }
+        if (p.engaged) { const eg = new Graphics(); eg.circle(0, 0, R * 1.7); eg.stroke({ color: DANGER, width: 3, alpha: 0.9 }); node.addChild(eg); this.mapPulse.push(eg); }
+        if (p.shield) { const sh = new Graphics(); sh.circle(0, 0, R * 1.55); sh.stroke({ color: SIGNAL, width: 1.5, alpha: 0.6 }); node.addChild(sh); }
+      }
+      // Designation.
+      const name = new Text({ text: p.kind === 'jump' ? p.designation : p.designation.toUpperCase(), style: new TextStyle({ fill: p.main ? 0xffffff : 0x9fb0d0, fontSize: p.main ? 14 : 12, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '600', letterSpacing: 1, stroke: { color: 0x04060d, width: 4 } }) });
+      name.anchor.set(0.5, 1); name.position.set(0, -R * 1.45); node.addChild(name); this.labels.push(name);
+      if (this.selection?.kind === 'poi' && this.selection.id === p.id) { const r = new Graphics(); r.circle(0, 0, R * 1.9); r.stroke({ color: 0xffffff, width: 2 }); node.addChild(r); }
+      node.eventMode = 'static'; node.cursor = 'pointer';
+      node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= Math.max(R * 1.6, u * 0.9) };
+      node.on('pointertap', () => this.cb.onSelect({ kind: 'poi', id: p.id }));
+      this.mapLayer.addChild(node);
+    }
+    // Fleets: clustered at their point of interest, or gliding along a lane.
+    const atPoi = new Map<string, number>();
+    for (const f of v.fleets) {
+      const mine = f.owner === ctx.me;
+      const color = mine ? 0xffffff : ctx.allies.has(f.owner) ? 0x7ee2a8 : FACTION_COLOR[ctx.factionOf.get(f.owner) ?? ''] ?? DANGER;
+      const cargoOnly = f.combat === 0 && f.size > 0;
+      const kind = cargoOnly ? 'cargo' : f.units ? (f.units.cruiser > 0 ? 'cruiser' : f.units.frigate >= f.units.corvette ? 'frigate' : 'corvette') : f.size >= 6 ? 'cruiser' : 'frigate';
+      const size = u * (cargoOnly ? 0.7 : 0.85) * (1 + Math.log2(1 + f.size) * 0.1);
+      let heading = 0;
+      let pos: { x: number; y: number } | null = null;
+      let lane: LaneShip | null = null;
+      if (f.hop) {
+        const a = byId.get(f.hop.from), b = byId.get(f.hop.to);
+        if (!a || !b) continue;
+        const pa = this.mapXY(a), pb = this.mapXY(b);
+        heading = Math.atan2(pb.y - pa.y, pb.x - pa.x);
+        const t = Math.min(1, Math.max(0, (v.time - f.hop.departAt) / Math.max(1, f.hop.arriveAt - f.hop.departAt)));
+        pos = { x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t };
+        lane = { node: new Container(), ax: pa.x, ay: pa.y, bx: pb.x, by: pb.y, departAt: f.hop.departAt, arriveAt: f.hop.arriveAt };
+      } else if (f.poi) {
+        const p = byId.get(f.poi);
+        if (!p) continue;
+        const n = atPoi.get(f.poi) ?? 0; atPoi.set(f.poi, n + 1);
+        const a = 2.3 + n * 0.7 + (mine ? 0 : Math.PI);
+        const c = this.mapXY(p);
+        const R = u * 1.6;
+        pos = { x: c.x + Math.cos(a) * R, y: c.y + Math.sin(a) * R };
+        heading = Math.atan2(c.y - pos.y, c.x - pos.x);
+      }
+      if (!pos) continue;
+      const node = lane ? lane.node : new Container();
+      node.position.set(pos.x, pos.y);
+      const model = hasSprite(kind) ? this.spriteNode(kind, heading, size, color, f.docked ? 0.75 : 1) : null;
+      if (model) node.addChild(model);
+      else { const g = new Graphics(); g.moveTo(size / 2, 0).lineTo(-size / 2, size / 3).lineTo(-size / 2, -size / 3).closePath(); g.fill({ color }); g.rotation = heading; node.addChild(g); }
+      const label = new Text({ text: String(f.size), style: new TextStyle({ fill: color, fontSize: 12, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '700', stroke: { color: 0x04060d, width: 4 } }) });
+      label.anchor.set(0.5); label.position.set(size * 0.55, -size * 0.5); node.addChild(label); this.labels.push(label);
+      if (f.order === 'blockade' || f.order === 'raid' || f.order === 'ambush') { const r = new Graphics(); r.circle(0, 0, size * 0.6); r.stroke({ color: DANGER, width: 1.5, alpha: 0.8 }); node.addChild(r); }
+      if (this.selection?.kind === 'fleet' && this.selection.id === f.id) { const r = new Graphics(); r.circle(0, 0, size * 0.7); r.stroke({ color: 0xffffff, width: 2 }); node.addChild(r); }
+      node.eventMode = 'static'; node.cursor = 'pointer';
+      node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= size * 0.7 };
+      node.on('pointertap', () => this.cb.onSelect({ kind: 'fleet', id: f.id }));
+      if (lane) this.laneShips.push(lane);
+      this.mapLayer.addChild(node);
+    }
+    // Inbound fleets on the rim near their jump point.
+    for (const inb of v.inbound) {
+      const mine = inb.owner === ctx.me;
+      const color = mine ? 0xffffff : ctx.allies.has(inb.owner) ? 0x7ee2a8 : FACTION_COLOR[ctx.factionOf.get(inb.owner) ?? ''] ?? DANGER;
+      const jp = byId.get(v.jumps[0] ?? '');
+      const a = jp ? Math.atan2(jp.y, jp.x) + ((inb.id.charCodeAt(1) % 7) - 3) * 0.08 : 0;
+      const p = { x: Math.cos(a) * 9.4 * u, y: Math.sin(a) * 9.4 * u };
+      const label = new Text({ text: `${inb.convoy ? '▭' : '➤'} ${Math.ceil(Math.max(0, inb.arriveAt - v.time) / 60)}'`, style: new TextStyle({ fill: color, fontSize: 12, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '600', stroke: { color: 0x04060d, width: 4 } }) });
+      label.anchor.set(0.5); label.position.set(p.x, p.y); this.mapLayer.addChild(label); this.labels.push(label);
+    }
+  }
+
+  private drawBackground(v: SystemDetailView, poi: PoiView | null): void {
     this.bg.removeChildren();
+    this.planetSprite = null;
     const color = RESOURCE_COLOR[v.resource] ?? 0xffffff;
     // The star, far off to the upper left: it lights the planet from that side.
     const sx = -this.unit * 5.2, sy = -this.unit * 3.9;
@@ -148,18 +369,30 @@ export class SystemScene {
     tint.anchor.set(0.5); tint.tint = v.engaged ? DANGER : SIGNAL; tint.blendMode = 'add'; tint.alpha = v.engaged ? 0.16 : 0.08;
     tint.width = tint.height = this.unit * 9.6;
     this.bg.addChild(corona, star, tint);
-    // The planet this plateau orbits, drawn by shader.
-    const type = planetTypeFor(v.resource, v.hue);
-    const key = `${v.id}:${type}`;
-    if (this.planetKey !== key || !this.planet) { this.planet = new PlanetFilter(type, (v.hue % 97) * 0.37 + 1.3, { ring: type === 'gas' }); this.planetKey = key; }
-    const R = this.unit * 0.64;
-    const pad = this.planet.padFraction;
-    const sprite = new Sprite(Texture.WHITE);
-    sprite.anchor.set(0.5); sprite.width = sprite.height = R * 2 * (1 + 2 * pad);
-    sprite.filters = [this.planet];
-    this.planet.padding = 0;
-    this.planetSprite = sprite;
-    this.bg.addChild(sprite);
+    // The body this plateau orbits: a planet drawn by shader, or a belt, a wreck, a derelict station.
+    const type = poi ? SystemScene.planetTypeForPoi(poi, v.resource) : planetTypeFor(v.resource, v.hue);
+    if (type) {
+      const key = `${v.id}:${poi?.id ?? ''}:${type}`;
+      const seed = ((poi?.hue ?? v.hue) % 97) * 0.37 + 1.3 + (poi?.x ?? 0);
+      if (this.planetKey !== key || !this.planet) { this.planet = new PlanetFilter(type, seed, { ring: type === 'gas' && (poi?.size ?? 3) === 3 }); this.planetKey = key; }
+      const R = this.unit * (poi?.kind === 'moon' ? 0.4 : poi?.kind === 'gas' ? 0.8 : 0.64);
+      const pad = this.planet.padFraction;
+      const sprite = new Sprite(Texture.WHITE);
+      sprite.anchor.set(0.5); sprite.width = sprite.height = R * 2 * (1 + 2 * pad);
+      sprite.filters = [this.planet];
+      this.planet.padding = 0;
+      this.planetSprite = sprite;
+      this.bg.addChild(sprite);
+    } else if (poi?.kind === 'belt') {
+      const g = new Graphics();
+      let seed = poi.hue * 131 + 7;
+      const rnd = (): number => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let i = 0; i < 90; i++) { const a = rnd() * Math.PI * 2, rr = this.unit * (0.2 + rnd() * 0.7); g.circle(Math.cos(a) * rr, Math.sin(a) * rr * 0.7, 1.5 + rnd() * 4); g.fill({ color: [0x8a93a6, 0x6e7688, 0xa8b0c0][i % 3]!, alpha: 0.9 }); }
+      this.bg.addChild(g);
+    } else if (poi && (poi.kind === 'wreck' || poi.kind === 'derelict')) {
+      const model = this.spriteNode(poi.kind === 'wreck' ? 'cruiser' : 'station', (poi.hue * Math.PI) / 180, this.unit * (poi.kind === 'wreck' ? 1.6 : 1.9), poi.kind === 'wreck' ? 0x333940 : 0x556070, poi.kind === 'wreck' ? 0.6 : 0.85);
+      if (model) this.bg.addChild(model);
+    }
     // Plateau edge: where fleets arrive.
     const edge = new Graphics();
     edge.circle(0, 0, v.plateauRadius * this.unit);
@@ -442,6 +675,19 @@ export class SystemScene {
   private animate(dtMs: number): void {
     if (!this.view) return;
     const now = performance.now();
+    if (this.focus === null) {
+      // System map: planets turn, ships glide along their lanes, engaged bodies pulse.
+      for (const pf of this.mapPlanets) pf.time = now / 1000;
+      const simNow = this.view.time + (now - this.lastFrameAt) / 1000;
+      for (const s of this.laneShips) {
+        const t = Math.min(1, Math.max(0, (simNow - s.departAt) / Math.max(1, s.arriveAt - s.departAt)));
+        s.node.position.set(s.ax + (s.bx - s.ax) * t, s.ay + (s.by - s.ay) * t);
+      }
+      const pulse = 0.55 + 0.45 * Math.sin(now / 180);
+      for (const g of this.mapPulse) g.alpha = pulse;
+      this.reticle.clear();
+      return;
+    }
     // Decor rotation: very slow, stopped during a fight.
     if (!this.view.engaged) this.spin += dtMs * 0.000012;
     this.plateau.rotation = this.spin;

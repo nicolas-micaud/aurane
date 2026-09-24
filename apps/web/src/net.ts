@@ -86,7 +86,7 @@ export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{
   return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[] }) : null;
 }
 
-export type BattleSummary = { id: string; system: string; systemName: string; startedAt: number; endedAt: number | null; sides: string[]; kills: number };
+export type BattleSummary = { id: string; system: string; systemName: string; poi: string; startedAt: number; endedAt: number | null; sides: string[]; kills: number };
 export async function fetchBattles(): Promise<BattleSummary[]> {
   const res = await fetch('/api/battles', { headers: authHeaders() });
   return res.ok ? (await res.json() as BattleSummary[]) : [];

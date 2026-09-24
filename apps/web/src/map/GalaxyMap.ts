@@ -269,6 +269,11 @@ export class GalaxyMap {
       }
       if (s.blockadedBy) { const bl = new Graphics(); bl.circle(0, 0, base + 20); bl.stroke({ color: DANGER, width: 4, alpha: 0.9 }); node.addChild(bl); }
       if (s.engaged) { const eg = new Graphics(); eg.circle(0, 0, base + 26); eg.stroke({ color: DANGER, width: 3, alpha: 0.9 }); node.addChild(eg); this.engagedRings.push(eg); }
+      if (s.signature) { // someone lives here under cover: a dashed ring and a question mark
+        const sg = new Graphics(); for (let i = 0; i < 12; i++) { const a0 = (i / 12) * Math.PI * 2; sg.arc(0, 0, base + 9, a0, a0 + 0.3); sg.stroke({ color: 0xffb060, width: 2.5, alpha: 0.9 }); } node.addChild(sg);
+        const q = new Text({ text: '?', style: new TextStyle({ fill: 0xffb060, fontSize: 26, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '700', stroke: { color: 0x05070f, width: 5 } }) });
+        q.anchor.set(0.5); q.position.set(-base - 14, -base - 10); node.addChild(q);
+      }
 
       // Resource glyph, so the map reads without a legend.
       const glyph = new Sprite(glyphTexture(s.resource));

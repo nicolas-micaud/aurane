@@ -1,9 +1,10 @@
-// System mode: the plateau scene full-screen, a dock with the selected object, per-orbit
-// construction, training, fleets present, logistics touching this system and the battle.
+// System mode: the system map (points of interest joined by lanes) or one body's plateau
+// full-screen, with a dock: bodies and probing, per-orbit construction, training, fleets
+// present, logistics touching this system and the battle.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
-import { BUILDING_COST, BUILDING_ORBIT, UNIT_COST, type BattleReport, type PlayerView, type SystemDetailView } from '@aurane/sim';
+import { AGENT_COST_INFLUENCE, BUILDING_COST, BUILDING_ORBIT, UNIT_COST, type BattleReport, type PlayerView, type SystemDetailView } from '@aurane/sim';
 import { SystemScene, type SceneSelection } from '../map/SystemScene.js';
 import { act, fetchBattle, fetchBattles, systemView, watch, type BattleSummary } from '../net.js';
 import { t } from '../i18n/index.js';
@@ -12,22 +13,39 @@ import { Icon } from './Icon.js';
 import { Cost, hms } from './bits.js';
 
 type DockTab = 'plateau' | 'fleets' | 'logistics' | 'battle';
+type PoiView = SystemDetailView['pois'][number];
 const dockTab = signal<DockTab>('plateau');
 const sceneSel = signal<SceneSelection>(null);
+/** Body whose plateau is open; null = the system map. */
+const focusPoi = signal<string | null>(null);
 const RES: Resource[] = ['metal', 'energy', 'food', 'crystal'];
+
+const POI_LABEL: Record<PoiView['kind'], 'poiRocky' | 'poiGas' | 'poiMoon' | 'poiBelt' | 'poiIce' | 'poiNebula' | 'poiWreck' | 'poiDerelict' | 'poiJump'> = {
+  rocky: 'poiRocky', gas: 'poiGas', moon: 'poiMoon', belt: 'poiBelt', ice: 'poiIce', nebula: 'poiNebula', wreck: 'poiWreck', derelict: 'poiDerelict', jump: 'poiJump',
+};
+const TPL_LABEL: Record<SystemDetailView['template'], 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt'> = {
+  forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt',
+};
+const poiName = (sv: SystemDetailView, p: PoiView): string => (p.kind === 'jump' ? `${t('poiJump')} ${p.designation}` : `${sv.name} ${p.designation}`);
 
 export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: string; onLeave: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<SystemScene | null>(null);
   const sv = useSig(systemView);
   const sel = useSig(sceneSel);
+  const focus = useSig(focusPoi);
   const [entered, setEntered] = useState(false);
 
   useEffect(() => {
     watch(systemId);
     sceneSel.value = null;
+    focusPoi.value = null;
     dockTab.value = 'plateau';
-    const sc = new SystemScene({ onSelect: (s) => { sceneSel.value = s; if (s?.kind === 'fleet') dockTab.value = 'fleets'; else if (s) dockTab.value = 'plateau'; } });
+    const sc = new SystemScene({ onSelect: (s) => {
+      if (s?.kind === 'poi') { sceneSel.value = s; return; }
+      sceneSel.value = s;
+      if (s?.kind === 'fleet') dockTab.value = 'fleets'; else if (s) dockTab.value = 'plateau';
+    } });
     sc.orbitNames = [t('orbitShort1').toUpperCase(), t('orbitShort2').toUpperCase(), t('orbitShort3').toUpperCase()];
     scene.current = sc;
     void sc.mount(host.current!).then(() => { if (systemView.value) sc.update(systemView.value, ctxOf(v)); });
@@ -35,18 +53,30 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
     return () => { cancelAnimationFrame(raf); sc.destroy(); watch(null); };
   }, [systemId]);
   useEffect(() => { if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sv, v]);
-  useEffect(() => { scene.current?.setSelection(sel); }, [sel]);
+  useEffect(() => { scene.current?.setSelection(sel); if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sel]);
+  useEffect(() => { scene.current?.setFocus(focus); }, [focus]);
+  // A system with a single body goes straight to its plateau.
+  useEffect(() => { if (sv && focus === null && sv.pois.filter((p) => p.kind !== 'jump').length === 1) focusPoi.value = sv.mainPoi; }, [sv?.id]);
 
   const s = v.systems.find((x) => x.id === systemId);
+  const fp = sv && focus ? sv.pois.find((p) => p.id === focus) ?? null : null;
   return (
     <div class={`sysmode ${entered ? 'in' : ''}`}>
       <div class="sysmap" ref={host} />
       <div class="sysbar">
-        <button class="back" onClick={onLeave}>‹ {t('leaveSystem')}</button>
-        <h2><span class={`r-${s?.resource ?? 'metal'}`}><Icon name={s?.resource ?? 'metal'} size={18} /></span> {sv?.name ?? s?.name ?? systemId} {sv?.ownerName && <small>· {sv.ownerName}</small>}</h2>
+        {focus && sv && sv.pois.filter((p) => p.kind !== 'jump').length > 1
+          ? <button class="back" onClick={() => { focusPoi.value = null; sceneSel.value = null; }}>‹ {t('systemMap')}</button>
+          : <button class="back" onClick={onLeave}>‹ {t('leaveSystem')}</button>}
+        <h2>
+          <span class={`r-${s?.resource ?? 'metal'}`}><Icon name={s?.resource ?? 'metal'} size={18} /></span> {sv?.name ?? s?.name ?? systemId}
+          {fp && <small>· {fp.designation} · {t(POI_LABEL[fp.kind])}</small>}
+          {!fp && sv && <small>· {t(TPL_LABEL[sv.template])} · {sv.pois.filter((p) => p.kind !== 'jump').length} {t('bodies')}</small>}
+          {sv?.ownerName && <small>· {sv.ownerName}</small>}
+          {sv?.signature && <small class="bad">· {t('hiddenOwner')}</small>}
+        </h2>
         {sv && <SystemStatus sv={sv} />}
       </div>
-      {sv && <Dock v={v} sv={sv} sel={sel} />}
+      {sv && <Dock v={v} sv={sv} sel={sel} focus={fp} />}
       {!sv && <div class="dock"><p class="muted">{t('connecting')}</p></div>}
     </div>
   );
@@ -76,20 +106,20 @@ function SystemStatus({ sv }: { sv: SystemDetailView }) {
   );
 }
 
-function Dock({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection }) {
+function Dock({ v, sv, sel, focus }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; focus: PoiView | null }) {
   const tab = useSig(dockTab);
   const tabs: DockTab[] = ['plateau', 'fleets', 'logistics', 'battle'];
-  const labels: Record<DockTab, string> = { plateau: t('plateau'), fleets: t('tabFleets'), logistics: t('tabLogistics'), battle: t('tabBattle') };
+  const labels: Record<DockTab, string> = { plateau: focus ? t('plateau') : t('systemMap'), fleets: t('tabFleets'), logistics: t('tabLogistics'), battle: t('tabBattle') };
   return (
     <div class="dock">
       <div class="tabs">
         {tabs.map((k) => <button key={k} class={tab === k ? 'on' : ''} onClick={() => { dockTab.value = k; }}>{labels[k]}{k === 'battle' && sv.engaged ? <i class="dotn bad" /> : null}</button>)}
       </div>
       <div class="body">
-        {tab === 'plateau' && <PlateauTab v={v} sv={sv} sel={sel} />}
-        {tab === 'fleets' && <FleetsTab v={v} sv={sv} sel={sel} />}
+        {tab === 'plateau' && (focus ? <PlateauTab v={v} sv={sv} sel={sel} poi={focus} /> : <MapTab v={v} sv={sv} sel={sel} />)}
+        {tab === 'fleets' && <FleetsTab v={v} sv={sv} sel={sel} poi={focus} />}
         {tab === 'logistics' && <LogisticsHere v={v} sv={sv} />}
-        {tab === 'battle' && <BattleTab v={v} sv={sv} />}
+        {tab === 'battle' && <BattleTab v={v} sv={sv} poi={focus} />}
       </div>
     </div>
   );
@@ -97,22 +127,79 @@ function Dock({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneS
 
 const ORDER_KEYS = new Set(['move', 'raid', 'blockade', 'defend', 'return', 'ambush', 'convoy', 'idle', 'fleet']);
 const orderLabel = (o: string): string => (ORDER_KEYS.has(o) ? t(o as 'move') : o);
-
 const unitLine = (u: { corvette: number; frigate: number; cruiser: number; cargo: number } | null, size: number): string =>
   u ? [u.corvette && `${u.corvette} ${t('corvette')}`, u.frigate && `${u.frigate} ${t('frigate')}`, u.cruiser && `${u.cruiser} ${t('cruiser')}`, u.cargo && `${u.cargo} ${t('cargo')}`].filter(Boolean).join(' · ') : `${size} · ${t('unknownComposition')}`;
 
-function PlateauTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection }) {
-  const mine = sv.mine;
-  const queuedOn = (o: 1 | 2 | 3): number => (sv.buildQueue ?? []).filter((j) => j.orbit === o).length;
-  const freeOn = (o: 1 | 2 | 3): number => sv.orbitSlots[o - 1]! - sv.structures.filter((s) => s.orbit === o).length - queuedOn(o);
-  const orbitFilter: (1 | 2 | 3) | null = sel?.kind === 'slot' ? sel.orbit : null;
-  const struct = sel?.kind === 'structure' ? sv.structures.find((s) => s.id === sel.id) : null;
+/** The system map's list: every body, what stands there, probing. */
+function MapTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection }) {
+  const bodies = sv.pois.filter((p) => p.kind !== 'jump');
+  const unknown = sv.pois.filter((p) => !p.known).length;
+  const canProbe = v.me.influence >= AGENT_COST_INFLUENCE.probe;
+  const selected = sel?.kind === 'poi' ? sv.pois.find((p) => p.id === sel.id) ?? null : null;
   return (
     <div>
-      {sel?.kind === 'station' && sv.station && (
+      {selected && (
+        <div class="selbox">
+          <h3>{poiName(sv, selected)} <small>{selected.known ? t(POI_LABEL[selected.kind]) : t('unknownPoi')}</small></h3>
+          {selected.known && selected.kind !== 'jump' && <p class="muted">{selected.structures.length} {t('structure').toLowerCase()} · {selected.orbitSlots.join(' / ')} {t('slots').toLowerCase()}{selected.main ? ` · ${t('mainBody')}` : ''}{selected.cover >= 2 ? ` · ${t('probed')}` : ''}</p>}
+          <div class="actions">
+            {selected.known && selected.kind !== 'jump' && <button class="primary" onClick={() => { focusPoi.value = selected.id; sceneSel.value = null; }}>{t('enterPoi')}</button>}
+            <FleetSendButtons v={v} sv={sv} poi={selected} />
+          </div>
+        </div>
+      )}
+      {(unknown > 0 || sv.signature) && (
+        <div class="selbox">
+          <h3 class="bad">{t('unknownPoi')} <small>×{unknown}</small></h3>
+          <p class="muted">{t('probeDesc')}</p>
+          <button class="primary" disabled={!canProbe} onClick={() => void act({ type: 'agent_mission', mission: 'probe', target: sv.id })}>{t('probe')} <small class="r-influence">★ {AGENT_COST_INFLUENCE.probe}</small></button>
+        </div>
+      )}
+      <ul class="list">
+        {bodies.map((p) => (
+          <li key={p.id} class={sel?.kind === 'poi' && sel.id === p.id ? 'on' : ''} onClick={() => { sceneSel.value = { kind: 'poi', id: p.id }; }}>
+            <span><b>{p.designation}</b> {p.known ? t(POI_LABEL[p.kind]) : t('unknownPoi')} {p.main && <span class="tag">{t('mainBody')}</span>} {p.engaged && <span class="bad">● {t('engaged')}</span>}</span>
+            <small>{p.known ? `${p.structures.length} ⚙ · ${p.structures.filter((x) => x.armed).length} ⚔${p.station ? ` · ${t('station')} ${Math.round(p.station.hp)}` : ''}` : '?'}</small>
+            {p.known && <button onClick={(e) => { e.stopPropagation(); focusPoi.value = p.id; sceneSel.value = null; }}>{t('enterPoi')}</button>}
+          </li>
+        ))}
+      </ul>
+      <p class="muted">{t('poiJump')}: {sv.jumps.map((j) => sv.pois.find((p) => p.id === j)?.designation ?? j).join(', ')}</p>
+    </div>
+  );
+}
+
+/** Orders that send an idle fleet of mine to a body: defend/move when the system is friendly, raid/blockade/ambush otherwise. */
+function FleetSendButtons({ v, sv, poi }: { v: PlayerView; sv: SystemDetailView; poi: PoiView }) {
+  const idle = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.order === 'idle' && f.combat > 0);
+  const here = idle.find((f) => f.at === sv.id) ?? idle[0];
+  if (!here || poi.kind === 'jump') return null;
+  const target = `${sv.id}:${poi.designation}`;
+  const friendly = sv.mine || sv.allied;
+  return (
+    <>
+      {friendly && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'defend', target })}>{t('defend')}</button>}
+      {!friendly && sv.owner && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'blockade', target })}>{t('blockade')}</button>}
+      {!friendly && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'ambush', target })}>{t('ambush')}</button>}
+      {!friendly && !sv.owner && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'move', target })}>{t('move')}</button>}
+    </>
+  );
+}
+
+function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; poi: PoiView }) {
+  const mine = sv.mine;
+  const queue = (sv.buildQueue ?? []).filter((j) => j.poi === poi.id);
+  const queuedOn = (o: 1 | 2 | 3): number => queue.filter((j) => j.orbit === o).length;
+  const freeOn = (o: 1 | 2 | 3): number => poi.orbitSlots[o - 1]! - poi.structures.filter((s) => s.orbit === o).length - queuedOn(o);
+  const orbitFilter: (1 | 2 | 3) | null = sel?.kind === 'slot' ? sel.orbit : null;
+  const struct = sel?.kind === 'structure' ? poi.structures.find((s) => s.id === sel.id) : null;
+  const uniqueSystem: Building[] = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'];
+  return (
+    <div>
+      {sel?.kind === 'station' && poi.station && (
         <div class="selbox">
           <h3>{t('station')}</h3>
-          <p>{t('hp')} <b>{Math.round(sv.station.hp)}</b> / {sv.station.maxHp}{sv.station.hp <= 0 ? <><br /><span class="bad">{t('stationDown')}</span></> : null}</p>
+          <p>{t('hp')} <b>{Math.round(poi.station.hp)}</b> / {poi.station.maxHp}{poi.station.hp <= 0 ? <><br /><span class="bad">{t('stationDown')}</span></> : null}</p>
           {!mine && sv.owner && <RaidButtons v={v} sv={sv} target={sv.id} />}
         </div>
       )}
@@ -125,19 +212,19 @@ function PlateauTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: 
         </div>
       )}
       {sel?.kind === 'slot' && <p class="tag">{t('freeSlot')} · {t(`orbit${sel.orbit}` as 'orbit1')}</p>}
-      {mine && ([1, 2, 3] as const).filter((o) => sv.orbitSlots[o - 1]! > 0 && (!orbitFilter || orbitFilter === o)).map((o) => {
+      {mine && ([1, 2, 3] as const).filter((o) => poi.orbitSlots[o - 1]! > 0 && (!orbitFilter || orbitFilter === o)).map((o) => {
         const free = freeOn(o);
-        const kinds = BUILDINGS.filter((b) => BUILDING_ORBIT[b] === o);
-        const unique: Building[] = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'];
+        const kinds = BUILDINGS.filter((b) => BUILDING_ORBIT[b] === o && (b !== 'relay' || !poi.main));
         return (
           <div key={o}>
-            <h3>{t(`orbit${o}` as 'orbit1')} <small>{free > 0 ? `${free}/${sv.orbitSlots[o - 1]}` : t('noSlot')}</small></h3>
+            <h3>{t(`orbit${o}` as 'orbit1')} <small>{free > 0 ? `${free}/${poi.orbitSlots[o - 1]}` : t('noSlot')}</small></h3>
             <div class="cards">
               {kinds.map((b) => {
-                const has = unique.includes(b) && (sv.structures.some((s) => s.kind === b) || (sv.buildQueue ?? []).some((j) => j.building === b));
+                const has = (uniqueSystem.includes(b) && (sv.pois.some((p) => p.structures.some((s) => s.kind === b)) || (sv.buildQueue ?? []).some((j) => j.building === b)))
+                  || (b === 'relay' && (poi.structures.some((s) => s.kind === 'relay') || queue.some((j) => j.building === 'relay')));
                 const afford = sv.stock ? RES.every((r) => (BUILDING_COST[b][r] ?? 0) <= sv.stock![r]) : false;
                 return (
-                  <button key={b} class={`card-btn ${has ? 'has' : ''}`} disabled={has || free <= 0 || !afford} onClick={() => void act({ type: 'build', system: sv.id, building: b, orbit: o })}>
+                  <button key={b} class={`card-btn ${has ? 'has' : ''}`} disabled={has || free <= 0 || !afford} onClick={() => void act({ type: 'build', system: sv.id, building: b, orbit: o, poi: poi.id })}>
                     <b>{t(b)}</b><small>{t(`${b}Desc` as 'extractorDesc')}</small>{!has && <Cost cost={BUILDING_COST[b]} />}{has && <small class="ok">✓</small>}
                   </button>
                 );
@@ -146,8 +233,8 @@ function PlateauTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: 
           </div>
         );
       })}
-      {mine && (sv.buildQueue?.length ?? 0) > 0 && <p class="muted">{t('queue')}: {sv.buildQueue!.map((j) => `${t(j.building)} (${hms(j.readyAt - sv.time)})`).join(', ')}</p>}
-      {mine && sv.structures.some((s) => s.kind === 'shipyard') && (
+      {mine && queue.length > 0 && <p class="muted">{t('queue')}: {queue.map((j) => `${t(j.building)} (${hms(j.readyAt - sv.time)})`).join(', ')}</p>}
+      {mine && poi.structures.some((s) => s.kind === 'shipyard') && (
         <>
           <h3>{t('train')}</h3>
           <div class="cards">
@@ -184,11 +271,14 @@ function RaidButtons({ v, sv, target }: { v: PlayerView; sv: SystemDetailView; t
   );
 }
 
-function FleetsTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection }) {
-  const mineHere = sv.fleets.filter((f) => f.owner === v.me.id);
-  const others = sv.fleets.filter((f) => f.owner !== v.me.id);
+function FleetsTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; poi: PoiView | null }) {
+  const inScope = (f: SystemDetailView['fleets'][number]): boolean => !poi || f.poi === poi.id || (!!f.hop && (f.hop.to === poi.id || f.hop.from === poi.id));
+  const mineHere = sv.fleets.filter((f) => f.owner === v.me.id && inScope(f));
+  const others = sv.fleets.filter((f) => f.owner !== v.me.id && inScope(f));
   const name = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
+  const where = (f: SystemDetailView['fleets'][number]): string => f.hop ? `${t('laneTravel')} ${sv.pois.find((p) => p.id === f.hop!.to)?.designation ?? ''}` : f.docked ? t('docked') : t('onPlateau');
   const elsewhere = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.at !== sv.id && f.order === 'idle' && f.combat > 0);
+  const targetHere = poi ? `${sv.id}:${poi.designation}` : sv.id;
   return (
     <div>
       <h3>{t('fleetsHere')}</h3>
@@ -196,20 +286,21 @@ function FleetsTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: S
       <ul class="list">
         {mineHere.map((f) => (
           <li key={f.id} class={sel?.kind === 'fleet' && sel.id === f.id ? 'on' : ''} onClick={() => { sceneSel.value = { kind: 'fleet', id: f.id }; }}>
-            <span><b>{unitLine(f.units, f.size)}</b> <small>· {f.docked ? t('docked') : t('onPlateau')} · {t('hp')} {Math.round(f.hp * 100)} % · {orderLabel(f.order)}</small></span>
+            <span><b>{unitLine(f.units, f.size)}</b> <small>· {where(f)}{!poi && f.poi ? ` ${sv.pois.find((p) => p.id === f.poi)?.designation ?? ''}` : ''} · {t('hp')} {Math.round(f.hp * 100)} % · {orderLabel(f.order)}</small></span>
             <span class="actions inline">
               {f.combat > 0 && sv.owner && sv.owner !== v.me.id && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'focus', fleet: f.id, target: f.focus === 'station' ? null : 'station' }); }}>{f.focus === 'station' ? t('clearFocus') : t('focusStation')}</button>}
               {f.combat > 0 && sel?.kind === 'structure' && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'focus', fleet: f.id, target: sel.id }); }}>{t('focus')}</button>}
-              {f.combat >= 2 && <button onClick={(e) => { e.stopPropagation(); const u = f.units!; void act({ type: 'split_fleet', fleet: f.id, units: { corvette: Math.floor(u.corvette / 2), frigate: Math.floor(u.frigate / 2), cruiser: Math.floor(u.cruiser / 2) } }); }}>{t('split')}</button>}
-              {sv.id !== v.me.capital && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'return', target: v.me.capital }); }}>{f.pos ? t('retreat') : t('return')}</button>}
-              {f.combat > 0 && sv.mine && f.order !== 'defend' && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: sv.id }); }}>{t('defend')}</button>}
+              {f.combat >= 2 && f.units && <button onClick={(e) => { e.stopPropagation(); const u = f.units!; void act({ type: 'split_fleet', fleet: f.id, units: { corvette: Math.floor(u.corvette / 2), frigate: Math.floor(u.frigate / 2), cruiser: Math.floor(u.cruiser / 2) } }); }}>{t('split')}</button>}
+              {sv.id !== v.me.capital && !f.hop && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'return', target: v.me.capital }); }}>{f.pos ? t('retreat') : t('return')}</button>}
+              {f.combat > 0 && sv.mine && !f.hop && poi && f.poi !== poi.id && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: targetHere }); }}>{t('sendHere')}</button>}
+              {f.combat > 0 && sv.mine && !f.hop && f.order !== 'defend' && (!poi || f.poi === poi.id) && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: targetHere }); }}>{t('defend')}</button>}
             </span>
           </li>
         ))}
       </ul>
       {others.length > 0 && <h3>{t('onPlateau')}</h3>}
       <ul class="list">
-        {others.map((f) => <li key={f.id} onClick={() => { sceneSel.value = { kind: 'fleet', id: f.id }; }}><span class={`f-${v.colonies.find((c) => c.id === f.owner)?.faction ?? ''}`}>{name(f.owner)}</span> <small>{unitLine(f.units, f.size)} · {t('hp')} {Math.round(f.hp * 100)} % · {orderLabel(f.order)}</small></li>)}
+        {others.map((f) => <li key={f.id} onClick={() => { sceneSel.value = { kind: 'fleet', id: f.id }; }}><span class={`f-${v.colonies.find((c) => c.id === f.owner)?.faction ?? ''}`}>{name(f.owner)}</span> <small>{unitLine(f.units, f.size)} · {where(f)} · {t('hp')} {Math.round(f.hp * 100)} % · {orderLabel(f.order)}</small></li>)}
       </ul>
       {sv.inbound.length > 0 && <h3>{t('inbound')}</h3>}
       <ul class="list">
@@ -219,7 +310,7 @@ function FleetsTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: S
         <>
           <h3>{t('defend')}</h3>
           <ul class="list">
-            {elsewhere.slice(0, 6).map((f) => <li key={f.id}><span>{unitLine(f.units, f.size)} <small>{t('at')} {v.systems.find((s) => s.id === f.at)?.name ?? f.at}</small></span><span class="actions inline"><button onClick={() => void act({ type: 'fleet_order', fleet: f.id, order: sv.mine ? 'defend' : 'move', target: sv.id })}>{sv.mine ? t('defend') : t('move')}</button></span></li>)}
+            {elsewhere.slice(0, 6).map((f) => <li key={f.id}><span>{unitLine(f.units, f.size)} <small>{t('at')} {v.systems.find((s) => s.id === f.at)?.name ?? f.at}</small></span><span class="actions inline"><button onClick={() => void act({ type: 'fleet_order', fleet: f.id, order: sv.mine ? 'defend' : 'move', target: targetHere })}>{sv.mine ? t('defend') : t('move')}</button></span></li>)}
           </ul>
         </>
       )}
@@ -258,26 +349,28 @@ function LogisticsHere({ v, sv }: { v: PlayerView; sv: SystemDetailView }) {
   );
 }
 
-function BattleTab({ v, sv }: { v: PlayerView; sv: SystemDetailView }) {
+function BattleTab({ v, sv, poi }: { v: PlayerView; sv: SystemDetailView; poi: PoiView | null }) {
   const [list, setList] = useState<BattleSummary[]>([]);
   const [report, setReport] = useState<BattleReport | null>(null);
   const name = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
   useEffect(() => { void fetchBattles().then((l) => setList(l.filter((b) => b.system === sv.id))); }, [sv.id, sv.engaged]);
   const open = (id: string): void => { void fetchBattle(id).then(setReport); };
+  const live = poi ? poi.battle : sv.pois.map((p) => p.battle).find((b) => b) ?? null;
+  const placeOf = (poiId: string): string => sv.pois.find((p) => p.id === poiId)?.designation ?? '';
   return (
     <div>
-      {sv.battle && (
+      {live && (
         <div class="selbox">
-          <h3 class="bad">{t('battleLive')} <small>{hms(sv.time - sv.battle.startedAt)}</small></h3>
-          <p>{sv.battle.sides.map((s) => <span key={s}>{name(s)} <b>{sv.battle!.kills[s] ?? 0}</b> {t('kills')} &nbsp;</span>)}</p>
-          <button onClick={() => open(sv.battle!.id)}>{t('battleReports')}</button>
+          <h3 class="bad">{t('battleLive')} <small>{hms(sv.time - live.startedAt)}</small></h3>
+          <p>{live.sides.map((s) => <span key={s}>{name(s)} <b>{live.kills[s] ?? 0}</b> {t('kills')} &nbsp;</span>)}</p>
+          <button onClick={() => open(live.id)}>{t('battleReports')}</button>
         </div>
       )}
       {report && <Report r={report} v={v} onClose={() => setReport(null)} />}
       <h3>{t('battleReports')}</h3>
       {list.length === 0 && <p class="muted">{t('noBattles')}</p>}
       <ul class="list">
-        {list.map((b) => <li key={b.id} onClick={() => open(b.id)}><span>{b.sides.map(name).join(' ⚔ ')}</span><small>{hms(b.startedAt)} · {b.kills} {t('kills')}{b.endedAt === null ? ` · ${t('ongoing')}` : ''}</small></li>)}
+        {list.map((b) => <li key={b.id} onClick={() => open(b.id)}><span>{b.sides.map(name).join(' ⚔ ')} <small>{placeOf((b as BattleSummary & { poi?: string }).poi ?? '')}</small></span><small>{hms(b.startedAt)} · {b.kills} {t('kills')}{b.endedAt === null ? ` · ${t('ongoing')}` : ''}</small></li>)}
       </ul>
     </div>
   );

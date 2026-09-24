@@ -1,7 +1,7 @@
 // The Gazette: a daily public chronicle of the galaxy, written from the event log.
 // Template first (always available, deterministic), model rewrite when a client exists.
 import type { World } from '@aurane/sim';
-import { colonyScore } from '@aurane/sim';
+import { colonyScore, layoutOf } from '@aurane/sim';
 import type { LlmClient } from './llm.js';
 
 export interface GazetteIssue {
@@ -38,6 +38,13 @@ interface DayFacts {
 
 const name = (w: World, id: string | undefined): string => (id ? w.colonies[id]?.name ?? w.alliances[id]?.name ?? id : '—');
 const sysName = (w: World, id: string | undefined): string => (id ? w.galaxy.systems[id]?.name ?? id : '—');
+/** "Cyamsol b" when the event names a point of interest, else the system. */
+const placeName = (w: World, id: string | undefined, poi: string | undefined): string => {
+  const base = sysName(w, id);
+  if (!id || !poi || !w.galaxy.systems[id]) return base;
+  const p = layoutOf(w.galaxy, id).pois.find((x) => x.id === poi);
+  return p && p.kind !== 'jump' ? `${base} ${p.designation}` : p ? `${base} (${p.designation})` : base;
+};
 const beaconName = (w: World, id: string | undefined): string => (id ? w.galaxy.systems[id]?.beaconName ?? w.galaxy.systems[id]?.name ?? id : '—');
 
 export function dayFacts(w: World, day: number): DayFacts {
@@ -49,7 +56,7 @@ export function dayFacts(w: World, day: number): DayFacts {
     draws: count('draw'),
     battles: count('battle'),
     cuts: count('relay.cut') + count('sabotage.success'),
-    sieges: events.filter((e) => e.kind === 'battle').map((e) => { const d = e.data as { system?: string; seconds?: number; kills?: number } | undefined; return { system: sysName(w, d?.system), sides: e.actors.map((a) => name(w, a)), kills: d?.kills ?? 0, minutes: Math.max(1, Math.round((d?.seconds ?? 0) / 60)) }; }).sort((a, b) => b.kills - a.kills || b.minutes - a.minutes).slice(0, 3),
+    sieges: events.filter((e) => e.kind === 'battle').map((e) => { const d = e.data as { system?: string; poi?: string; seconds?: number; kills?: number } | undefined; return { system: placeName(w, d?.system, d?.poi), sides: e.actors.map((a) => name(w, a)), kills: d?.kills ?? 0, minutes: Math.max(1, Math.round((d?.seconds ?? 0) / 60)) }; }).sort((a, b) => b.kills - a.kills || b.minutes - a.minutes).slice(0, 3),
     blockades: events.filter((e) => e.kind === 'blockade.start').slice(0, 5).map((e) => ({ by: name(w, e.actors[0]), owner: name(w, e.actors[1]), system: sysName(w, (e.data as { system?: string } | undefined)?.system) })),
     stationsDown: events.filter((e) => e.kind === 'relay.cut').slice(0, 5).map((e) => ({ by: name(w, e.actors[0]), owner: name(w, e.actors[1]), system: sysName(w, (e.data as { system?: string } | undefined)?.system) })),
     convoysLost: count('convoy.lost'),
