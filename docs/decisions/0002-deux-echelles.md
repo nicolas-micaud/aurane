@@ -236,3 +236,24 @@ provoquer par des joueurs ou une doctrine plus agressive ; à revoir au palier 2
 bataille. Le coût CPU croît avec le nombre de flottes (1720 en fin de saison, cargos compris) : le
 serveur à 1 s/tick est loin de la limite, mais la saison accélérée mérite un regroupement des cargos
 oisifs si elle dépasse dix minutes.
+
+## Résultats du palier 2 (serveur)
+
+- **Vue Système** : `GET /api/system/:id` (authentifié) renvoie le plateau d'un système : station au centre
+  (PV), installations avec orbite, angle, PV et portée des tourelles, emplacements par orbite, stock local
+  et capacité, files, flottes sur le plateau (position polaire, PV en fraction, composition seulement pour
+  soi et ses alliés, flottes amarrées invisibles aux autres), arrivées prévues, routes, blocus avec heure
+  de capture, bouclier du Bastion, bataille en cours avec les pertes par camp. Brouillard : secteur
+  visible ou système à soi, sinon seul l'en-tête (nom, propriétaire).
+- **Flux** : sur le WebSocket existant, `{"watch": systemId}` démarre le flux `{"type":"system"}` à 2 Hz
+  maximum (une trame par changement, première trame immédiate), `{"watch": null}` l'arrête ; une seule
+  vue surveillée par connexion, le calcul est partagé entre connexions qui regardent le même plateau.
+- **Rapports de bataille** : `GET /api/battles` (liste des engagements où la colonie est partie ou
+  propriétaire), `GET /api/battle/:id` (camps, pertes et destructions par camp, station tombée, issue
+  `held` / `lost` / `skirmish` / `ongoing`, chronologie des salves). Le journal enregistre désormais la
+  victime de chaque perte ; les journaux de plus de sept jours sont élagués au Tirage.
+- **Ouverture d'engagement** : l'arrivée d'une flotte face à des hostiles ouvre l'engagement à l'instant
+  (positions, journal), les dégâts suivent avec les ticks ; plus de latence d'un pas de simulation.
+- **Gazette** : nouvelle rubrique « Les sièges » (les trois plus gros engagements du jour avec durée et
+  coques perdues, blocus ouverts, stations tombées, convois perdus), en français et en anglais.
+- Client : `net.ts` expose `watch(systemId)` et le signal `systemView` pour le palier 3.

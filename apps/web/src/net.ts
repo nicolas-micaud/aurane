@@ -1,7 +1,7 @@
 // Talks to the world server: guest creation, the WebSocket view stream and commands.
 import { signal } from '@preact/signals';
 import type { Command, Faction, Persona } from '@aurane/protocol';
-import type { ApplyResult, PlayerView } from '@aurane/sim';
+import type { ApplyResult, PlayerView, SystemDetailView } from '@aurane/sim';
 
 export const view = signal<PlayerView | null>(null);
 export const status = signal<'idle' | 'connecting' | 'online' | 'offline'>('idle');
@@ -30,10 +30,11 @@ export function connect(): void {
   status.value = 'connecting';
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
-  ws.onopen = () => { status.value = 'online'; retry = 1000; };
+  ws.onopen = () => { status.value = 'online'; retry = 1000; if (watched) ws?.send(JSON.stringify({ watch: watched })); };
   ws.onmessage = (ev) => {
-    const msg = JSON.parse(ev.data as string) as { type: 'view'; view: PlayerView } | { type: 'result'; id?: string; result: ApplyResult } | { type: 'error'; error: string };
+    const msg = JSON.parse(ev.data as string) as { type: 'view'; view: PlayerView } | { type: 'system'; view: SystemDetailView } | { type: 'result'; id?: string; result: ApplyResult } | { type: 'error'; error: string };
     if (msg.type === 'view') view.value = msg.view;
+    else if (msg.type === 'system') { if (msg.view.id === watched) systemView.value = msg.view; }
     else if (msg.type === 'result' && msg.id) { pending.get(msg.id)?.(msg.result); pending.delete(msg.id); }
     else if (msg.type === 'error') toast.value = { text: msg.error, kind: 'err' };
   };
@@ -45,6 +46,15 @@ export function connect(): void {
     setTimeout(connect, retry);
     retry = Math.min(retry * 2, 15000);
   };
+}
+
+/** The plateau currently streamed at 2 Hz (System view), or null. */
+export const systemView = signal<SystemDetailView | null>(null);
+let watched: string | null = null;
+export function watch(systemId: string | null): void {
+  watched = systemId;
+  if (!systemId) systemView.value = null;
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ watch: systemId }));
 }
 
 export function send(command: Command): Promise<ApplyResult> {

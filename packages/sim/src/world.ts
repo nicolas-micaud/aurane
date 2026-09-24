@@ -11,7 +11,7 @@ import { addFleet } from './combat.js';
 import { atPeace, isAlly, transitSet } from './diplomacy.js';
 import { createRng, subSeed } from './rng.js';
 import { planPath, fleetSpeed } from './routing.js';
-import { armedHostilesPresent, battleTick, plateauFleets, plateauIndex, regenerate } from './battle.js';
+import { armedHostilesPresent, battleTick, plateauFleets, plateauIndex, pruneBattles, regenerate } from './battle.js';
 import { capacityOf, defaultOrbit, depositClamped, freeSlotsOnOrbit, hasStructure, nextAngle, orbitSlots } from './structures.js';
 import {
   combatSize, emptyDamage, emptyFleet, fleetSize, newId,
@@ -710,7 +710,7 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
     processTimers(w, step);
     const routeSlot = Math.floor(w.time / ROUTE_INTERVAL_S);
     if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); }
-    if (w.time >= nextHour) runDraw(w);
+    if (w.time >= nextHour) { runDraw(w); pruneBattles(w); }
     if (w.time >= w.seasonEndsAt) endSeason(w, 'silence');
   }
 }
@@ -852,6 +852,12 @@ function approachAngle(w: World, from: string | null, to: string): number {
 }
 
 function arrive(w: World, fleet: FleetState): void {
+  land(w, fleet);
+  // Hostile presence on landing: the engagement opens at once (positions, log), damage follows with the ticks.
+  if (fleet.at !== null && fleet.pos !== null && armedHostilesPresent(w, fleet.at).length) { deployDefenders(w, fleet.at); battleTick(w, fleet.at, 0); }
+}
+
+function land(w: World, fleet: FleetState): void {
   const colony = w.colonies[fleet.owner]!;
   const dest = fleet.destination ?? fleet.at!;
   fleet.at = dest;

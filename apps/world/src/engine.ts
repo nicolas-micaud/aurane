@@ -3,8 +3,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@aurane/protocol';
 import {
-  apply, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, tick, viewFor,
-  type ApplyResult, type Colony, type PlayerView, type World,
+  apply, battleList, battleReport, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
+  type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
 import { clientFromEnv, compilePolicy, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient } from '@aurane/general';
 import type { Config } from './config.js';
@@ -14,11 +14,17 @@ const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
 
 export type Listener = (view: PlayerView) => void;
+export type SystemListener = (view: SystemDetailView) => void;
+interface SystemWatch { colonyId: string; systemId: string; fn: SystemListener; last: string }
+/** The System view streams at 2 Hz while something changes on the plateau. */
+const SYSTEM_STREAM_MS = 500;
 
 export class Engine {
   world!: World;
   private listeners = new Map<string, Set<Listener>>();
+  private systemWatches = new Set<SystemWatch>();
   private timer: NodeJS.Timeout | null = null;
+  private systemTimer: NodeJS.Timeout | null = null;
   private lastReal = Date.now();
   private lastSnapshot = Date.now();
   private lastDecisionSim = 0;
@@ -54,11 +60,14 @@ export class Engine {
     if (this.timer) return;
     this.lastReal = Date.now();
     this.timer = setInterval(() => void this.step(), 1000);
+    this.systemTimer = setInterval(() => this.streamSystems(), SYSTEM_STREAM_MS);
   }
 
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    if (this.systemTimer) clearInterval(this.systemTimer);
     this.timer = null;
+    this.systemTimer = null;
     await this.snapshot();
   }
 
@@ -143,6 +152,48 @@ export class Engine {
       set?.delete(fn);
       if (set && set.size === 0) this.listeners.delete(colonyId);
     };
+  }
+
+  // --- the System view ------------------------------------------------------
+
+  systemView(colonyId: string, systemId: string): SystemDetailView | null {
+    const c = this.world.colonies[colonyId];
+    return c ? systemViewFor(this.world, c, systemId) : null;
+  }
+
+  battle(colonyId: string, battleId: string): BattleReport | null {
+    const c = this.world.colonies[colonyId];
+    return c ? battleReport(this.world, c, battleId) : null;
+  }
+
+  battles(colonyId: string): ReturnType<typeof battleList> {
+    const c = this.world.colonies[colonyId];
+    return c ? battleList(this.world, c) : [];
+  }
+
+  /** Stream one plateau to a client; the first frame is sent at once, then every change at up to 2 Hz. */
+  watchSystem(colonyId: string, systemId: string, fn: SystemListener): () => void {
+    const first = this.systemView(colonyId, systemId);
+    const watch: SystemWatch = { colonyId, systemId, fn, last: first ? JSON.stringify(first) : '' };
+    if (first) fn(first);
+    this.systemWatches.add(watch);
+    return () => { this.systemWatches.delete(watch); };
+  }
+
+  /** Called at SYSTEM_STREAM_MS; the view is rebuilt once per (colony, system) pair per tick. */
+  streamSystems(): void {
+    if (!this.systemWatches.size) return;
+    const cache = new Map<string, string>();
+    for (const wch of this.systemWatches) {
+      const key = `${wch.colonyId}|${wch.systemId}`;
+      let json = cache.get(key);
+      if (json === undefined) {
+        const v = this.systemView(wch.colonyId, wch.systemId);
+        json = v ? JSON.stringify(v) : '';
+        cache.set(key, json);
+      }
+      if (json && json !== wch.last) { wch.last = json; wch.fn(JSON.parse(json) as SystemDetailView); }
+    }
   }
 
   private flush(): void {

@@ -64,6 +64,56 @@ describe('world server', () => {
     expect((await fetch(`${base}/api/me`, { headers: { authorization: 'Bearer nope' } })).status).toBe(401);
   });
 
+  it('serves the System view and battle reports to the owner only', async () => {
+    const { token, colonyId } = await (await fetch(`${base}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Sys', faction: 'concordat', persona: 'vane' }) })).json() as { token: string; colonyId: string };
+    const capital = engine.world.colonies[colonyId]!.capital;
+    const v = await (await fetch(`${base}/api/system/${encodeURIComponent(capital)}`, { headers: { authorization: `Bearer ${token}` } })).json() as { mine: boolean; station: { hp: number } | null; structures: unknown[]; stock: unknown };
+    expect(v.mine).toBe(true);
+    expect(v.station?.hp).toBe(300);
+    expect(v.structures.length).toBeGreaterThan(0);
+    expect((await fetch(`${base}/api/system/nope`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(404);
+    expect((await fetch(`${base}/api/system/${encodeURIComponent(capital)}`)).status).toBe(401);
+    expect(await (await fetch(`${base}/api/battles`, { headers: { authorization: `Bearer ${token}` } })).json()).toEqual([]);
+    expect((await fetch(`${base}/api/battle/X1`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(404);
+  });
+
+  it('streams a watched plateau over WebSocket at 2 Hz and stops on unwatch', async () => {
+    const { token, colonyId } = await (await fetch(`${base}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Watch', faction: 'guild', persona: 'oriel' }) })).json() as { token: string; colonyId: string };
+    const capital = engine.world.colonies[colonyId]!.capital;
+    const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?token=${token}`);
+    const frames: { type: string; view?: { id: string; time: number }; error?: string }[] = [];
+    const systemFrames = (n: number): Promise<void> => new Promise((resolve) => {
+      const check = (): void => { if (frames.filter((f) => f.type === 'system').length >= n) { ws.off('message', onMsg); resolve(); } };
+      const onMsg = (): void => check();
+      ws.on('message', onMsg);
+      check();
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('message', (raw) => frames.push(JSON.parse(raw.toString())));
+      ws.on('error', reject);
+    });
+    ws.send(JSON.stringify({ watch: capital }));
+    await systemFrames(1);
+    // The engine is not started in tests: advance it by hand and run one stream tick.
+    await engine.step();
+    engine.streamSystems();
+    await systemFrames(2);
+    const sys = frames.filter((f) => f.type === 'system');
+    expect(sys[0]!.view!.id).toBe(capital);
+    expect(sys[1]!.view!.time).toBeGreaterThan(sys[0]!.view!.time); // the sim moved between frames
+    ws.send(JSON.stringify({ watch: 'nope' }));
+    await new Promise<void>((resolve) => ws.on('message', (raw) => { if ((JSON.parse(raw.toString()) as { type: string }).type === 'error') resolve(); }));
+    ws.send(JSON.stringify({ watch: null }));
+    await new Promise((r) => setTimeout(r, 100));
+    const before = frames.filter((f) => f.type === 'system').length;
+    await engine.step();
+    engine.streamSystems();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(frames.filter((f) => f.type === 'system').length).toBe(before);
+    ws.close();
+  });
+
   it('streams views over WebSocket and answers commands', async () => {
     const { token } = await (await fetch(`${base}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Ada', faction: 'oracles', persona: 'solen' }) })).json() as { token: string };
     const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?token=${token}`);

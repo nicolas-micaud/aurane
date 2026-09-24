@@ -19,6 +19,11 @@ interface DayFacts {
   draws: number;
   battles: number;
   cuts: number;
+  /** The day's biggest engagements and new blockades, for the siege column. */
+  sieges: { system: string; sides: string[]; kills: number; minutes: number }[];
+  blockades: { by: string; owner: string; system: string }[];
+  stationsDown: { by: string; owner: string; system: string }[];
+  convoysLost: number;
   captures: { by: string; from: string; system: string }[];
   beacons: { by: string; name: string }[];
   treaties: number;
@@ -32,6 +37,7 @@ interface DayFacts {
 }
 
 const name = (w: World, id: string | undefined): string => (id ? w.colonies[id]?.name ?? w.alliances[id]?.name ?? id : '—');
+const sysName = (w: World, id: string | undefined): string => (id ? w.galaxy.systems[id]?.name ?? id : '—');
 const beaconName = (w: World, id: string | undefined): string => (id ? w.galaxy.systems[id]?.beaconName ?? w.galaxy.systems[id]?.name ?? id : '—');
 
 export function dayFacts(w: World, day: number): DayFacts {
@@ -43,6 +49,10 @@ export function dayFacts(w: World, day: number): DayFacts {
     draws: count('draw'),
     battles: count('battle'),
     cuts: count('relay.cut') + count('sabotage.success'),
+    sieges: events.filter((e) => e.kind === 'battle').map((e) => { const d = e.data as { system?: string; seconds?: number; kills?: number } | undefined; return { system: sysName(w, d?.system), sides: e.actors.map((a) => name(w, a)), kills: d?.kills ?? 0, minutes: Math.max(1, Math.round((d?.seconds ?? 0) / 60)) }; }).sort((a, b) => b.kills - a.kills || b.minutes - a.minutes).slice(0, 3),
+    blockades: events.filter((e) => e.kind === 'blockade.start').slice(0, 5).map((e) => ({ by: name(w, e.actors[0]), owner: name(w, e.actors[1]), system: sysName(w, (e.data as { system?: string } | undefined)?.system) })),
+    stationsDown: events.filter((e) => e.kind === 'relay.cut').slice(0, 5).map((e) => ({ by: name(w, e.actors[0]), owner: name(w, e.actors[1]), system: sysName(w, (e.data as { system?: string } | undefined)?.system) })),
+    convoysLost: count('convoy.lost'),
     captures: events.filter((e) => e.kind === 'system.captured').map((e) => ({ by: name(w, e.actors[0]), from: name(w, e.actors[1]), system: w.galaxy.systems[(e.data as { system?: string })?.system ?? '']?.name ?? '?' })),
     beacons: events.filter((e) => e.kind === 'beacon.lit').map((e) => ({ by: name(w, e.actors[0]), name: String((e.data as { beacon?: string })?.beacon ?? beaconName(w, undefined)) })),
     treaties: count('treaty.signed'),
@@ -62,6 +72,14 @@ export function templateGazette(f: DayFacts, lang: 'fr' | 'en', now: number): Ga
   const s = (n: number, one: string, many: string): string => `${n} ${n > 1 ? many : one}`;
   if (fr) {
     sections.push({ heading: 'Le front', body: f.battles || f.cuts ? `${s(f.battles, 'bataille', 'batailles')}, ${s(f.cuts, 'relais coupé', 'relais coupés')}.${f.captures.length ? ' ' + f.captures.map((c) => `${c.by} prend ${c.system} à ${c.from}`).join(' ; ') + '.' : ''}` : 'Journée calme sur le front. Les Généraux affûtent leurs doctrines.' });
+    if (f.sieges.length || f.blockades.length || f.stationsDown.length) {
+      const parts: string[] = [];
+      for (const sg of f.sieges) parts.push(`À ${sg.system}, ${sg.sides.join(' contre ')} : ${sg.minutes} minute${sg.minutes > 1 ? 's' : ''} de feu, ${s(sg.kills, 'coque perdue', 'coques perdues')}.`);
+      for (const b of f.blockades) parts.push(`${b.by} tient le plateau de ${b.system} ; ${b.owner} a douze heures pour le reprendre.`);
+      for (const d of f.stationsDown) parts.push(`La station de ${d.system} (${d.owner}) s'est tue sous les tirs de ${d.by}.`);
+      if (f.convoysLost) parts.push(`${s(f.convoysLost, 'convoi perdu', 'convois perdus')} en route.`);
+      sections.push({ heading: 'Les sièges', body: parts.join(' ') });
+    }
     sections.push({ heading: 'La Trame politique', body: `${s(f.treaties, 'traité signé', 'traités signés')}${f.alliances.length ? ` ; nouvelles alliances : ${f.alliances.join(', ')}` : ''}${f.founded ? ` ; ${s(f.founded, 'Colonie fondée', 'Colonies fondées')}` : ''}.` });
     if (f.beacons.length) sections.push({ heading: 'Les Phares', body: f.beacons.map((b) => `${b.by} rallume ${b.name}. Le Signal se souvient.`).join(' ') });
     sections.push({ heading: 'Le ciel', body: `${s(f.draws, 'Tirage', 'Tirages')}${f.storms ? `, ${s(f.storms, 'tempête', 'tempêtes')}` : ''}${f.eruptions ? `, ${s(f.eruptions, 'éruption', 'éruptions')}` : ''}. Titres : Grand Réseau ${f.titles.network}, Amirauté ${f.titles.admiralty}, Bourse ${f.titles.exchange}.` });
@@ -69,6 +87,14 @@ export function templateGazette(f: DayFacts, lang: 'fr' | 'en', now: number): Ga
     return { day: f.day, lang, title: `Gazette de l'Aurane — jour ${f.day}`, lead: `Le Silence est dans ${f.daysLeft} jours. ${f.battles ? 'La galaxie s\'arme.' : 'La galaxie tisse.'}`, sections, source: 'template', generatedAt: now };
   }
   sections.push({ heading: 'The front', body: f.battles || f.cuts ? `${s(f.battles, 'battle', 'battles')}, ${s(f.cuts, 'relay cut', 'relays cut')}.${f.captures.length ? ' ' + f.captures.map((c) => `${c.by} takes ${c.system} from ${c.from}`).join('; ') + '.' : ''}` : 'A quiet day on the front. Generals sharpen their doctrines.' });
+  if (f.sieges.length || f.blockades.length || f.stationsDown.length) {
+    const parts: string[] = [];
+    for (const sg of f.sieges) parts.push(`At ${sg.system}, ${sg.sides.join(' against ')}: ${sg.minutes} minute${sg.minutes > 1 ? 's' : ''} under fire, ${s(sg.kills, 'hull lost', 'hulls lost')}.`);
+    for (const b of f.blockades) parts.push(`${b.by} holds the plateau of ${b.system}; ${b.owner} has twelve hours to take it back.`);
+    for (const d of f.stationsDown) parts.push(`The station of ${d.system} (${d.owner}) fell silent under ${d.by}'s guns.`);
+    if (f.convoysLost) parts.push(`${s(f.convoysLost, 'convoy lost', 'convoys lost')} en route.`);
+    sections.push({ heading: 'The sieges', body: parts.join(' ') });
+  }
   sections.push({ heading: 'Politics', body: `${s(f.treaties, 'treaty signed', 'treaties signed')}${f.alliances.length ? `; new alliances: ${f.alliances.join(', ')}` : ''}${f.founded ? `; ${s(f.founded, 'Colony founded', 'Colonies founded')}` : ''}.` });
   if (f.beacons.length) sections.push({ heading: 'The Beacons', body: f.beacons.map((b) => `${b.by} lights ${b.name}. The Signal remembers.`).join(' ') });
   sections.push({ heading: 'The sky', body: `${s(f.draws, 'Draw', 'Draws')}${f.storms ? `, ${s(f.storms, 'storm', 'storms')}` : ''}${f.eruptions ? `, ${s(f.eruptions, 'eruption', 'eruptions')}` : ''}. Titles: Great Network ${f.titles.network}, Admiralty ${f.titles.admiralty}, Exchange ${f.titles.exchange}.` });

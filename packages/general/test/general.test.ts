@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY } from '@aurane/protocol';
 import { createWorld, spawnColony, tick, viewFor } from '@aurane/sim';
-import { compilePolicy, extractJson, heuristicPolicy, templateBriefing, writeBriefing, FailoverClient, OpenAICompatibleClient, Quota, type LlmClient } from '../src/index.js';
+import { compilePolicy, dayFacts, extractJson, heuristicPolicy, templateBriefing, templateGazette, writeBriefing, FailoverClient, OpenAICompatibleClient, Quota, type LlmClient } from '../src/index.js';
 
 const ctx = { lang: 'fr' as const, current: DEFAULT_POLICY, systems: { S1: 'Thair', S2: 'Amqua' }, colonies: { C1: 'Colonie Vantor', C2: 'Colonie Draven' }, alliances: { A1: 'Compact du Nord' } };
 
@@ -77,5 +77,30 @@ describe('failover and quota', () => {
     expect(q.take('c', 'writes')).toBe(true);
     expect(q.take('c', 'writes')).toBe(false);
     expect(q.remaining('c').events).toBe(1);
+  });
+});
+
+describe('gazette', () => {
+  it('writes a siege column from battles, blockades and dark stations', () => {
+    const w = createWorld('gz', { radius: 4 });
+    const a = spawnColony(w, { name: 'Aster', faction: 'corsairs', persona: 'kestrel' });
+    const b = spawnColony(w, { name: 'Boreal', faction: 'concordat', persona: 'vane' });
+    w.time = 90000; // day 2
+    const sys = b.capital;
+    w.events.push(
+      { at: 87000, kind: 'battle', actors: [b.id, a.id], data: { system: sys, battle: 'X1', seconds: 420, kills: 9 } },
+      { at: 87500, kind: 'blockade.start', actors: [a.id, b.id], data: { system: sys } },
+      { at: 88000, kind: 'relay.cut', actors: [a.id, b.id], data: { system: sys } },
+      { at: 88100, kind: 'convoy.lost', actors: [b.id, a.id], data: { system: sys, cargos: 1 } },
+    );
+    const fr = templateGazette(dayFacts(w, 2), 'fr', w.time);
+    const siege = fr.sections.find((s) => s.heading === 'Les sièges')!;
+    expect(siege.body).toContain('7 minutes de feu, 9 coques perdues');
+    expect(siege.body).toContain('Aster tient le plateau');
+    expect(siege.body).toContain('1 convoi perdu');
+    const en = templateGazette(dayFacts(w, 2), 'en', w.time);
+    expect(en.sections.find((s) => s.heading === 'The sieges')!.body).toContain('fell silent');
+    const quiet = templateGazette(dayFacts(w, 1), 'fr', w.time);
+    expect(quiet.sections.some((s) => s.heading === 'Les sièges')).toBe(false);
   });
 });

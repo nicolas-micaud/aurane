@@ -76,6 +76,15 @@ export function createHttpServer(engine: Engine): Server {
       const colony = token ? await engine.authenticate(token) : null;
       if (!colony) return json(res, 401, { error: 'unauthorized' });
       if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, engine.view(colony.id));
+      if (req.method === 'GET' && url.pathname.startsWith('/api/system/')) {
+        const v = engine.systemView(colony.id, decodeURIComponent(url.pathname.slice('/api/system/'.length)));
+        return v ? json(res, 200, v) : json(res, 404, { error: 'no such system' });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/battles') return json(res, 200, engine.battles(colony.id));
+      if (req.method === 'GET' && url.pathname.startsWith('/api/battle/')) {
+        const r = engine.battle(colony.id, decodeURIComponent(url.pathname.slice('/api/battle/'.length)));
+        return r ? json(res, 200, r) : json(res, 404, { error: 'no such battle' });
+      }
       if (req.method === 'GET' && url.pathname === '/api/briefing') return json(res, 200, await engine.briefing(colony.id, url.searchParams.get('lang') === 'en' ? 'en' : 'fr'));
       if (req.method === 'POST' && url.pathname === '/api/doctrine') {
         const parsed = z.object({ text: z.string().max(2000), lang: z.enum(['fr', 'en']).default('fr') }).safeParse(await readBody(req));
@@ -104,19 +113,34 @@ export function createHttpServer(engine: Engine): Server {
     });
   });
 
+  const WatchSchema = z.object({ watch: z.string().max(64).nullable() });
+  const EnvelopeSchema = z.object({ id: z.string().optional(), command: CommandSchema });
+
   function attach(ws: WebSocket, colonyId: string): void {
     const unsubscribe = engine.subscribe(colonyId, (view) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'view', view }));
     });
+    // One watched plateau per connection: {"watch": systemId} starts the 2 Hz stream, {"watch": null} stops it.
+    let unwatch: (() => void) | null = null;
     ws.on('message', (raw) => {
       let msg: unknown;
       try { msg = JSON.parse(raw.toString()); } catch { ws.send(JSON.stringify({ type: 'error', error: 'bad json' })); return; }
-      const env = z.object({ id: z.string().optional(), command: CommandSchema }).safeParse(msg);
+      const watch = WatchSchema.safeParse(msg);
+      if (watch.success) {
+        unwatch?.(); unwatch = null;
+        if (watch.data.watch !== null) {
+          const systemId = watch.data.watch;
+          unwatch = engine.watchSystem(colonyId, systemId, (view) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'system', view })); });
+          if (!engine.systemView(colonyId, systemId)) ws.send(JSON.stringify({ type: 'error', error: 'no such system' }));
+        }
+        return;
+      }
+      const env = EnvelopeSchema.safeParse(msg);
       if (!env.success) { ws.send(JSON.stringify({ type: 'error', error: 'invalid command', issues: env.error.issues })); return; }
       const result = engine.command(colonyId, env.data.command);
       ws.send(JSON.stringify({ type: 'result', id: env.data.id, result }));
     });
-    ws.on('close', unsubscribe);
+    ws.on('close', () => { unsubscribe(); unwatch?.(); });
   }
 
   return server;

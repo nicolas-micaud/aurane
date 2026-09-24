@@ -155,7 +155,8 @@ export interface BattleLog {
   startedAt: number;
   endedAt: number | null;
   sides: string[];              // colony ids involved
-  events: { at: number; kind: string; who: string; what: string; amount?: number }[];
+  /** kind: kill (what = unit type, target = victim colony), destroyed (what = structure kind), station.down. */
+  events: { at: number; kind: string; who: string; what: string; amount?: number; target?: string }[];
 }
 
 export interface World {

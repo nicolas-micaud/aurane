@@ -138,11 +138,12 @@ function moveToward(f: FleetState, target: XY, range: number, speedPerMin: numbe
   f.pos = fromXY({ x: nx, y: ny });
 }
 
-function log(w: World, systemId: string, kind: string, who: string, what: string, amount?: number): void {
+function log(w: World, systemId: string, kind: string, who: string, what: string, amount?: number, target?: string): void {
   const b = Object.values(w.battles).find((x) => x.system === systemId && x.endedAt === null);
   if (!b) return;
   const e: BattleLog['events'][number] = { at: w.time, kind, who, what };
   if (amount !== undefined) e.amount = amount;
+  if (target !== undefined) e.target = target;
   if (b.events.length < 2000) b.events.push(e);
 }
 
@@ -196,14 +197,14 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
         const prefer = B.COUNTERS[t];
         dmg *= counterMult(t, prefer && target.fleet.units[prefer] > 0 ? prefer : null);
         const k = damageFleet(target.fleet, dmg, prefer);
-        for (const [u, n] of Object.entries(k)) { kills.set(`${f.owner}:${u}`, (kills.get(`${f.owner}:${u}`) ?? 0) + n!); log(w, systemId, 'kill', f.owner, u, n); }
+        for (const [u, n] of Object.entries(k)) { kills.set(`${f.owner}:${u}`, (kills.get(`${f.owner}:${u}`) ?? 0) + n!); log(w, systemId, 'kill', f.owner, u, n, target.fleet.owner); }
         if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.fleet.owner, f.owner], data: { system: systemId, cargos: k.cargo } });
       } else if (target.kind === 'structure') {
         target.structure.hp = Math.max(0, target.structure.hp - dmg);
-        if (target.structure.hp === 0) { log(w, systemId, 'destroyed', f.owner, target.structure.kind); }
+        if (target.structure.hp === 0) { log(w, systemId, 'destroyed', f.owner, target.structure.kind, undefined, st.owner ?? undefined); }
       } else {
         st.stationHp = Math.max(0, st.stationHp - dmg);
-        if (st.stationHp === 0) log(w, systemId, 'station.down', f.owner, systemId);
+        if (st.stationHp === 0) log(w, systemId, 'station.down', f.owner, systemId, undefined, st.owner ?? undefined);
       }
     }
   }
@@ -219,7 +220,7 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
       const prefer = ts.counters;
       const dmg = ts.dps * dt * variance() * (target.units[prefer] > 0 ? B.COUNTER_MULT : 1);
       const k = damageFleet(target, dmg, prefer);
-      for (const [u, n] of Object.entries(k)) log(w, systemId, 'kill', st.owner, u, n);
+      for (const [u, n] of Object.entries(k)) log(w, systemId, 'kill', st.owner, u, n, target.owner);
       if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.owner, st.owner], data: { system: systemId, cargos: k.cargo } });
     }
   }
@@ -271,3 +272,12 @@ export function regenerate(w: World, systemId: string, dt: number, connected: bo
     for (const t of COMBAT_UNITS) f.damage[t] = Math.max(0, f.damage[t] - rate * dt);
   }
 }
+
+/** Drop battle logs older than `keepSeconds` so a season's snapshot stays bounded. */
+export function pruneBattles(w: World, keepSeconds = 7 * 86400, keepMax = 2000): void {
+  const ids = Object.keys(w.battles);
+  if (ids.length <= keepMax / 2 && ids.every((id) => (w.battles[id]!.endedAt ?? w.time) >= w.time - keepSeconds)) return;
+  const sorted = ids.map((id) => w.battles[id]!).sort((a, b) => b.startedAt - a.startedAt);
+  sorted.forEach((b, i) => { if (b.endedAt !== null && (i >= keepMax || b.endedAt < w.time - keepSeconds)) delete w.battles[b.id]; });
+}
+
