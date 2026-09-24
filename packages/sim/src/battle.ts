@@ -155,10 +155,10 @@ function log(w: World, systemId: string, poi: string, kind: string, who: string,
  * Sides: the system owner and its allies defend with fleets, turrets and the station; every
  * hostile fleet on the plateau attacks. In unowned systems, hostile fleets fight each other.
  */
-export function battleTick(w: World, systemId: string, poi: string, dt = 1): boolean {
+export function battleTick(w: World, systemId: string, poi: string, dt = 1, plateau?: FleetState[]): boolean {
   const st = w.systems[systemId]!;
-  const fleets = plateauFleets(w, systemId, poi);
-  const hostiles = armedHostilesPresent(w, systemId, poi);
+  const fleets = plateau ?? plateauFleets(w, systemId, poi);
+  const hostiles = armedHostilesPresent(w, systemId, poi, fleets);
   if (!hostiles.length) return endEngagement(w, systemId, poi);
 
   // Targets available to each attacker: what stands at this point of interest.

@@ -116,7 +116,9 @@ export const COUNTER_MULT = 1.5;
 export const COMBAT_VARIANCE = 0.15;
 export const FLEET_SPEED_ON_NET = 60;     // world units per minute
 export const OFF_NET_SPEED_MULT = 0.5;
-export const OFF_NET_ENERGY_PER_UNIT = 0.02;
+/** Energy per world unit of off-network travel, per ship. A raid on a neighbour three sectors away
+ *  (~2200 units) with 24 ships costs ~105 energy: a real budget line, not a wall (0.02 made it 1000+). */
+export const OFF_NET_ENERGY_PER_UNIT = 0.002;
 export const CORSAIR_SHIP_COST_MULT = 0.85;
 export const CORSAIR_SPEED_MULT = 1.1;
 export const BASTION_DEFENSE_MULT = 2;

@@ -591,15 +591,23 @@ function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetSta
   return newFleet(w, owner, at, units);
 }
 
+/** Energy a fleet burns to cross `length` world units off the Network. */
+export function offNetEnergy(length: number, units: Fleet): number {
+  return Math.ceil(length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(units));
+}
+
 /** Starts a journey along waypoints; convoys hop, warships jump to the end (they are not intercepted en route). */
 function depart(w: World, colony: Colony, f: FleetState, to: string, order: FleetOrder): ApplyResult {
   if (f.at === null) return { ok: false, reason: 'fleet in transit' };
   const plan = planPath(w, colony, f.at, to);
   if (!plan.onNet) {
-    const energy = Math.ceil(plan.length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(f.units));
+    const energy = offNetEnergy(plan.length, f.units);
+    // Fuel comes from the departure system when it is ours, otherwise the capital fuels the fleet remotely
+    // (so a raider deep in enemy space can always be called home).
     const st = w.systems[f.at]!;
-    if (st.owner !== colony.id || st.stock.energy < energy) return { ok: false, reason: 'not enough energy here for off-network travel' };
-    st.stock.energy -= energy;
+    const fuel = st.owner === colony.id && st.stock.energy >= energy ? st : w.systems[colony.capital]!;
+    if (fuel.stock.energy < energy) return { ok: false, reason: 'not enough energy here for off-network travel' };
+    fuel.stock.energy -= energy;
   }
   const hop = f.units.cargo > 0;
   const speed = fleetSpeed(colony, f.units, plan.onNet);
@@ -768,21 +776,43 @@ function hasHostilePresence(w: World): boolean {
 }
 
 function runBattles(w: World, dt: number): void {
+  // One pass over the fleets: who is out on which plateau, who is docked where. Everything below
+  // works from these lists, so a season with thousands of fleets stays linear per step.
+  const out = new Map<string, FleetState[]>();
+  const docked = new Map<string, FleetState[]>();
+  const push = (m: Map<string, FleetState[]>, key: string, f: FleetState): void => { const l = m.get(key); if (l) l.push(f); else m.set(key, [f]); };
   const plateaus = new Set<string>();
   for (const id of w.engagedSystems) for (const poi of w.systems[id]!.engagedPois) plateaus.add(plateauKey(id, poi));
-  for (const f of Object.values(w.fleets)) if (f.at && f.poi && f.pos && combatSize(f.units) > 0) plateaus.add(plateauKey(f.at, f.poi));
+  const all = Object.values(w.fleets);
+  // Most fleets sit docked most of the time: only fleets out on a plateau cost anything here.
+  for (const f of all) {
+    if (f.pos === null || f.at === null || f.poi === null) continue;
+    const armed = combatSize(f.units) > 0;
+    if (!armed && f.units.cargo === 0) continue;
+    const key = plateauKey(f.at, f.poi);
+    push(out, key, f);
+    if (armed) plateaus.add(key);
+  }
+  if (!plateaus.size) return;
+  for (const f of all) {
+    if (f.pos !== null || f.at === null || f.poi === null) continue;
+    if (combatSize(f.units) === 0 && f.units.cargo === 0) continue;
+    const key = plateauKey(f.at, f.poi);
+    if (plateaus.has(key)) push(docked, key, f);
+  }
   for (const key of plateaus) {
     const [id, poi] = key.split('|') as [string, string];
-    deployDefenders(w, id, poi);
-    const ongoing = battleTick(w, id, poi, dt);
-    if (!ongoing) settlePlateau(w, id, poi);
+    const fleets = [...(out.get(key) ?? [])];
+    fleets.push(...deployDefenders(w, id, poi, docked.get(key) ?? [], fleets));
+    const ongoing = battleTick(w, id, poi, dt, fleets);
+    if (!ongoing) settlePlateau(w, id, poi, fleets);
   }
 }
 
 /** After the shooting stops: convoys move on, friends dock, raiders take their plunder. */
-function settlePlateau(w: World, systemId: string, poi: string): void {
+function settlePlateau(w: World, systemId: string, poi: string, fleets: FleetState[] = plateauFleets(w, systemId, poi)): void {
   const st = w.systems[systemId]!;
-  for (const f of Object.values(w.fleets)) {
+  for (const f of fleets) {
     if (f.at !== systemId || f.poi !== poi || f.pos === null) continue;
     const colony = w.colonies[f.owner];
     if (!colony) continue;
@@ -800,24 +830,29 @@ function settlePlateau(w: World, systemId: string, poi: string): void {
       }
       continue;
     }
-    if (friendly && (f.order.kind === 'idle' || f.order.kind === 'defend' || f.order.kind === 'return' || f.order.kind === 'move')) { f.pos = null; if (f.order.kind !== 'defend') f.order = { kind: 'idle' }; }
+    // Friends dock; in an unclaimed system, fleets with nothing to do hold orbit quietly (docked) too.
+    if ((friendly || st.owner === null) && (f.order.kind === 'idle' || f.order.kind === 'defend' || f.order.kind === 'return' || f.order.kind === 'move')) { f.pos = null; if (f.order.kind !== 'defend') f.order = { kind: 'idle' }; }
   }
 }
 
-/** Friendly warships docked at a threatened system come out to fight; cargos stay in the dock. */
-function deployDefenders(w: World, systemId: string, poi: string): void {
+/** Friendly warships docked at a threatened system come out to fight; cargos stay in the dock. Returns the fleets that came out. */
+function deployDefenders(w: World, systemId: string, poi: string, dockedHere?: FleetState[], plateau?: FleetState[]): FleetState[] {
   const st = w.systems[systemId]!;
-  const hostiles = armedHostilesPresent(w, systemId, poi);
-  if (!hostiles.length) return;
+  const hostiles = armedHostilesPresent(w, systemId, poi, plateau);
+  if (!hostiles.length) return [];
+  const docked = dockedHere ?? Object.values(w.fleets).filter((f) => f.at === systemId && f.poi === poi && f.pos === null);
+  const deployed: FleetState[] = [];
   let i = 0;
-  for (const f of Object.values(w.fleets)) {
-    if (f.at !== systemId || f.poi !== poi || f.pos !== null || combatSize(f.units) === 0) continue;
+  for (const f of docked) {
+    if (f.pos !== null || combatSize(f.units) === 0) continue;
     if (!st.owner || (f.owner !== st.owner && !isAlly(w, f.owner, st.owner))) continue;
     f.pos = { r: 2, a: (90 + i * 47) % 360 };
+    deployed.push(f);
     i++;
   }
   // With the station down, docked cargos are exposed.
-  if (poi === st.mainPoi && st.stationHp <= 0) for (const f of Object.values(w.fleets)) if (f.at === systemId && f.poi === poi && f.pos === null && f.units.cargo > 0) f.pos = { r: 1, a: 180 };
+  if (poi === st.mainPoi && st.stationHp <= 0) for (const f of docked) if (f.pos === null && f.units.cargo > 0) { f.pos = { r: 1, a: 180 }; deployed.push(f); }
+  return deployed;
 }
 
 function processTimers(w: World, dt: number): void {

@@ -226,6 +226,24 @@ describe('continuous combat', () => {
     expect(w.systems[c.capital]!.owner).toBe(c.id);
   });
 
+  it('a fleet away from home is fuelled by the capital for an off-network return', () => {
+    const { w, c, outpost } = withOutpost('cb5');
+    const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
+    atk.createdAt = -1e9;
+    const fleet = warFleet(w, atk, 'frigate', 4);
+    w.systems[atk.capital]!.stock.energy = 1e6;
+    expect(apply(w, atk.id, { type: 'fleet_order', fleet: fleet.id, order: 'raid', target: outpost })).toEqual({ ok: true });
+    tick(w, fleet.arriveAt - w.time + 60);
+    expect([fleet.at, fleet.order.kind]).toEqual([outpost, 'raid']);
+    // The raider stands in enemy space, which holds no fuel for it: the capital pays for the trip home.
+    const before = w.systems[atk.capital]!.stock.energy;
+    w.systems[outpost]!.stock.energy = 0;
+    expect(apply(w, atk.id, { type: 'fleet_order', fleet: fleet.id, order: 'return', target: '' })).toEqual({ ok: true });
+    expect(w.systems[atk.capital]!.stock.energy).toBeLessThan(before);
+    expect(fleet.at).toBeNull();
+    expect(productiveSystems(w, c).length).toBeGreaterThan(0);
+  });
+
   it('a focus order and a split fleet are accepted', () => {
     const { w, c } = withOutpost('cb4');
     const f = warFleet(w, c, 'frigate', 4);

@@ -12,9 +12,10 @@ import { combatSize, fleetSize, type Colony, type FleetState, type World } from 
 import { atPeace, isAlly } from './diplomacy.js';
 import { armedHostilesPresent, fleetHpFraction, plateauIndex, plateauKey } from './battle.js';
 import { RELAY_KINDS, layoutOf, pathInSystem } from './pois.js';
+import { planPath } from './routing.js';
 import { capacityOf, freeSlotsOnOrbit, hasStructure } from './structures.js';
 import {
-  colonyNetwork, colonyRelays, colonyScore, hasBuilding, isShielded, networkUpkeep, ownedSystems, rangeContext,
+  colonyNetwork, colonyRelays, colonyScore, hasBuilding, isShielded, networkUpkeep, offNetEnergy, ownedSystems, rangeContext,
   reachableRegions, routeLimit, stockHas,
 } from './world.js';
 
@@ -305,14 +306,24 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
       ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'return', target: capital });
       continue;
     }
-    if (isShielded(w, c) || p.aggression <= 0 || ctx.rng.next() > p.aggression * 0.15) continue;
+    if (isShielded(w, c) || p.aggression <= 0 || ctx.rng.next() > p.aggression * 0.25) continue;
     if (combatSize(f.units) < 6) continue;
     const targets = hostileNeighbours(ctx).filter((o) => fleetStrength(w, o.id) < combatSize(f.units) && colonyScore(w, c) <= B.BULLY_SCORE_RATIO * Math.max(1, colonyScore(w, o)));
     if (!targets.length) continue;
     const victim = ctx.rng.pick(targets);
+    // The sortie must be fuelled: energy for the trip out and back, on top of the home reserve.
+    const fuelFor = (to: string): boolean => {
+      const plan = planPath(w, c, f.at!, to);
+      const need = plan.onNet ? 0 : 2 * offNetEnergy(plan.length, f.units);
+      return w.systems[f.at!]!.stock.energy - (f.at === capital ? ctx.reserve.energy : 40) >= need;
+    };
+    if (!fuelFor(victim.capital)) { ctx.notes.push('no fuel'); continue; }
     const prey = ownedSystems(w, victim.id).filter((id) => id !== victim.capital && !w.systems[id]!.blockade);
-    if (f.units.cruiser >= 4 && prey.length && ctx.rng.next() < 0.6) {
-      ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'blockade', target: ctx.rng.pick(prey) });
+    // A siege needs weight (a fleet of 8+) and picks the least defended system.
+    const defences = (id: string): number => w.systems[id]!.structures.filter((s) => s.kind in B.TURRET_STATS && s.hp > 0).length;
+    if (combatSize(f.units) >= 8 && prey.length && ctx.rng.next() < 0.6) {
+      const weakest = prey.reduce((a, b) => (defences(b) < defences(a) ? b : a));
+      ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'blockade', target: weakest });
       ctx.notes.push(`blockade ${victim.name}`);
       continue;
     }

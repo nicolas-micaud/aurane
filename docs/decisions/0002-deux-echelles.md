@@ -102,6 +102,13 @@ un combat, 1 toutes les 10 s sinon).
 > les orbites 1 à 3 l'entourent, le bord est à 4 crans ; les portées des tourelles sont mesurées depuis
 > l'orbite 2, d'où des valeurs plus grandes qu'annoncé.
 
+> Calibrage du carburant hors Réseau (24.09.2026) : l'Énergie brûlée par unité de distance et par
+> vaisseau passe de 0,02 à 0,002. Au tarif précédent, un raid sur un voisin à trois secteurs coûtait
+> plus de 1 000 Énergie pour une flotte de 24 : les Généraux décidaient d'attaquer et se faisaient
+> refuser l'ordre à 96 %, d'où des saisons sans siège. Une flotte partie de chez elle est désormais
+> ravitaillée par sa capitale quand le système de départ n'est pas à elle (un raider peut toujours
+> rentrer) ; le Général vérifie le carburant aller-retour avant de sortir.
+
 | Installation | PV | DPS | Portée | Coût | Notes |
 |---|---|---|---|---|---|
 | Station-relais | 300 | 0 | — | gratuite | régénère 0,5 PV/s hors combat |

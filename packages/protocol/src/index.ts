@@ -75,8 +75,8 @@ export type Persona = (typeof PERSONAS)[number];
 
 export const PERSONA_DEFAULTS: Record<Persona, Partial<Policy>> = {
   vane: { expansion: 0.3, aggression: 0 },
-  kestrel: { expansion: 0.8, aggression: 0.6 },
-  oriel: { expansion: 0.5, aggression: 0.1 },
+  kestrel: { expansion: 0.8, aggression: 0.7 },
+  oriel: { expansion: 0.5, aggression: 0.25 },
   solen: { expansion: 0.4, aggression: 0 },
 };
 
