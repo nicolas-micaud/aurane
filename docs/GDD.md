@@ -303,15 +303,18 @@ Le jeu est gratuit ; son produit est le trafic. Tout est conçu pour être parta
 
 - **Client** : TypeScript, Vite, rendu carte en WebGL via PixiJS (fluide sur mobile), interface en Svelte ou composants légers, **PWA** installable, tactile d'abord (pan, zoom, deux gestes), portrait et paysage.
 - **Frontal : Cloudflare.** DNS, certificats, WAF, cache, protection DDoS, et hébergement du client statique (Pages) sur `starnet.uno`. Les WebSockets et l'API sont proxifiés par Cloudflare vers Exoscale. Le dépôt garde `CNAME`.
-- **Calcul : Exoscale** (partenariat ISV, crédits, Terraform complet). Zone CH-GVA-2 ou CH-DK-2, données en Suisse.
-  - **SKS** (Kubernetes managé) avec un pool de nœuds modeste au départ ; tout est déclaré en Terraform dans `infra/`.
+- **Calcul : Exoscale** (partenariat ISV, crédit mensuel, Terraform complet). Zone `ch-gva-2`, données en Suisse.
+  - **Saison 0 : une VM + Docker Compose + tunnel Cloudflare**, le motif que ninabot déploie déjà en production (voir `docs/ops/context.md`). Instance `starnet-world1`, security group deny-all, SSH et supervision par le tailnet, entrée web par `cloudflared`. Kubernetes managé (SKS) reste la cible quand le monde devra se répartir sur plusieurs processus ; on ne l'inaugure pas en même temps que le jeu.
   - **Serveur de jeu** en TypeScript sur Node : un processus « monde » par saison, qui héberge des **acteurs en mémoire** (un par secteur, un par Marché de région, un par Colonie, un pour la Saison), ordonnancés par un tick à la seconde et un planificateur d'alarmes. C'est le modèle des Durable Objects, en un processus que l'on possède. Quand la population l'exige, les secteurs se répartissent sur plusieurs processus par régions, coordonnés via NATS.
-  - **PostgreSQL managé** (DBaaS Exoscale) pour la persistance : instantanés d'acteurs, journal d'événements, comptes, marchés réglés. **Valkey managé** pour les sessions, les files courtes et le pub/sub des WebSockets. **SOS** (S3) pour la Gazette, les cartes rendues et les sauvegardes.
-  - **Travailleurs** séparés : file `general` (LLM), rendu des cartes publiques, Gazette quotidienne.
-- **Réseau privé** : les nœuds Exoscale rejoignent le **tailnet** ninabot ; rog1, Vaultwarden et l'observabilité sont joints par là, jamais par Internet public.
-- **Secrets** : Vaultwarden est la source de vérité ; Terraform les lit au déploiement et les pousse en secrets Kubernetes. Aucun secret en clair hors du coffre.
+  - **PostgreSQL** pour la persistance (instantanés d'acteurs, journal d'événements, comptes, marchés réglés) et **Valkey** pour les sessions, les files courtes et le pub/sub des WebSockets : dans le Compose en préproduction, en DBaaS Exoscale (`termination_protection`) au passage en bêta. **SOS** (S3) pour la Gazette, les cartes rendues et les sauvegardes.
+  - **Travailleurs** séparés dans le même Compose : file `general` (LLM), rendu des cartes publiques, Gazette quotidienne.
+- **Réseau privé** : la VM rejoint le **tailnet** ninabot avec un tag dédié `tag:starnet` dont le seul grant est `rog1:8007` ; rog1, Vaultwarden et l'observabilité sont joints par là, jamais par Internet public.
+- **Secrets** : Vaultwarden est la source de vérité (dossier, puis collection, `starnet`) ; chargés dans l'environnement au déploiement, jamais dans les `.tf`, les tfvars ni les images.
+- **LLM** : llama.cpp sur rog1 sert le 80B à ~36 tok/s pour ~2 requêtes simultanées. Le package `general` travaille donc en **file de jobs** à concurrence 2 vers le primaire, avec repli Infomaniak (`Nemotron-3-Nano-30B-A3B` pour le profil MoE proche, ou `Apertus-70B` pour le souverain dense). JSON demandé dans le prompt et nettoyé en sortie, `reasoning_effort` coupé sur le repli : pas de dépendance à `response_format`.
 - **Simulation partagée** : un package `sim` pur et déterministe (génération de galaxie, réseau, Tirage, économie, combat) utilisé à l'identique par le serveur et par le client (prévisualisation instantanée, rejouabilité des rapports). C'est l'évolution directe des modules `js/` déjà en place.
-- **Observabilité** : OpenTelemetry vers la pile déjà en place chez ninabot (à confirmer d'après la mémoire), sinon Grafana + Loki + Tempo sur le même cluster.
+- **Observabilité** : la pile ninabot existante (Prometheus, Grafana, Loki, Uptime Kuma sur gmk1) : endpoint `/metrics` scrapé par le tailnet, logs par Promtail, alertes Grafana provisionnées par fichier avec un label `area=starnet` et sa route Telegram. Pas de tracing OTLP en Saison 0.
+- **CI** : GitHub Actions tant que le dépôt vit sur GitHub (lint, typecheck, tests, saison accélérée courte) ; la migration vers la forge Forgejo de ninabot avec GitHub en miroir est une décision de Nick, pas du projet.
+- **Outillage** : npm workspaces (Node 22, npm 10, ce qui tourne sur les runners), TypeScript strict, ESLint, Vitest. Pas de pnpm.
 
 ### 12.2 Structure du dépôt (cible)
 
@@ -324,7 +327,8 @@ packages/protocol/ schémas et messages (zod)
 packages/general/  compilateur de doctrine, moteur de règles, adaptateurs LLM
 packages/ui/       composants partagés
 tools/season-sim/  saisons accélérées en mode headless pour l'équilibrage
-infra/             Terraform Exoscale (SKS, DBaaS, SOS) et Cloudflare (DNS, Pages, règles)
+infra/             Terraform Exoscale (VM, privnet, SG, SOS ; DBaaS à la bêta) et Cloudflare (DNS, Pages, tunnel)
+deploy/            docker-compose.yml de production, promote.sh (motif ninabot)
 docs/              ce document, lore, ops, journal de décisions
 ```
 
@@ -333,7 +337,7 @@ docs/              ce document, lore, ops, journal de décisions
 - **Tout ce qui touche la simulation est testé de façon déterministe** (même graine, même résultat), y compris le combat et le règlement du Marché.
 - **Saisons accélérées** : des centaines de PNJ jouent une saison de 8 semaines en quelques minutes, en mode headless. C'est l'outil d'équilibrage : inflation, blob, domination d'une faction, tout se voit avant que les joueurs ne le subissent.
 - **Journal de décisions** dans `docs/decisions/`, une page par choix structurant.
-- **Déploiement continu** : chaque fusion sur la branche principale déploie en préproduction (namespace dédié sur SKS) ; la production se déploie à la main jusqu'à la fin de la Saison 0.
+- **Déploiement** : motif ninabot : images taguées `<sha>`, stack de préproduction déployée à chaque push, **promotion manuelle** vers la production (`deploy/promote.sh`), rollback au tag précédent.
 
 ---
 
@@ -363,7 +367,7 @@ Sans dates ; l'ordre compte, pas le calendrier.
 3. **Bande du Tirage connue des Oracles** : avantage trop fort pour le Marché ? **À mesurer en saison accélérée ; repli : ils connaissent la bande, mais seulement 15 minutes avant.**
 4. **Chat** : chat d'alliance seulement, ou chat régional public ? **Alliance et messages privés en Saison 0 ; le public passe par la Gazette et les traités. Moins de modération, plus de diplomatie.**
 5. **Noms** : « Aurane », « Concordat », « Guilde des Marchands », « Oracles », « Corsaires » ; ressources Métal / Énergie / Vivres / Cristal ; « Tirage », « Marché », « Silence », « Général », « Colonie ». **Validés sauf avis contraire.**
-6. **Kubernetes ou instances simples** sur Exoscale ? **SKS : Terraform le gère bien, et le jour où le monde se répartit sur plusieurs processus, tout est déjà en place. Une seule instance suffirait pour la Saison 0, mais on la paierait en migration plus tard.**
+6. **Kubernetes ou VM simple** sur Exoscale ? **Tranché d'après le contexte ninabot : VM + Compose + tunnel pour la Saison 0 (motif éprouvé, dans la marge du crédit ISV) ; SKS quand le monde devra se répartir. Le budget DBaaS (≈ 150–250 CHF/mois au-delà du crédit) se valide avant le passage en bêta.**
 
 ---
 
