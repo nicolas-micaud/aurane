@@ -38,6 +38,10 @@ const STRINGS = {
     ended: 'Le Silence est tombé.', renaissance: 'La Renaissance ! Le Signal est revenu.',
     errors: { range: 'Hors de portée', blackhole: 'Un trou noir avale le signal', far: 'Trop loin', same: 'Même étoile', 'relay exists': 'Relais déjà construit', 'not enough resources': 'Pas assez de ressources', 'not connected to your network': 'Pas relié à ton Réseau', 'system held by another colony': 'Système tenu par une autre Colonie' } as Record<string, string>,
     lightBeacon: 'Rallumer le Phare', lit: 'Rallumé', by: 'par',
+    metalDesc: 'Construit relais, bâtiments et coques.', energyDesc: 'Alimente les relais à chaque Tirage. Sans Énergie, le Réseau s\'éteint.', foodDesc: 'Nourrit la population, qui produit davantage.', crystalDesc: 'Rare. Technologie, croiseurs, Phares et Influence.', creditsDesc: 'Monnaie du Marché, réglé à chaque Tirage.', influenceDesc: 'Monnaie politique : traités, agents, décrets.',
+    perDraw: 'par Tirage', legend: 'Légende', help: 'Aide',
+    coach1: 'Touche une étoile de ton secteur.', coach2: 'Appuie sur « Relier », puis touche une étoile voisine : un relais se construit.', coach3: 'À chaque heure pile, le Tirage produit et règle le Marché. Reviens quand tu veux : ton Général veille.', next: 'Suivant', done: 'C\'est parti',
+    drawEventNone: 'Calme', drawEventEruption: 'Éruption', drawEventStorm: 'Tempête', drawEventEcho: 'Écho',
     briefing: 'Briefing', dismiss: 'Compris', compiling: 'Ton Général relit ta doctrine…', compiled: 'Doctrine appliquée', viaModel: 'interprétée par ton Général', viaRules: 'interprétée par les règles de base (modèle indisponible)',
   },
   en: {
@@ -75,6 +79,10 @@ const STRINGS = {
     ended: 'The Silence has fallen.', renaissance: 'The Renaissance! The Signal is back.',
     errors: { range: 'Out of range', blackhole: 'A black hole swallows the signal', far: 'Too far', same: 'Same star', 'relay exists': 'Relay already built', 'not enough resources': 'Not enough resources', 'not connected to your network': 'Not connected to your Network', 'system held by another colony': 'System held by another Colony' } as Record<string, string>,
     lightBeacon: 'Light the Beacon', lit: 'Lit', by: 'by',
+    metalDesc: 'Builds relays, buildings and hulls.', energyDesc: 'Powers relays at every Draw. Without Energy, the Network goes dark.', foodDesc: 'Feeds the population, which produces more.', crystalDesc: 'Rare. Technology, cruisers, Beacons and Influence.', creditsDesc: 'Market currency, settled at every Draw.', influenceDesc: 'Political currency: treaties, agents, decrees.',
+    perDraw: 'per Draw', legend: 'Legend', help: 'Help',
+    coach1: 'Tap a star in your sector.', coach2: 'Press “Link”, then tap a neighbouring star: a relay is built.', coach3: 'Every hour on the hour, the Draw produces and settles the Market. Come back whenever: your General keeps watch.', next: 'Next', done: 'Let\'s go',
+    drawEventNone: 'Calm', drawEventEruption: 'Eruption', drawEventStorm: 'Storm', drawEventEcho: 'Echo',
     briefing: 'Briefing', dismiss: 'Got it', compiling: 'Your General is reading your doctrine…', compiled: 'Doctrine applied', viaModel: 'interpreted by your General', viaRules: 'interpreted by the base rules (model unavailable)',
   },
 } as const;

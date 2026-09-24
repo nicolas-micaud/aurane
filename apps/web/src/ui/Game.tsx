@@ -6,6 +6,7 @@ import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
+import { Icon } from './Icon.js';
 
 type Tab = 'colony' | 'system' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 const selected = signal<string | null>(null);
@@ -73,24 +74,62 @@ export function Game() {
 
 function Hud({ v }: { v: PlayerView }) {
   const [, force] = useState(0);
+  const [legend, setLegend] = useState(false);
   useEffect(() => { const i = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(i); }, []);
-  const secondsLeft = v.nextDrawAt - v.time - (Date.now() - hudReceivedAt) / 1000;
+  const secondsLeft = Math.max(0, v.nextDrawAt - v.time - ((Date.now() - hudReceivedAt) / 1000) * v.timeScale);
+  const frac = 1 - secondsLeft / 3600;
+  const ev = v.draw?.event.kind ?? 'none';
+  const evLabel = ev === 'eruption' ? t('drawEventEruption') : ev === 'storm' ? t('drawEventStorm') : ev === 'echo' ? t('drawEventEcho') : t('drawEventNone');
   return (
     <div class="hud">
       <div class="chips">
-        {RES.map((r) => <span class={`chip r-${r}`} key={r}><i /> {fmt(v.me.stock[r])}<small>+{fmt(v.me.lastProduced[r])}</small></span>)}
-        <span class="chip"><i class="cr" /> {fmt(v.me.credits)}</span>
-        <span class="chip"><i class="inf" /> {fmt(v.me.influence)}</span>
+        {RES.map((r) => (
+          <span class={`chip r-${r}`} key={r} title={`${t(r)} — ${t(`${r}Desc`)}`}>
+            <Icon name={r} /> <b>{fmt(v.me.stock[r])}</b><small>+{fmt(v.me.lastProduced[r])}</small><em>{t(r)}</em>
+          </span>
+        ))}
+        <span class="chip r-credits" title={`${t('credits')} — ${t('creditsDesc')}`}><Icon name="credits" /> <b>{fmt(v.me.credits)}</b><em>{t('credits')}</em></span>
+        <span class="chip r-influence" title={`${t('influence')} — ${t('influenceDesc')}`}><Icon name="influence" /> <b>{fmt(v.me.influence)}</b><em>{t('influence')}</em></span>
+        <button class="chip help" onClick={() => setLegend(!legend)} title={t('help')}><Icon name="help" /></button>
       </div>
       <div class="status">
-        <span>{t('nextDraw')} <b>{hms(secondsLeft)}</b></span>
-        {v.draw && <span>{t('bands')} <b>{v.draw.bands.join(' · ')}</b></span>}
-        <span>{t('score')} <b>{v.me.score.toFixed(1)}</b> · {v.me.connectedCount} {t('connected')}</span>
+        <span class="draw" title={t('nextDraw')}>
+          <svg width="26" height="26" viewBox="0 0 26 26"><circle cx="13" cy="13" r="10" fill="none" stroke="#2a3760" stroke-width="3" /><circle cx="13" cy="13" r="10" fill="none" stroke="#7dd3fc" stroke-width="3" stroke-dasharray={`${Math.max(0, frac) * 62.8} 62.8`} transform="rotate(-90 13 13)" /></svg>
+          <span>{t('nextDraw')} <b>{hms(secondsLeft)}</b></span>
+        </span>
+        {v.draw && <span title={t('bands')}>{t('bands')} <b>{v.draw.bands.join(' · ')}</b> · <b class={`ev-${ev}`}>{evLabel}</b></span>}
+        <span>{t('score')} <b>{v.me.score.toFixed(1)}</b> · <b>{v.me.connectedCount}</b> {t('connected')}</span>
         {v.me.shielded && <span class="tag">{t('shielded')}</span>}
       </div>
+      {legend && (
+        <div class="legend" onClick={() => setLegend(false)}>
+          <h3>{t('legend')}</h3>
+          {RES.map((r) => <p key={r}><span class={`r-${r}`}><Icon name={r} /></span> <b>{t(r)}</b> — {t(`${r}Desc`)}</p>)}
+          <p><span class="r-credits"><Icon name="credits" /></span> <b>{t('credits')}</b> — {t('creditsDesc')}</p>
+          <p><span class="r-influence"><Icon name="influence" /></span> <b>{t('influence')}</b> — {t('influenceDesc')}</p>
+          <p class="muted">{t('coach3')}</p>
+        </div>
+      )}
+      <Coach />
     </div>
   );
 }
+
+function Coach() {
+  const key = 'aurane.coach';
+  const [step, setStep] = useState<number>(() => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } });
+  const steps = [t('coach1'), t('coach2'), t('coach3')];
+  if (step >= steps.length) return null;
+  const advance = () => { const n = step + 1; setStep(n); try { localStorage.setItem(key, String(n)); } catch { /* ignore */ } };
+  return (
+    <div class="coach">
+      <span class="step">{step + 1}/{steps.length}</span>
+      <p>{steps[step]}</p>
+      <button class="primary" onClick={advance}>{step === steps.length - 1 ? t('done') : t('next')}</button>
+    </div>
+  );
+}
+
 let hudReceivedAt = Date.now();
 view.subscribe(() => { hudReceivedAt = Date.now(); });
 

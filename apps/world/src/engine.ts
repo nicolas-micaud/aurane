@@ -128,14 +128,14 @@ export class Engine {
 
   view(colonyId: string): PlayerView | null {
     const c = this.world.colonies[colonyId];
-    return c ? viewFor(this.world, c) : null;
+    return c ? viewFor(this.world, c, this.cfg.timeScale) : null;
   }
 
   subscribe(colonyId: string, fn: Listener): () => void {
     if (!this.listeners.has(colonyId)) this.listeners.set(colonyId, new Set());
     this.listeners.get(colonyId)!.add(fn);
     const c = this.world.colonies[colonyId];
-    if (c) { c.lastSeenAt = this.world.time; fn(viewFor(this.world, c)); }
+    if (c) { c.lastSeenAt = this.world.time; fn(viewFor(this.world, c, this.cfg.timeScale)); }
     return () => {
       const set = this.listeners.get(colonyId);
       set?.delete(fn);
@@ -148,7 +148,7 @@ export class Engine {
       const set = this.listeners.get(id);
       const c = this.world.colonies[id];
       if (!set || !c) continue;
-      const v = viewFor(this.world, c);
+      const v = viewFor(this.world, c, this.cfg.timeScale);
       for (const fn of set) fn(v);
     }
     this.dirtyColonies.clear();

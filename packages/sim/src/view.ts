@@ -15,7 +15,7 @@ export interface SystemView {
   blockadedBy: string | null; lit: LitBeacon | null; beaconName?: string;
 }
 export interface RelayView { id: string; a: string; b: string; owner: string; ready: boolean; cut: boolean; readyAt: number; cutUntil: number; bridge: boolean }
-export interface FleetView { id: string; owner: string; at: string | null; destination: string | null; arriveAt: number; units: Fleet | null; size: number; order: string }
+export interface FleetView { id: string; owner: string; at: string | null; from: string | null; destination: string | null; departAt: number; arriveAt: number; units: Fleet | null; size: number; order: string }
 export interface SectorView { key: string; q: number; r: number; region: string; origin: { x: number; y: number }; nebulae: Circle[]; blackHoles: Circle[] }
 export interface ColonyView {
   id: string; name: string; faction: string; persona: string; alliance: string | null; allianceName: string | null;
@@ -24,6 +24,8 @@ export interface ColonyView {
 
 export interface PlayerView {
   galaxyRadius: number;
+  /** Simulated seconds per real second (1 in production). */
+  timeScale: number;
   time: number;
   nextDrawAt: number;
   seasonEndsAt: number;
@@ -49,7 +51,7 @@ export interface PlayerView {
   ended: World['ended'];
 }
 
-export function viewFor(w: World, colony: Colony): PlayerView {
+export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
   const visible = visibleSectors(w, colony);
   const net = colonyNetwork(w, colony);
   const bridges = findBridgesFor(w, colony.id);
@@ -84,7 +86,7 @@ export function viewFor(w: World, colony: Colony): PlayerView {
     const mine = f.owner === colony.id || isAlly(w, colony.id, f.owner);
     const at = f.at ?? f.destination;
     if (!mine && (!at || !visibleSystems.has(at))) continue;
-    fleets.push({ id: f.id, owner: f.owner, at: f.at, destination: f.destination, arriveAt: f.arriveAt, units: mine ? f.units : null, size: fleetSize(f.units), order: f.order.kind });
+    fleets.push({ id: f.id, owner: f.owner, at: f.at, from: f.from, destination: f.destination, departAt: f.departAt, arriveAt: f.arriveAt, units: mine ? f.units : null, size: fleetSize(f.units), order: f.order.kind });
   }
   const colonies: ColonyView[] = Object.values(w.colonies).map((c) => ({
     id: c.id, name: c.name, faction: c.faction, persona: c.persona, alliance: c.alliance,
@@ -93,7 +95,7 @@ export function viewFor(w: World, colony: Colony): PlayerView {
   }));
   const nextDrawAt = (Math.floor(w.time / 3600) + 1) * 3600;
   return {
-    galaxyRadius: w.galaxy.radius, time: w.time, nextDrawAt, seasonEndsAt: w.seasonEndsAt,
+    galaxyRadius: w.galaxy.radius, timeScale, time: w.time, nextDrawAt, seasonEndsAt: w.seasonEndsAt,
     me: {
       id: colony.id, name: colony.name, faction: colony.faction, persona: colony.persona, capital: colony.capital,
       stock: colony.stock, credits: colony.credits, influence: colony.influence, watchStartHour: colony.watchStartHour,

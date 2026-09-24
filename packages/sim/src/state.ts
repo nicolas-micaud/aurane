@@ -55,6 +55,7 @@ export interface FleetState {
   at: string | null;
   from: string | null;
   destination: string | null;
+  departAt: number;
   arriveAt: number;
   order: FleetOrder;
 }

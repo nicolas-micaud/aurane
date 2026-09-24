@@ -516,6 +516,7 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
   fleet.from = fleet.at;
   fleet.at = null;
   fleet.destination = destination;
+  fleet.departAt = w.time;
   fleet.arriveAt = w.time + route.seconds;
   return { ok: true };
 }
@@ -599,7 +600,7 @@ function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetSta
   const existing = Object.values(w.fleets).find((f) => f.owner === owner && f.at === at && f.order.kind !== 'blockade');
   if (existing) { existing.units = addFleet(existing.units, units); return existing; }
   const id = newId(w, 'F');
-  const f: FleetState = { id, owner, units, at, from: null, destination: null, arriveAt: 0, order: { kind: 'idle' } };
+  const f: FleetState = { id, owner, units, at, from: null, destination: null, departAt: 0, arriveAt: 0, order: { kind: 'idle' } };
   w.fleets[id] = f;
   return f;
 }
