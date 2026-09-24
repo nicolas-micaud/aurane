@@ -65,7 +65,7 @@ export function Landing() {
         <p class="muted small"><button type="button" class="link" onClick={() => setJoining(!joining)}>{t('haveColony')}</button></p>
         {joining && (
           <div class="join">
-            <label>{t('pasteLink')}<input value={joinCode} onInput={(e) => setJoinCode((e.target as HTMLInputElement).value)} placeholder="https://playaurane.com/#join=…" /></label>
+            <label>{t('pasteLink')}<input value={joinCode} onInput={(e) => setJoinCode((e.target as HTMLInputElement).value)} placeholder="https://play.playaurane.com/#join=…" /></label>
             <button type="button" disabled={busy || !joinCode.trim()} onClick={(e) => void join(e)}>{t('openColony')}</button>
           </div>
         )}

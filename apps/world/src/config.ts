@@ -22,7 +22,7 @@ export interface Config {
   adminToken: string | null;
   /** Signs device-link codes. Random per process when unset: links then die with the process. */
   authSecret: string;
-  /** Public origin used in device links, e.g. https://playaurane.com. */
+  /** Public origin used in device links, e.g. https://play.playaurane.com. */
   publicOrigin: string;
 }
 
@@ -45,6 +45,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     inviteCodes: (env.INVITE_CODES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     adminToken: env.ADMIN_TOKEN || null,
     authSecret: env.AUTH_SECRET || randomBytes(32).toString('hex'),
-    publicOrigin: env.PUBLIC_ORIGIN ?? 'https://playaurane.com',
+    publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
   };
 }

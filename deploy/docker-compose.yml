@@ -15,7 +15,7 @@ services:
       INVITE_CODES: ${INVITE_CODES:-}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       AUTH_SECRET: ${AUTH_SECRET}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://playaurane.com}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://play.playaurane.com}
       SEASON_DAYS: ${SEASON_DAYS:-56}
       NPC_COUNT: ${NPC_COUNT:-30}
       TIME_SCALE: "1"

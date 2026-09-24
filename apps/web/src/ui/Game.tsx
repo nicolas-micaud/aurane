@@ -131,22 +131,46 @@ function Hud({ v }: { v: PlayerView }) {
         </div>
       )}
       <Alerts v={v} />
-      <Coach />
+      <Coach v={v} />
     </div>
   );
 }
 
-function Coach() {
-  const key = 'aurane.coach';
-  const [step, setStep] = useState<number>(() => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } });
-  const steps = [t('coach1'), t('coach2'), t('coach3'), t('coach4'), t('coach5'), t('coach6')];
-  if (step >= steps.length) return null;
-  const advance = () => { const n = step + 1; setStep(n); try { localStorage.setItem(key, String(n)); } catch { /* ignore */ } };
+/** First minutes: objectives that tick themselves off as the player acts, each with a way in. */
+const COACH_KEY = 'aurane.coach';
+const coachDone = signal<number>((() => { try { return Number(localStorage.getItem(COACH_KEY) ?? 0); } catch { return 0; } })());
+const enteredSystem = signal(false);
+systemMode.subscribe((id) => { if (id) enteredSystem.value = true; });
+
+function Coach({ v }: { v: PlayerView }) {
+  const done = useSig(coachDone);
+  const entered = useSig(enteredSystem);
+  const sel = useSig(selected);
+  const owned = v.systems.filter((s) => s.owner === v.me.id);
+  const built = owned.some((s) => (s.buildings?.length ?? 0) > 2 || (s.buildQueue?.length ?? 0) > 0);
+  const steps: { text: string; why: string; met: boolean; go?: () => void }[] = [
+    { text: t('coach1'), why: t('coach1Why'), met: sel !== null, go: () => { selected.value = v.me.capital; tab.value = 'system'; } },
+    { text: t('coach2'), why: t('coach2Why'), met: v.me.connectedCount >= 2, go: () => { selected.value = v.me.capital; tab.value = 'system'; } },
+    { text: t('coach6'), why: t('coach6Why'), met: entered, go: () => { systemMode.value = v.me.capital; } },
+    { text: t('coach7'), why: t('coach7Why'), met: built, go: () => { systemMode.value = v.me.capital; } },
+    { text: t('coach8'), why: t('coach8Why'), met: (v.me.policy.notes ?? '').length > 0, go: () => { tab.value = 'general'; } },
+    { text: t('coach3'), why: t('coach3Why'), met: (v.draw?.index ?? -1) >= 0 && v.me.lastProduced.metal > 0, go: () => { tab.value = 'logistics'; } },
+  ];
+  // Objectives are ordered; the first unmet one is shown, earlier ones count as done once met.
+  const idx = Math.max(done, steps.findIndex((s) => !s.met));
+  const current = idx < 0 || idx >= steps.length ? null : steps[idx]!;
+  useEffect(() => {
+    // Persist progress when the current objective becomes met.
+    if (current?.met) { const n = idx + 1; coachDone.value = n; try { localStorage.setItem(COACH_KEY, String(n)); } catch { /* ignore */ } }
+  }, [current?.met, idx]);
+  if (!current) return null;
+  const skip = () => { const n = idx + 1; coachDone.value = n; try { localStorage.setItem(COACH_KEY, String(n)); } catch { /* ignore */ } };
   return (
     <div class="coach">
-      <span class="step">{step + 1}/{steps.length}</span>
-      <p>{steps[step]}</p>
-      <button class="primary" onClick={advance}>{step === steps.length - 1 ? t('done') : t('next')}</button>
+      <span class="step">{idx + 1}/{steps.length}</span>
+      <div class="text"><p>{current.text}</p><small>{current.why}</small></div>
+      {current.go && <button class="primary" onClick={current.go}>{t('show')}</button>}
+      <button onClick={skip} title={t('skip')}>✕</button>
     </div>
   );
 }
