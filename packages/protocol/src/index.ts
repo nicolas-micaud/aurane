@@ -11,10 +11,15 @@ export type Stock = Record<Resource, number>;
 /** A partial stock as produced by zod's .partial() (keys may be present with undefined). */
 export type StockDelta = { [K in Resource]?: number | undefined };
 
-export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'] as const;
+export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna', 'warehouse', 'turret_light', 'turret_heavy', 'launcher'] as const;
 export type Building = (typeof BUILDINGS)[number];
 
-export const UNITS = ['corvette', 'frigate', 'cruiser'] as const;
+export const UNITS = ['corvette', 'frigate', 'cruiser', 'cargo'] as const;
+export const COMBAT_UNITS = ['corvette', 'frigate', 'cruiser'] as const;
+export type CombatUnit = (typeof COMBAT_UNITS)[number];
+
+export const ORBITS = [1, 2, 3] as const;
+export type Orbit = (typeof ORBITS)[number];
 export type UnitType = (typeof UNITS)[number];
 export type Fleet = Record<UnitType, number>;
 
@@ -49,6 +54,14 @@ export const PolicySchema = z.object({
   neverAttack: z.array(z.string()).default([]),
   /** Colonies or alliances the General may accept trades from without asking. */
   trustedTraders: z.array(z.string()).default([]),
+  /** Logistics: escort convoys whose cargo value exceeds this (credits). */
+  escortAbove: z.number().nonnegative().default(300),
+  /** Retreat when the fleet's hit points fall below this fraction. */
+  retreatBelow: z.number().min(0).max(1).default(0.3),
+  /** Turrets the General may build on its own when a system is attacked and local stock allows. */
+  autoTurrets: z.number().int().min(0).max(6).default(2),
+  /** Target priority for own units when the player is absent. */
+  targetPriority: z.enum(['ships', 'turrets', 'station', 'economy']).default('ships'),
   /** Free text the General keeps to explain its choices in briefings. */
   notes: z.string().max(2000).default(''),
 });
@@ -71,13 +84,18 @@ export const PERSONA_DEFAULTS: Record<Persona, Partial<Policy>> = {
 export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('build_relay'), a: z.string(), b: z.string() }),
   z.object({ type: z.literal('remove_relay'), a: z.string(), b: z.string() }),
-  z.object({ type: z.literal('build'), system: z.string(), building: z.enum(BUILDINGS) }),
+  z.object({ type: z.literal('build'), system: z.string(), building: z.enum(BUILDINGS), orbit: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional() }),
   z.object({ type: z.literal('train'), system: z.string(), unit: z.enum(UNITS), count: z.number().int().positive() }),
   z.object({ type: z.literal('market_order'), region: z.string(), resource: z.enum(RESOURCES), side: z.enum(['buy', 'sell']), qty: z.number().int().positive(), price: z.number().positive() }),
   z.object({ type: z.literal('cancel_order'), order: z.string() }),
   z.object({ type: z.literal('barter_offer'), to: z.string(), give: StockSchema.partial(), want: StockSchema.partial() }),
   z.object({ type: z.literal('barter_accept'), offer: z.string() }),
-  z.object({ type: z.literal('fleet_order'), fleet: z.string(), order: z.enum(['move', 'raid', 'blockade', 'defend', 'return']), target: z.string() }),
+  z.object({ type: z.literal('fleet_order'), fleet: z.string(), order: z.enum(['move', 'raid', 'blockade', 'defend', 'return', 'ambush']), target: z.string() }),
+  z.object({ type: z.literal('focus'), fleet: z.string(), target: z.string().nullable() }),
+  z.object({ type: z.literal('route_set'), from: z.string(), to: z.string(), resource: z.enum([...RESOURCES, 'all']), perTrip: z.number().int().positive().max(2000), whenBelow: z.number().nonnegative() }),
+  z.object({ type: z.literal('route_remove'), route: z.string() }),
+  z.object({ type: z.literal('convoy_send'), from: z.string(), to: z.string(), cargo: StockSchema.partial(), escort: z.string().optional() }),
+  z.object({ type: z.literal('split_fleet'), fleet: z.string(), units: z.object({ corvette: z.number().int().nonnegative(), frigate: z.number().int().nonnegative(), cruiser: z.number().int().nonnegative(), cargo: z.number().int().nonnegative() }).partial() }),
   z.object({ type: z.literal('agent_mission'), mission: z.enum(['spy', 'sabotage', 'envoy']), target: z.string() }),
   z.object({ type: z.literal('treaty'), with: z.string(), kind: z.enum(['nap', 'trade', 'transit', 'federation']) }),
   z.object({ type: z.literal('set_watch'), startHour: z.number().int().min(0).max(23) }),
@@ -86,7 +104,6 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alliance_invite'), colony: z.string() }),
   z.object({ type: z.literal('alliance_join'), alliance: z.string() }),
   z.object({ type: z.literal('alliance_leave') }),
-  z.object({ type: z.literal('ally_transfer'), to: z.string(), stock: StockSchema.partial() }),
   z.object({ type: z.literal('set_policy'), policy: PolicySchema }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;

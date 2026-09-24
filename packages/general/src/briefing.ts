@@ -28,12 +28,13 @@ export interface Digest {
   beacons: number;
   treaties: number;
   unpowered: number;
+  convoysLost: number;
   attackers: string[];
 }
 
 export function digest(input: BriefingInput): Digest {
   const me = input.view.me.id;
-  const d: Digest = { draws: 0, relaysCut: 0, raidsSuffered: 0, raidsDone: 0, battlesWon: 0, battlesLost: 0, claimed: 0, captured: 0, lost: 0, trades: 0, beacons: 0, treaties: 0, unpowered: 0, attackers: [] };
+  const d: Digest = { draws: 0, relaysCut: 0, raidsSuffered: 0, raidsDone: 0, battlesWon: 0, battlesLost: 0, claimed: 0, captured: 0, lost: 0, trades: 0, beacons: 0, treaties: 0, unpowered: 0, convoysLost: 0, attackers: [] };
   const attackers = new Set<string>();
   for (const e of input.events) {
     switch (e.kind) {
@@ -47,6 +48,7 @@ export function digest(input: BriefingInput): Digest {
       case 'beacon.lit': if (e.actors[0] === me) d.beacons++; break;
       case 'treaty.signed': d.treaties++; break;
       case 'relays.unpowered': if (e.actors[0] === me) d.unpowered++; break;
+      case 'convoy.lost': if (e.actors[0] === me) { d.convoysLost++; if (e.actors[1]) attackers.add(e.actors[1]); } break;
     }
   }
   d.attackers = [...attackers].map((id) => input.names[id] ?? id);
@@ -73,6 +75,8 @@ export function templateBriefing(input: BriefingInput): string {
     lines.push(`Stocks : Métal ${Math.round(v.me.stock.metal)}, Énergie ${Math.round(v.me.stock.energy)}, Vivres ${Math.round(v.me.stock.food)}, Cristal ${Math.round(v.me.stock.crystal)}, ${Math.round(v.me.credits)} Crédits.`);
     if (d.raidsSuffered || d.lost || d.battlesLost) lines.push(`Alerte : ${d.relaysCut} relais coupé${d.relaysCut > 1 ? 's' : ''}, ${d.lost} système${d.lost > 1 ? 's' : ''} perdu${d.lost > 1 ? 's' : ''}${d.attackers.length ? ` ; responsables : ${d.attackers.join(', ')}` : ''}.`);
     if (d.raidsDone || d.captured || d.battlesWon) lines.push(`Opérations : ${d.battlesWon} victoire${d.battlesWon > 1 ? 's' : ''}, ${d.raidsDone} raid${d.raidsDone > 1 ? 's' : ''}, ${d.captured} capture${d.captured > 1 ? 's' : ''}.`);
+    if (d.convoysLost) lines.push(`Logistique : ${d.convoysLost} convoi${d.convoysLost > 1 ? 's' : ''} perdu${d.convoysLost > 1 ? 's' : ''} ; escorte-les ou change de route.`);
+    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal); if (lost > 0) lines.push(`Entrepôts pleins : ${lost} ressources perdues au dernier Tirage. Construis un Entrepôt ou une route vers la capitale.`); }
     if (d.trades) lines.push(`Marché : ${d.trades} troc${d.trades > 1 ? 's' : ''} réglé${d.trades > 1 ? 's' : ''}.`);
     if (d.treaties) lines.push(`Diplomatie : ${d.treaties} traité${d.treaties > 1 ? 's' : ''} signé${d.treaties > 1 ? 's' : ''}.`);
     if (d.beacons) lines.push(`Un Phare rallumé. Le Signal se souvient.`);
@@ -85,6 +89,8 @@ export function templateBriefing(input: BriefingInput): string {
     lines.push(`Stocks: Metal ${Math.round(v.me.stock.metal)}, Energy ${Math.round(v.me.stock.energy)}, Food ${Math.round(v.me.stock.food)}, Crystal ${Math.round(v.me.stock.crystal)}, ${Math.round(v.me.credits)} Credits.`);
     if (d.raidsSuffered || d.lost || d.battlesLost) lines.push(`Alert: ${d.relaysCut} relay${d.relaysCut > 1 ? 's' : ''} cut, ${d.lost} system${d.lost > 1 ? 's' : ''} lost${d.attackers.length ? `; by ${d.attackers.join(', ')}` : ''}.`);
     if (d.raidsDone || d.captured || d.battlesWon) lines.push(`Operations: ${d.battlesWon} win${d.battlesWon > 1 ? 's' : ''}, ${d.raidsDone} raid${d.raidsDone > 1 ? 's' : ''}, ${d.captured} capture${d.captured > 1 ? 's' : ''}.`);
+    if (d.convoysLost) lines.push(`Logistics: ${d.convoysLost} convoy${d.convoysLost > 1 ? 's' : ''} lost; escort them or change the route.`);
+    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal); if (lost > 0) lines.push(`Warehouses full: ${lost} resources lost at the last Draw. Build a Warehouse or a route to the capital.`); }
     if (d.trades) lines.push(`Market: ${d.trades} barter${d.trades > 1 ? 's' : ''} settled.`);
     if (d.treaties) lines.push(`Diplomacy: ${d.treaties} treat${d.treaties > 1 ? 'ies' : 'y'} signed.`);
     if (d.beacons) lines.push(`A Beacon lit. The Signal remembers.`);

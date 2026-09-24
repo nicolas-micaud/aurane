@@ -198,6 +198,8 @@ function SystemPanel({ v }: { v: PlayerView }) {
         <span><b class={`r-${s.resource}`}>{t(s.resource)}</b> · {t(`${s.resource}Desc`)}</span>
         <span>{t('band')} <b class={drawn ? 'ev-eruption' : ''}>{s.band}</b>{drawn ? ` ×3 ${t('yieldNow')}` : ''} · {t('slots')} <b>{totalSlots}</b> · {t('owner')}: <b>{ownerName}</b>{s.connected ? ' ●' : ''}</span>
         {s.population !== null && <span>{t('population')} <b>{(s.population * 100).toFixed(0)} %</b></span>}
+        {s.stationHp !== null && <span>{t('station')} <b>{Math.round(s.stationHp)}</b> / 300{s.engaged ? ` · ${t('underAttack')}` : ''}</span>}
+        {s.stock && <span>{t('localStock')} : {(['metal', 'energy', 'food', 'crystal'] as const).map((r) => <b key={r} class={`r-${r}`}> {Math.round(s.stock![r])}</b>)} <small>/ {s.capacity}</small></span>}
       </div>
       <div class="actions">
         <button class="primary" onClick={() => { linkFrom.value = s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
@@ -245,7 +247,7 @@ function SystemHostile({ v, s }: { v: PlayerView; s: SystemView }) {
       {idle.length > 0 && (
         <div class="actions">
           <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'blockade', target: s.id })}>{t('blockade')}</button>
-          {relays[0] && <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'raid', target: relays[0]!.id })}>{t('raid')}</button>}
+          {s.owner && <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'raid', target: s.id })}>{t('raid')}</button>}
         </div>
       )}
       <h3>{t('agents')} <small>{Math.floor(v.me.influence)} {t('influence')}</small></h3>

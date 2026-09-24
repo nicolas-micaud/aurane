@@ -91,17 +91,23 @@ un combat, 1 toutes les 10 s sinon).
 
 | Unité | PV | DPS | Portée (crans) | Vitesse (crans/min) | Rôle |
 |---|---|---|---|---|---|
-| Corvette | 40 | 6 | 0,6 | 6 | rapide, ×1,5 sur croiseurs, cible en priorité les stations et cargos |
-| Frégate | 90 | 8 | 1,0 | 4 | escorte, ×1,5 sur corvettes, intercepte ce qui approche de sa protégée |
-| Croiseur | 220 | 18 | 1,6 | 2,5 | siège, ×1,5 sur frégates, cible en priorité tourelles et Bastion |
-| Cargo | 1 | 0 | — | 3 (4,5 sur Réseau) | fuit vers le dock |
+| Corvette | 40 | 0,6 | 0,6 | 30 | rapide, ×1,5 sur croiseurs, cible en priorité les stations et cargos |
+| Frégate | 90 | 0,8 | 1,0 | 18 | escorte, ×1,5 sur corvettes, intercepte ce qui approche de sa protégée |
+| Croiseur | 220 | 1,8 | 1,6 | 12 | siège, ×1,5 sur frégates, cible en priorité tourelles et Bastion |
+| Cargo | 1 | 0 | — | 15 (45 sur Réseau) | fuit vers le dock |
+
+> Calibrage palier 1 : DPS divisés par dix et vitesses de manœuvre multipliées par cinq par rapport
+> au premier jet, pour qu'un engagement dure des minutes (le joueur présent peut replier ou refocaliser)
+> et qu'une flotte rapide ne meure pas pendant son approche. La station est au **centre** du plateau,
+> les orbites 1 à 3 l'entourent, le bord est à 4 crans ; les portées des tourelles sont mesurées depuis
+> l'orbite 2, d'où des valeurs plus grandes qu'annoncé.
 
 | Installation | PV | DPS | Portée | Coût | Notes |
 |---|---|---|---|---|---|
-| Station-relais | 300 | 0 | — | gratuite | régénère 5 PV/s hors combat |
-| Tourelle légère | 150 | 10 | 1,2 | 40 Métal, 20 Énergie | ×1,5 sur corvettes |
-| Tourelle lourde | 300 | 20 | 1,8 | 90 Métal, 30 Énergie, 10 Cristal | ×1,5 sur croiseurs, cadence lente |
-| Lance-missiles | 200 | 14 | 2,4 | 70 Métal, 40 Énergie | ×1,5 sur frégates, zone |
+| Station-relais | 300 | 0 | — | gratuite | régénère 0,5 PV/s hors combat |
+| Tourelle légère | 150 | 1,0 | 2,2 | 40 Métal, 20 Énergie | ×1,5 sur corvettes |
+| Tourelle lourde | 300 | 2,0 | 2,8 | 90 Métal, 30 Énergie, 10 Cristal | ×1,5 sur croiseurs, cadence lente |
+| Lance-missiles | 200 | 1,4 | 3,4 | 70 Métal, 40 Énergie | ×1,5 sur frégates, zone |
 | Bastion | 600 | 0 | 2,0 | 90 Métal, 30 Énergie | **bouclier** : −35 % de dégâts reçus par tout ce qui est à portée ; Garde de nuit : −50 % |
 | Entrepôt | 400 | 0 | — | 60 Métal | détruit : la moitié du stock au-delà de 600 est perdue |
 | Chantier | 350 | 0 | — | 80 Métal, 20 Cristal | détruit : file d'entraînement perdue |

@@ -13,3 +13,6 @@ export * from './world.js';
 export * from './general.js';
 export * from './view.js';
 export * from './serialize.js';
+export * from './structures.js';
+export * from './routing.js';
+export * from './battle.js';

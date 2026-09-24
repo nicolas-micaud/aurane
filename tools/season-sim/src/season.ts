@@ -1,5 +1,5 @@
 import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol';
-import { apply, colonyScore, createWorld, decide, fleetSize, productiveSystems, spawnColony, tick, type World } from '@aurane/sim';
+import { apply, colonyScore, colonyStockTotal, createWorld, decide, fleetSize, productiveSystems, spawnColony, tick, type World } from '@aurane/sim';
 
 export interface SeasonOptions {
   seed: string;
@@ -92,12 +92,12 @@ export function summarize(w: World, opts: SeasonOptions): Report {
       avgConnected: cs.length ? Math.round((cs.reduce((s, c) => s + productiveSystems(w, c).length, 0) / cs.length) * 10) / 10 : 0,
     };
   }
-  const starving = colonies.filter((c) => c.stock.food <= 0).length;
+  const starving = colonies.filter((c) => colonyStockTotal(w, c.id).food <= 0).length;
   const stuck = colonies.filter((c) => productiveSystems(w, c).length <= 1).length;
   const anomalies: string[] = [];
-  for (const c of colonies) for (const r of ['metal', 'energy', 'food', 'crystal'] as const) {
-    if (!Number.isFinite(c.stock[r]) || c.stock[r] < -1e-6) anomalies.push(`${c.name} ${r}=${c.stock[r]}`);
-  }
+  for (const c of colonies) { const stock = colonyStockTotal(w, c.id); for (const r of ['metal', 'energy', 'food', 'crystal'] as const) {
+    if (!Number.isFinite(stock[r]) || stock[r] < -1e-6) anomalies.push(`${c.name} ${r}=${stock[r]}`);
+  } }
   if (!Number.isFinite(colonies.reduce((s, c) => s + c.credits, 0))) anomalies.push('credits not finite');
   if (opts.days >= 7 && stuck / Math.max(1, colonies.length) > 0.2) anomalies.push(`${stuck} colonies stuck at 1 system`);
   if (opts.days >= 7 && count('barter.done') + count('draw') === 0) anomalies.push('no draws');

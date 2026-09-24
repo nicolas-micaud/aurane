@@ -1,5 +1,5 @@
-import type { Building, Command, Faction, Fleet, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
-import { DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@aurane/protocol';
+import type { Building, Command, Faction, Fleet, Orbit, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
+import { COMBAT_UNITS, DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@aurane/protocol';
 import * as B from './balance.js';
 import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { hexNeighbors, hexKey } from './hex.js';
@@ -7,15 +7,20 @@ import { dist } from './geometry.js';
 import { connectedFrom, evaluateLink, findBridges, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
 import { rollDraw, type Draw } from './draw.js';
 import { clearAuction, marketKey } from './market.js';
-import { addFleet, resolveBattle, subtractFleet } from './combat.js';
+import { addFleet } from './combat.js';
 import { atPeace, isAlly, transitSet } from './diplomacy.js';
 import { createRng, subSeed } from './rng.js';
+import { planPath, fleetSpeed } from './routing.js';
+import { armedHostilesPresent, battleTick, plateauFleets, plateauIndex, regenerate } from './battle.js';
+import { capacityOf, defaultOrbit, depositClamped, freeSlotsOnOrbit, hasStructure, nextAngle, orbitSlots } from './structures.js';
 import {
-  emptyFleet, fleetSize, newId,
+  combatSize, emptyDamage, emptyFleet, fleetSize, newId,
   type Colony, type FleetOrder, type FleetState, type SystemState, type World, type WorldEvent, type TreatyKind,
 } from './state.js';
 
 export type ApplyResult = { ok: true; id?: string } | { ok: false; reason: string };
+
+export { totalSlots as slotsOf } from './structures.js';
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -28,16 +33,17 @@ export interface WorldOptions extends GalaxyOptions {
 export function createWorld(seed: number | string, opts: WorldOptions = {}): World {
   const galaxy = generateGalaxy(seed, opts);
   const systems: Record<string, SystemState> = {};
-  for (const id of Object.keys(galaxy.systems)) {
-    systems[id] = { owner: null, buildings: [], population: 0, buildQueue: [], trainQueue: [], blockade: null };
-  }
+  for (const id of Object.keys(galaxy.systems)) systems[id] = emptySystem();
   return {
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
-    treaties: {}, proposals: [], alliances: {}, missions: {}, reveals: {}, litBeacons: {}, lastClearing: [],
-    events: [], titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1, owned: {}, relaysByOwner: {}, treatiesByColony: {},
+    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, litBeacons: {}, lastClearing: [],
+    events: [], battles: {}, titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
+    owned: {}, relaysByOwner: {}, treatiesByColony: {}, engagedSystems: [],
   };
 }
+
+export const emptySystem = (): SystemState => ({ owner: null, structures: [], stationHp: 0, stock: B.emptyStock(), population: 0, buildQueue: [], trainQueue: [], blockade: null, engaged: false });
 
 export function logEvent(w: World, kind: string, actors: string[], data?: Record<string, unknown>): void {
   const ev: WorldEvent = { at: w.time, kind, actors };
@@ -64,6 +70,14 @@ export function scaleStock(cost: StockDelta, k: number): StockDelta {
   for (const r of B.RESOURCE_LIST) if (cost[r] !== undefined) out[r] = Math.ceil(cost[r]! * k);
   return out;
 }
+export const stockTotal = (s: StockDelta): number => B.RESOURCE_LIST.reduce((t, r) => t + (s[r] ?? 0), 0);
+
+/** Sum of a colony's local stocks (for the HUD and coarse decisions; nothing is spent from it). */
+export function colonyStockTotal(w: World, colonyId: string): Stock {
+  const out = B.emptyStock();
+  for (const id of ownedSystems(w, colonyId)) stockAdd(out, w.systems[id]!.stock);
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -71,14 +85,8 @@ export function scaleStock(cost: StockDelta, k: number): StockDelta {
 
 export const currentHour = (w: World): number => Math.floor(w.time / 3600) % 24;
 
-export function slotsOf(w: World, sys: StarSystem): number {
-  const st = w.systems[sys.id]!;
-  const isCapital = st.owner !== null && w.colonies[st.owner]?.capital === sys.id;
-  return sys.slots + (isCapital ? B.CAPITAL_EXTRA_SLOTS : 0);
-}
-
 export function hasBuilding(w: World, systemId: string, b: Building): boolean {
-  return w.systems[systemId]!.buildings.includes(b);
+  return hasStructure(w.systems[systemId]!, b);
 }
 
 export function stormSectors(w: World): Set<string> {
@@ -90,15 +98,20 @@ export function stormSectors(w: World): Set<string> {
 
 export function rangeContext(w: World, colony: Colony): RangeContext {
   const amplifiers = new Set<string>();
-  for (const id of ownedSystems(w, colony.id)) if (w.systems[id]!.buildings.includes('amplifier')) amplifiers.add(id);
+  for (const id of ownedSystems(w, colony.id)) if (hasStructure(w.systems[id]!, 'amplifier')) amplifiers.add(id);
   return { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w) };
+}
+
+/** A relay carries the Signal only when both stations stand. */
+export function relayLive(w: World, r: Relay): boolean {
+  return relayActive(r, w.time) && w.systems[r.a]!.stationHp > 0 && w.systems[r.b]!.stationHp > 0;
 }
 
 /** Systems connected to the colony's capital, with hop distance. Only these exist. */
 export function colonyNetwork(w: World, colony: Colony): Map<string, number> {
   const transit = transitSet(w, colony.id);
   const relays: Relay[] = [];
-  for (const owner of transit) for (const id of w.relaysByOwner[owner] ?? []) relays.push(w.relays[id]!);
+  for (const owner of transit) for (const id of w.relaysByOwner[owner] ?? []) { const r = w.relays[id]!; if (relayLive(w, r)) relays.push(r); }
   return connectedFrom(relays, colony.capital, colony.id, w.time, transit);
 }
 
@@ -159,7 +172,6 @@ export function reachableRegions(w: World, colony: Colony): Set<string> {
   let extra = ownedSystems(w, colony.id).filter((id) => hasBuilding(w, id, 'tradepost')).length;
   if (colony.faction === 'guild') extra += 1;
   if (extra > 0) {
-    // Expand to adjacent regions, nearest first, up to `extra` new regions.
     const frontier = new Set<string>();
     for (const key of sectors) for (const n of hexNeighbors(w.galaxy.sectors[key]!.hex)) {
       const ns = w.galaxy.sectors[hexKey(n)];
@@ -181,6 +193,7 @@ export function visibleSectors(w: World, colony: Colony): Set<string> {
     for (const id of ownedSystems(w, other.id)) addWithNeighbors(w.galaxy.systems[id]!.sector, hasBuilding(w, id, 'antenna'));
     for (const id of colonyNetwork(w, other).keys()) out.add(w.galaxy.systems[id]!.sector);
   }
+  for (const f of Object.values(w.fleets)) if (f.owner === colony.id && f.at) out.add(w.galaxy.systems[f.at]!.sector);
   for (const [sector, until] of Object.entries(w.reveals[colony.id] ?? {})) if (until > w.time) out.add(sector);
   return out;
 }
@@ -218,6 +231,14 @@ export function fleetsAt(w: World, systemId: string): FleetState[] {
   return Object.values(w.fleets).filter((f) => f.at === systemId && fleetSize(f.units) > 0);
 }
 
+export function routeCount(w: World, colonyId: string): number {
+  return Object.values(w.routes).filter((r) => r.owner === colonyId).length;
+}
+
+export function routeLimit(w: World, colony: Colony): number {
+  return B.ROUTES_BASE + B.ROUTES_PER_TRADEPOST * ownedSystems(w, colony.id).filter((id) => hasBuilding(w, id, 'tradepost')).length;
+}
+
 // ---------------------------------------------------------------------------
 // Colonies
 // ---------------------------------------------------------------------------
@@ -228,6 +249,13 @@ export interface SpawnOptions { name: string; faction: Faction; persona: Persona
 function countLinkable(w: World, sys: StarSystem, faction: Faction): number {
   const ctx: RangeContext = { faction, amplifiers: new Set(), litBeacons: [], stormSectors: new Set() };
   return linkOptions(w.galaxy, sys, ctx).filter((o) => !w.systems[o.to.id]!.owner).length;
+}
+
+function addStructure(w: World, systemId: string, kind: Building, orbit?: Orbit): void {
+  const st = w.systems[systemId]!;
+  const sys = w.galaxy.systems[systemId]!;
+  const o = orbit ?? defaultOrbit(kind);
+  st.structures.push({ id: newId(w, 'S'), kind, orbit: o, angle: nextAngle(st, o, orbitSlots(w, sys)[o]), hp: B.STRUCTURE_HP[kind] });
 }
 
 /** Places a new colony on the rim, as far as possible from existing capitals. */
@@ -251,15 +279,20 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
   const id = opts.id ?? newId(w, 'C');
   const colony: Colony = {
     id, name: opts.name, faction: opts.faction, persona: opts.persona, npc: opts.npc ?? false,
-    capital: best.id, stock: { ...B.STARTING_STOCK }, credits: 300, influence: B.STARTING_INFLUENCE,
+    capital: best.id, marketSystem: best.id, credits: 300, influence: B.STARTING_INFLUENCE,
     createdAt: w.time, watchStartHour: 0, policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...PERSONA_DEFAULTS[opts.persona] }),
-    alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastSeenAt: w.time,
+    alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastOverflow: B.emptyStock(), lastSeenAt: w.time,
   };
   w.colonies[id] = colony;
   const st = w.systems[best.id]!;
   setOwner(w, best.id, id);
-  st.buildings = ['extractor'];
+  st.stationHp = B.STATION_HP;
+  st.stock = { ...B.STARTING_STOCK };
   st.population = 0.5;
+  addStructure(w, best.id, 'extractor');
+  addStructure(w, best.id, 'shipyard');
+  const cargos = emptyFleet(); cargos.cargo = B.STARTING_CARGOS;
+  mergeFleet(w, id, best.id, cargos);
   logEvent(w, 'colony.founded', [id], { capital: best.id, faction: opts.faction });
   return colony;
 }
@@ -268,35 +301,11 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
 // Movement
 // ---------------------------------------------------------------------------
 
-interface Route { seconds: number; onNet: boolean; length: number }
-
-/** Shortest route along usable relays; falls back to a slow, energy-hungry off-network line. */
-export function planRoute(w: World, colony: Colony, from: string, to: string): Route {
-  const usable = transitSet(w, colony.id);
-  const adj = new Map<string, { to: string; len: number }[]>();
-  for (const r of Object.values(w.relays)) {
-    if (!relayActive(r, w.time) || !usable.has(r.owner)) continue;
-    if (!adj.has(r.a)) adj.set(r.a, []);
-    if (!adj.has(r.b)) adj.set(r.b, []);
-    adj.get(r.a)!.push({ to: r.b, len: r.length });
-    adj.get(r.b)!.push({ to: r.a, len: r.length });
-  }
-  const distMap = new Map<string, number>([[from, 0]]);
-  const done = new Set<string>();
-  for (;;) {
-    let u: string | null = null, du = Infinity;
-    for (const [v, d] of distMap) if (!done.has(v) && d < du) { u = v; du = d; }
-    if (u === null || u === to) break;
-    done.add(u);
-    for (const e of adj.get(u) ?? []) {
-      const nd = du + e.len;
-      if (nd < (distMap.get(e.to) ?? Infinity)) distMap.set(e.to, nd);
-    }
-  }
-  const speed = B.FLEET_SPEED_ON_NET * (colony.faction === 'corsairs' ? B.CORSAIR_SPEED_MULT : 1) / 60; // units per second
-  if (distMap.has(to)) return { seconds: Math.ceil(distMap.get(to)! / speed), onNet: true, length: distMap.get(to)! };
-  const length = dist(w.galaxy.systems[from]!, w.galaxy.systems[to]!);
-  return { seconds: Math.ceil(length / (speed * B.OFF_NET_SPEED_MULT)), onNet: false, length };
+/** Legacy summary of a route (seconds, on-network flag, length); convoys use planPath directly. */
+export function planRoute(w: World, colony: Colony, from: string, to: string): { seconds: number; onNet: boolean; length: number } {
+  const p = planPath(w, colony, from, to);
+  const speed = fleetSpeed(colony, { corvette: 1, frigate: 0, cruiser: 0, cargo: 0 }, p.onNet);
+  return { seconds: Math.ceil(p.length / speed), onNet: p.onNet, length: p.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,13 +325,14 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       removeRelay(w, r.id);
       return { ok: true };
     }
-    case 'build': return build(w, colony, cmd.system, cmd.building);
+    case 'build': return build(w, colony, cmd.system, cmd.building, cmd.orbit);
     case 'train': return train(w, colony, cmd.system, cmd.unit, cmd.count);
     case 'market_order': {
       if (!reachableRegions(w, colony).has(cmd.region)) return { ok: false, reason: 'market out of reach' };
+      const ms = w.systems[colony.marketSystem]!;
       if (cmd.side === 'sell') {
-        if (colony.stock[cmd.resource] < cmd.qty) return { ok: false, reason: 'not enough stock' };
-        colony.stock[cmd.resource] -= cmd.qty;
+        if (ms.stock[cmd.resource] < cmd.qty) return { ok: false, reason: 'not enough stock at the market system' };
+        ms.stock[cmd.resource] -= cmd.qty;
       } else {
         const escrow = cmd.qty * cmd.price;
         if (colony.credits < escrow) return { ok: false, reason: 'not enough credits' };
@@ -335,7 +345,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
     case 'cancel_order': {
       const o = w.orders[cmd.order];
       if (!o || o.colony !== colony.id) return { ok: false, reason: 'no such order' };
-      if (o.side === 'sell') colony.stock[o.resource] += o.qty; else colony.credits += o.qty * o.price;
+      if (o.side === 'sell') depositClamped(w, colony.marketSystem, { [o.resource]: o.qty }); else colony.credits += o.qty * o.price;
       delete w.orders[o.id];
       return { ok: true };
     }
@@ -344,8 +354,9 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       if (!to || to.id === colony.id) return { ok: false, reason: 'no such partner' };
       const shared = [...reachableRegions(w, colony)].some((r) => reachableRegions(w, to).has(r));
       if (!shared && !isAlly(w, colony.id, to.id)) return { ok: false, reason: 'no shared market' };
-      if (!stockHas(colony.stock, cmd.give)) return { ok: false, reason: 'not enough stock' };
-      stockSub(colony.stock, cmd.give);
+      const ms = w.systems[colony.marketSystem]!;
+      if (!stockHas(ms.stock, cmd.give)) return { ok: false, reason: 'not enough stock at the market system' };
+      stockSub(ms.stock, cmd.give);
       const id = newId(w, 'B');
       w.barters[id] = { id, from: colony.id, to: to.id, give: cmd.give, want: cmd.want, accepted: false, createdAt: w.time };
       return { ok: true, id };
@@ -356,17 +367,43 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       b.accepted = true;
       return { ok: true };
     }
-    case 'ally_transfer': {
-      const to = w.colonies[cmd.to];
-      if (!to || !isAlly(w, colony.id, to.id)) return { ok: false, reason: 'not an ally' };
-      const total = B.RESOURCE_LIST.reduce((s, r) => s + (cmd.stock[r] ?? 0), 0);
-      if (total > B.ALLY_TRANSFER_CAP_PER_DRAW) return { ok: false, reason: 'over transfer cap' };
-      if (!stockHas(colony.stock, cmd.stock)) return { ok: false, reason: 'not enough stock' };
-      stockSub(colony.stock, cmd.stock);
-      stockAdd(to.stock, cmd.stock);
+    case 'fleet_order': return fleetOrder(w, colony, cmd.fleet, cmd.order, cmd.target);
+    case 'focus': {
+      const f = w.fleets[cmd.fleet];
+      if (!f || f.owner !== colony.id) return { ok: false, reason: 'not your fleet' };
+      f.focus = cmd.target;
       return { ok: true };
     }
-    case 'fleet_order': return fleetOrder(w, colony, cmd.fleet, cmd.order, cmd.target);
+    case 'split_fleet': {
+      const f = w.fleets[cmd.fleet];
+      if (!f || f.owner !== colony.id || f.at === null) return { ok: false, reason: 'not your fleet or in transit' };
+      const units = emptyFleet();
+      for (const t of Object.keys(units) as UnitType[]) units[t] = Math.min(f.units[t], cmd.units[t] ?? 0);
+      if (fleetSize(units) === 0 || fleetSize(units) === fleetSize(f.units)) return { ok: false, reason: 'nothing to split' };
+      for (const t of Object.keys(units) as UnitType[]) f.units[t] -= units[t];
+      const nf = newFleet(w, colony.id, f.at, units);
+      nf.pos = f.pos ? { ...f.pos } : null;
+      return { ok: true, id: nf.id };
+    }
+    case 'route_set': {
+      if (!w.systems[cmd.from] || !w.systems[cmd.to] || cmd.from === cmd.to) return { ok: false, reason: 'bad route' };
+      if (w.systems[cmd.from]!.owner !== colony.id) return { ok: false, reason: 'origin is not yours' };
+      const toOwner = w.systems[cmd.to]!.owner;
+      if (toOwner !== colony.id && (!toOwner || !isAlly(w, colony.id, toOwner))) return { ok: false, reason: 'destination is not yours or an ally\'s' };
+      const existing = Object.values(w.routes).find((r) => r.owner === colony.id && r.from === cmd.from && r.to === cmd.to && r.resource === cmd.resource);
+      if (existing) { existing.perTrip = cmd.perTrip; existing.whenBelow = cmd.whenBelow; existing.active = true; return { ok: true, id: existing.id }; }
+      if (routeCount(w, colony.id) >= routeLimit(w, colony)) return { ok: false, reason: 'route limit reached' };
+      const id = newId(w, 'R');
+      w.routes[id] = { id, owner: colony.id, from: cmd.from, to: cmd.to, resource: cmd.resource, perTrip: cmd.perTrip, whenBelow: cmd.whenBelow, active: true, lastRunAt: -1e9 };
+      return { ok: true, id };
+    }
+    case 'route_remove': {
+      const r = w.routes[cmd.route];
+      if (!r || r.owner !== colony.id) return { ok: false, reason: 'no such route' };
+      delete w.routes[r.id];
+      return { ok: true };
+    }
+    case 'convoy_send': return sendConvoy(w, colony, cmd.from, cmd.to, cmd.cargo, cmd.escort ?? null, null);
     case 'agent_mission': {
       const cost = B.AGENT_COST_INFLUENCE[cmd.mission];
       if (colony.influence < cost) return { ok: false, reason: 'not enough influence' };
@@ -385,9 +422,10 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       const sys = w.galaxy.systems[cmd.system];
       if (!sys || sys.kind !== 'beacon') return { ok: false, reason: 'not a beacon' };
       if (w.litBeacons[sys.id]) return { ok: false, reason: 'already lit' };
-      if (w.systems[sys.id]!.owner !== colony.id || !colonyNetwork(w, colony).has(sys.id)) return { ok: false, reason: 'beacon not connected' };
-      if (colony.stock.crystal < B.BEACON_CRYSTAL) return { ok: false, reason: 'not enough crystal' };
-      colony.stock.crystal -= B.BEACON_CRYSTAL;
+      const st = w.systems[sys.id]!;
+      if (st.owner !== colony.id || !colonyNetwork(w, colony).has(sys.id)) return { ok: false, reason: 'beacon not connected' };
+      if (st.stock.crystal < B.BEACON_CRYSTAL) return { ok: false, reason: 'not enough crystal at the beacon' };
+      st.stock.crystal -= B.BEACON_CRYSTAL;
       w.litBeacons[sys.id] = { system: sys.id, by: colony.id, since: w.time };
       logEvent(w, 'beacon.lit', [colony.id], { beacon: sys.beaconName });
       return { ok: true };
@@ -436,89 +474,188 @@ function buildRelay(w: World, colony: Colony, aId: string, bId: string): ApplyRe
   if (!a || !b) return { ok: false, reason: 'no such system' };
   if (w.relays[relayId(aId, bId)]) return { ok: false, reason: 'relay exists' };
   const net = colonyNetwork(w, colony);
-  const anchored = net.has(aId) || net.has(bId);
-  if (!anchored) return { ok: false, reason: 'not connected to your network' };
+  if (!net.has(aId) && !net.has(bId)) return { ok: false, reason: 'not connected to your network' };
   for (const id of [aId, bId]) {
     const owner = w.systems[id]!.owner;
     if (owner && owner !== colony.id && !isAlly(w, colony.id, owner)) return { ok: false, reason: 'system held by another colony' };
   }
   const verdict = evaluateLink(w.galaxy, a, b, rangeContext(w, colony));
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
-  if (!stockHas(colony.stock, verdict.cost)) return { ok: false, reason: 'not enough resources' };
-  stockSub(colony.stock, verdict.cost);
+  // The anchored end pays, from its own warehouse.
+  const payers = [aId, bId].filter((id) => net.has(id) && w.systems[id]!.owner === colony.id && stockHas(w.systems[id]!.stock, verdict.cost));
+  if (!payers.length) return { ok: false, reason: 'not enough resources at the anchor system' };
+  stockSub(w.systems[payers[0]!]!.stock, verdict.cost);
   const id = relayId(aId, bId);
   addRelay(w, { id, a: id.split('|')[0]!, b: id.split('|')[1]!, owner: colony.id, length: verdict.length, upkeep: verdict.upkeep, readyAt: w.time + verdict.buildSeconds, cutUntil: 0 });
   for (const sid of [aId, bId]) {
     const st = w.systems[sid]!;
-    if (!st.owner) { setOwner(w, sid, colony.id); st.population = 0.1; logEvent(w, 'system.claimed', [colony.id], { system: sid }); }
+    if (!st.owner) claim(w, colony, sid);
   }
   return { ok: true, id };
 }
 
-function build(w: World, colony: Colony, systemId: string, building: Building): ApplyResult {
+/** A new system: station up, a little population, and a default supply route home. */
+function claim(w: World, colony: Colony, systemId: string): void {
+  const st = w.systems[systemId]!;
+  setOwner(w, systemId, colony.id);
+  st.population = 0.1;
+  st.stationHp = B.STATION_HP;
+  logEvent(w, 'system.claimed', [colony.id], { system: systemId });
+  if (systemId !== colony.capital && routeCount(w, colony.id) < routeLimit(w, colony) + 50) {
+    const id = newId(w, 'R');
+    w.routes[id] = { id, owner: colony.id, from: systemId, to: colony.capital, resource: 'all', perTrip: B.CARGO_CAPACITY * 2, whenBelow: Infinity, active: true, lastRunAt: -1e9 };
+  }
+}
+
+function build(w: World, colony: Colony, systemId: string, building: Building, orbit?: Orbit): ApplyResult {
   const sys = w.galaxy.systems[systemId];
   const st = w.systems[systemId];
   if (!sys || !st || st.owner !== colony.id) return { ok: false, reason: 'not your system' };
   if (!colonyNetwork(w, colony).has(systemId)) return { ok: false, reason: 'system not connected' };
-  if (st.buildings.length + st.buildQueue.length >= slotsOf(w, sys)) return { ok: false, reason: 'no free slot' };
-  if (st.buildings.includes(building) || st.buildQueue.some((j) => j.building === building)) return { ok: false, reason: 'already built' };
+  if (st.blockade) return { ok: false, reason: 'system under blockade' };
+  const o = orbit ?? defaultOrbit(building);
+  if (Math.abs(o - defaultOrbit(building)) > 1) return { ok: false, reason: 'wrong orbit for this structure' };
+  if (freeSlotsOnOrbit(w, sys, o) <= 0) return { ok: false, reason: 'no free slot on this orbit' };
+  const unique: Building[] = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'];
+  if (unique.includes(building) && (hasStructure(st, building) || st.buildQueue.some((j) => j.building === building))) return { ok: false, reason: 'already built' };
   const cost = B.BUILDING_COST[building];
-  if (!stockHas(colony.stock, cost)) return { ok: false, reason: 'not enough resources' };
-  stockSub(colony.stock, cost);
-  st.buildQueue.push({ building, readyAt: w.time + B.BUILDING_SECONDS[building] });
+  if (!stockHas(st.stock, cost)) return { ok: false, reason: 'not enough resources here' };
+  stockSub(st.stock, cost);
+  st.buildQueue.push({ building, orbit: o, readyAt: w.time + B.BUILDING_SECONDS[building] });
   return { ok: true };
 }
 
 function train(w: World, colony: Colony, systemId: string, unit: UnitType, count: number): ApplyResult {
   const st = w.systems[systemId];
   if (!st || st.owner !== colony.id) return { ok: false, reason: 'not your system' };
-  if (!st.buildings.includes('shipyard')) return { ok: false, reason: 'no shipyard' };
+  if (!hasStructure(st, 'shipyard')) return { ok: false, reason: 'no shipyard' };
   if (!colonyNetwork(w, colony).has(systemId)) return { ok: false, reason: 'system not connected' };
-  const mult = colony.faction === 'corsairs' ? B.CORSAIR_SHIP_COST_MULT : 1;
+  if (st.blockade) return { ok: false, reason: 'system under blockade' };
+  const mult = colony.faction === 'corsairs' && unit !== 'cargo' ? B.CORSAIR_SHIP_COST_MULT : 1;
   const cost = scaleStock(B.UNIT_COST[unit], count * mult);
-  if (!stockHas(colony.stock, cost)) return { ok: false, reason: 'not enough resources' };
-  stockSub(colony.stock, cost);
+  if (!stockHas(st.stock, cost)) return { ok: false, reason: 'not enough resources here' };
+  stockSub(st.stock, cost);
   const queueEnd = st.trainQueue.length ? st.trainQueue[st.trainQueue.length - 1]!.readyAt : w.time;
   st.trainQueue.push({ unit, count, readyAt: queueEnd + B.UNIT_SECONDS[unit] * count });
   return { ok: true };
 }
 
-function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | 'raid' | 'blockade' | 'defend' | 'return', target: string): ApplyResult {
+function newFleet(w: World, owner: string, at: string, units: Fleet): FleetState {
+  const id = newId(w, 'F');
+  const f: FleetState = { id, owner, units, damage: emptyDamage(), cargo: B.emptyStock(), at, from: null, destination: null, path: [], departAt: 0, arriveAt: 0, order: { kind: 'idle' }, pos: null, focus: null };
+  w.fleets[id] = f;
+  return f;
+}
+
+/** Idle fleets of one class merge: warships with warships, cargos with cargos (a convoy is escorted on purpose). */
+function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetState {
+  const cargoClass = combatSize(units) === 0 && units.cargo > 0;
+  const existing = Object.values(w.fleets).find((f) => f.owner === owner && f.at === at && f.order.kind === 'idle' && f.pos === null && (combatSize(f.units) === 0 && f.units.cargo > 0) === cargoClass);
+  if (existing) { existing.units = addFleet(existing.units, units); return existing; }
+  return newFleet(w, owner, at, units);
+}
+
+/** Starts a journey along waypoints; convoys hop, warships jump to the end (they are not intercepted en route). */
+function depart(w: World, colony: Colony, f: FleetState, to: string, order: FleetOrder): ApplyResult {
+  if (f.at === null) return { ok: false, reason: 'fleet in transit' };
+  const plan = planPath(w, colony, f.at, to);
+  if (!plan.onNet) {
+    const energy = Math.ceil(plan.length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(f.units));
+    const st = w.systems[f.at]!;
+    if (st.owner !== colony.id || st.stock.energy < energy) return { ok: false, reason: 'not enough energy here for off-network travel' };
+    st.stock.energy -= energy;
+  }
+  const hop = f.units.cargo > 0;
+  const speed = fleetSpeed(colony, f.units, plan.onNet);
+  f.order = order;
+  f.from = f.at;
+  f.at = null;
+  f.pos = null;
+  if (hop && plan.waypoints.length > 1) {
+    f.path = plan.waypoints.slice(1);
+    f.destination = plan.waypoints[0]!;
+    f.arriveAt = w.time + Math.ceil(plan.legs[0]! / speed);
+  } else {
+    f.path = [];
+    f.destination = to;
+    f.arriveAt = w.time + Math.ceil(plan.length / speed);
+  }
+  f.departAt = w.time;
+  return { ok: true };
+}
+
+function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | 'raid' | 'blockade' | 'defend' | 'return' | 'ambush', target: string): ApplyResult {
   const fleet = w.fleets[fleetId];
   if (!fleet || fleet.owner !== colony.id) return { ok: false, reason: 'not your fleet' };
   if (fleet.at === null) return { ok: false, reason: 'fleet in transit' };
   if (fleetSize(fleet.units) === 0) return { ok: false, reason: 'empty fleet' };
+  if (order !== 'move' && order !== 'return' && combatSize(fleet.units) === 0) return { ok: false, reason: 'cargos cannot fight' };
   let destination: string;
   let newOrder: FleetOrder;
   if (order === 'raid') {
-    const relay = w.relays[target];
-    if (!relay) return { ok: false, reason: 'no such relay' };
-    if (relay.owner === colony.id) return { ok: false, reason: 'your own relay' };
-    destination = planRoute(w, colony, fleet.at, relay.a).seconds <= planRoute(w, colony, fleet.at, relay.b).seconds ? relay.a : relay.b;
-    newOrder = { kind: 'raid', relay: target, via: destination };
+    // target: "<systemId>" (station) or "<systemId>:<structureId>"
+    const [sysId, structId] = target.split(':') as [string, string | undefined];
+    const st = w.systems[sysId];
+    if (!st || !st.owner) return { ok: false, reason: 'no such target' };
+    if (st.owner === colony.id) return { ok: false, reason: 'your own system' };
+    if (structId && !st.structures.some((s) => s.id === structId)) return { ok: false, reason: 'no such structure' };
+    destination = sysId;
+    newOrder = { kind: 'raid', target: structId ?? 'station', via: sysId };
   } else if (order === 'return') {
     destination = colony.capital;
     newOrder = { kind: 'return' };
   } else {
     if (!w.galaxy.systems[target]) return { ok: false, reason: 'no such system' };
     destination = target;
-    newOrder = order === 'move' ? { kind: 'move', to: target } : order === 'blockade' ? { kind: 'blockade', system: target } : { kind: 'defend', system: target };
+    newOrder = order === 'move' ? { kind: 'move', to: target } : order === 'blockade' ? { kind: 'blockade', system: target } : order === 'ambush' ? { kind: 'ambush', system: target } : { kind: 'defend', system: target };
+  }
+  if (newOrder.kind === 'raid' || newOrder.kind === 'blockade') {
+    const victim = w.colonies[w.systems[destination]!.owner ?? ''];
+    if (victim && (isShielded(w, victim) || isShielded(w, colony) || atPeace(w, colony.id, victim.id))) return { ok: false, reason: 'at peace or shielded' };
   }
   if (destination === fleet.at) { fleet.order = newOrder; arrive(w, fleet); return { ok: true }; }
-  const route = planRoute(w, colony, fleet.at, destination);
-  if (!route.onNet) {
-    const energy = Math.ceil(route.length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(fleet.units));
-    if (colony.stock.energy < energy) return { ok: false, reason: 'not enough energy for off-network travel' };
-    colony.stock.energy -= energy;
+  return depart(w, colony, fleet, destination, newOrder);
+}
+
+function sendConvoy(w: World, colony: Colony, from: string, to: string, cargo: StockDelta, escortId: string | null, routeId: string | null): ApplyResult {
+  const st = w.systems[from];
+  if (!st || st.owner !== colony.id) return { ok: false, reason: 'origin is not yours' };
+  if (!w.systems[to] || to === from) return { ok: false, reason: 'bad destination' };
+  if (st.blockade) return { ok: false, reason: 'origin under blockade' };
+  const total = stockTotal(cargo);
+  if (total <= 0) return { ok: false, reason: 'empty cargo' };
+  if (!stockHas(st.stock, cargo)) return { ok: false, reason: 'not enough stock at origin' };
+  const idle = Object.values(w.fleets).filter((f) => f.owner === colony.id && f.at === from && f.order.kind === 'idle' && f.units.cargo > 0);
+  const available = idle.reduce((s, f) => s + f.units.cargo, 0);
+  const needed = Math.ceil(total / B.CARGO_CAPACITY);
+  if (available < needed) return { ok: false, reason: `need ${needed} cargo(s), ${available} idle here` };
+  // Take cargos from idle fleets, escorts from the named fleet.
+  let left = needed;
+  const convoy = newFleet(w, colony.id, from, emptyFleet());
+  for (const f of idle) {
+    const take = Math.min(left, f.units.cargo);
+    f.units.cargo -= take; convoy.units.cargo += take; left -= take;
+    if (fleetSize(f.units) === 0) delete w.fleets[f.id];
+    if (left === 0) break;
   }
-  clearBlockadeBy(w, fleet);
-  fleet.order = newOrder;
-  fleet.from = fleet.at;
-  fleet.at = null;
-  fleet.destination = destination;
-  fleet.departAt = w.time;
-  fleet.arriveAt = w.time + route.seconds;
-  return { ok: true };
+  if (escortId) {
+    const e = w.fleets[escortId];
+    if (e && e.owner === colony.id && e.at === from && e.id !== convoy.id) {
+      for (const t of COMBAT_UNITS) { convoy.units[t] += e.units[t]; convoy.damage[t] += e.damage[t]; e.units[t] = 0; e.damage[t] = 0; }
+      if (fleetSize(e.units) === 0) delete w.fleets[e.id];
+    }
+  }
+  stockSub(st.stock, cargo);
+  stockAdd(convoy.cargo, cargo);
+  const res = depart(w, colony, convoy, to, { kind: 'convoy', to, route: routeId });
+  if (!res.ok) { // refund and dissolve
+    stockAdd(st.stock, convoy.cargo);
+    mergeFleet(w, colony.id, from, convoy.units);
+    delete w.fleets[convoy.id];
+    return res;
+  }
+  logEvent(w, 'convoy.sent', [colony.id], { from, to, cargo, cargos: convoy.units.cargo });
+  return { ok: true, id: convoy.id };
 }
 
 function proposeTreaty(w: World, colony: Colony, withId: string, kind: TreatyKind): ApplyResult {
@@ -549,29 +686,100 @@ function proposeTreaty(w: World, colony: Colony, withId: string, kind: TreatyKin
 // Time
 // ---------------------------------------------------------------------------
 
+const ROUTE_INTERVAL_S = 600;
+const BATTLE_SUBSTEP_S = 2;
+
 /** Advance the simulation by `seconds`. Timers resolve in order; the Draw fires on each hour. */
 export function tick(w: World, seconds: number, maxStep = 60): void {
   let remaining = seconds;
+  let lastRoutes = Math.floor(w.time / ROUTE_INTERVAL_S);
   while (remaining > 0 && !w.ended) {
     const nextHour = (Math.floor(w.time / 3600) + 1) * 3600;
     const step = Math.min(remaining, nextHour - w.time, maxStep);
-    w.time += step;
+    // Plateaus with hostiles are simulated in short sub-steps so combat stays continuous.
+    if (w.engagedSystems.length || hasHostilePresence(w)) {
+      for (let done = 0; done < step; done += BATTLE_SUBSTEP_S) {
+        const dt = Math.min(BATTLE_SUBSTEP_S, step - done);
+        w.time += dt;
+        runBattles(w, dt);
+      }
+    } else {
+      w.time += step;
+    }
     remaining -= step;
-    processTimers(w);
+    processTimers(w, step);
+    const routeSlot = Math.floor(w.time / ROUTE_INTERVAL_S);
+    if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); }
     if (w.time >= nextHour) runDraw(w);
     if (w.time >= w.seasonEndsAt) endSeason(w, 'silence');
   }
 }
 
-function processTimers(w: World): void {
-  // Only owned systems can have queues or blockades.
+function hasHostilePresence(w: World): boolean {
+  for (const f of Object.values(w.fleets)) if (f.at && f.pos && combatSize(f.units) > 0) return true;
+  return false;
+}
+
+function runBattles(w: World, dt: number): void {
+  const systems = new Set<string>(w.engagedSystems);
+  for (const f of Object.values(w.fleets)) if (f.at && f.pos && combatSize(f.units) > 0) systems.add(f.at);
+  for (const id of systems) {
+    deployDefenders(w, id);
+    const ongoing = battleTick(w, id, dt);
+    if (!ongoing) settlePlateau(w, id);
+  }
+}
+
+/** After the shooting stops: convoys move on, friends dock, raiders take their plunder. */
+function settlePlateau(w: World, systemId: string): void {
+  const st = w.systems[systemId]!;
+  for (const f of Object.values(w.fleets)) {
+    if (f.at !== systemId || f.pos === null) continue;
+    const colony = w.colonies[f.owner];
+    if (!colony) continue;
+    const friendly = st.owner === f.owner || (st.owner !== null && isAlly(w, f.owner, st.owner));
+    if (f.order.kind === 'convoy') { continueConvoy(w, f); continue; }
+    if (f.order.kind === 'raid') {
+      const victim = st.owner ? w.colonies[st.owner] : undefined;
+      const target = f.order.target;
+      const targetGone = target === 'station' ? st.stationHp <= 0 : !st.structures.some((x) => x.id === target && x.hp > 0);
+      if (victim && targetGone) {
+        if (target === 'station') logEvent(w, 'relay.cut', [f.owner, victim.id], { system: systemId });
+        loot(w, colony, victim, systemId, combatSize(f.units));
+        f.order = { kind: 'idle' };
+      }
+      continue;
+    }
+    if (friendly && (f.order.kind === 'idle' || f.order.kind === 'defend' || f.order.kind === 'return' || f.order.kind === 'move')) { f.pos = null; if (f.order.kind !== 'defend') f.order = { kind: 'idle' }; }
+  }
+}
+
+/** Friendly warships docked at a threatened system come out to fight; cargos stay in the dock. */
+function deployDefenders(w: World, systemId: string): void {
+  const st = w.systems[systemId]!;
+  const hostiles = armedHostilesPresent(w, systemId);
+  if (!hostiles.length) return;
+  let i = 0;
+  for (const f of Object.values(w.fleets)) {
+    if (f.at !== systemId || f.pos !== null || combatSize(f.units) === 0) continue;
+    if (!st.owner || (f.owner !== st.owner && !isAlly(w, f.owner, st.owner))) continue;
+    f.pos = { r: 2, a: (90 + i * 47) % 360 };
+    i++;
+  }
+  // With the station down, docked cargos are exposed.
+  if (st.stationHp <= 0) for (const f of Object.values(w.fleets)) if (f.at === systemId && f.pos === null && f.units.cargo > 0) f.pos = { r: 1, a: 180 };
+}
+
+function processTimers(w: World, dt: number): void {
+  const plateau = plateauIndex(w);
   for (const owner of Object.keys(w.owned)) for (const id of w.owned[owner]!) {
     const st = w.systems[id]!;
+    const sys = w.galaxy.systems[id]!;
     if (st.buildQueue.length) {
       const done = st.buildQueue.filter((j) => j.readyAt <= w.time);
       if (done.length) {
         st.buildQueue = st.buildQueue.filter((j) => j.readyAt > w.time);
-        for (const j of done) st.buildings.push(j.building);
+        for (const j of done) st.structures.push({ id: newId(w, 'S'), kind: j.building, orbit: j.orbit, angle: nextAngle(st, j.orbit, orbitSlots(w, sys)[j.orbit]), hp: B.STRUCTURE_HP[j.building] });
       }
     }
     if (st.trainQueue.length && st.owner) {
@@ -583,76 +791,64 @@ function processTimers(w: World): void {
         mergeFleet(w, st.owner, id, units);
       }
     }
-    if (st.blockade && st.owner) {
-      const still = fleetsAt(w, id).some((f) => f.owner === st.blockade!.by && f.order.kind === 'blockade');
-      if (!still) st.blockade = null;
-      else if (w.time - st.blockade.since >= B.BLOCKADE_CAPTURE_HOURS * 3600) capture(w, id, st.blockade.by);
-    }
+    evaluateBlockade(w, id, plateau.get(id) ?? []);
+    if (st.blockade && st.owner && w.time - st.blockade.since >= B.BLOCKADE_CAPTURE_HOURS * 3600) capture(w, id, st.blockade.by);
   }
   for (const fleet of Object.values(w.fleets)) {
     if (fleet.at === null && fleet.arriveAt <= w.time) arrive(w, fleet);
   }
   for (const m of Object.values(w.missions)) if (m.readyAt <= w.time) resolveMission(w, m.id);
   for (const [id, f] of Object.entries(w.fleets)) if (fleetSize(f.units) === 0 && f.at !== null) delete w.fleets[id];
-}
-
-function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetState {
-  const existing = Object.values(w.fleets).find((f) => f.owner === owner && f.at === at && f.order.kind !== 'blockade');
-  if (existing) { existing.units = addFleet(existing.units, units); return existing; }
-  const id = newId(w, 'F');
-  const f: FleetState = { id, owner, units, at, from: null, destination: null, departAt: 0, arriveAt: 0, order: { kind: 'idle' } };
-  w.fleets[id] = f;
-  return f;
-}
-
-function clearBlockadeBy(w: World, fleet: FleetState): void {
-  if (fleet.order.kind === 'blockade' && fleet.at) {
-    const st = w.systems[fleet.at]!;
-    if (st.blockade?.by === fleet.owner) st.blockade = null;
+  // Healing where nothing hostile is present.
+  const nets = new Map<string, Map<string, number>>();
+  const contested = new Set<string>();
+  for (const [id, fleets] of plateau) if (fleets.some((f) => combatSize(f.units) > 0 && w.systems[id]!.owner !== f.owner)) contested.add(id);
+  for (const owner of Object.keys(w.owned)) {
+    const colony = w.colonies[owner];
+    if (!colony) continue;
+    if (!nets.has(owner)) nets.set(owner, colonyNetwork(w, colony));
+    for (const id of w.owned[owner]!) regenerate(w, id, dt, nets.get(owner)!.has(id), contested.has(id));
   }
 }
 
-function defenseMultiplier(w: World, defenderId: string, systems: string[]): number {
-  const colony = w.colonies[defenderId];
-  let mult = 1;
-  if (systems.some((s) => w.systems[s]!.owner === defenderId && w.systems[s]!.buildings.includes('bastion'))) mult *= B.BASTION_DEFENSE_MULT;
-  if (colony && isWatching(w, colony)) mult *= B.WATCH_DEFENSE_MULT;
-  return mult;
-}
-
-/** Fights `attacker` against every hostile fleet at `systems`; returns true if the attacker prevails. */
-function fight(w: World, attacker: FleetState, victimId: string, systems: string[]): boolean {
-  const defenders = systems.flatMap((s) => fleetsAt(w, s)).filter((f) => f.id !== attacker.id && f.at !== null && (f.owner === victimId || isAlly(w, f.owner, victimId)) && !isAlly(w, f.owner, attacker.owner));
-  const combined = defenders.reduce((acc, f) => addFleet(acc, f.units), emptyFleet());
-  const seed = subSeed(w.seed, 'battle', w.time, attacker.id);
-  const result = resolveBattle(attacker.units, combined, defenseMultiplier(w, victimId, systems), seed);
-  attacker.units = subtractFleet(attacker.units, result.attackerLosses);
-  const total = Math.max(1, fleetSize(combined));
-  for (const d of defenders) {
-    const share = fleetSize(d.units) / total;
-    const losses: Fleet = { corvette: 0, frigate: 0, cruiser: 0 };
-    for (const t of ['corvette', 'frigate', 'cruiser'] as const) losses[t] = Math.min(d.units[t], Math.round(result.defenderLosses[t] * share));
-    d.units = subtractFleet(d.units, losses);
+/** A blockade is control of the plateau: hostiles armed, nothing left to shoot back. */
+function evaluateBlockade(w: World, systemId: string, plateau: FleetState[]): void {
+  const st = w.systems[systemId]!;
+  if (!st.owner || !plateau.length) { st.blockade = null; return; }
+  const hostiles = armedHostilesPresent(w, systemId, plateau).filter((f) => f.order.kind === 'blockade' || f.order.kind === 'raid' || f.order.kind === 'ambush');
+  if (!hostiles.length) { st.blockade = null; return; }
+  const defendersAlive = Object.values(w.fleets).some((f) => f.at === systemId && combatSize(f.units) > 0 && (f.owner === st.owner || isAlly(w, f.owner, st.owner!)));
+  const turretsAlive = st.structures.some((s) => s.kind in B.TURRET_STATS && s.hp > 0);
+  if (defendersAlive || turretsAlive) { st.blockade = null; return; }
+  const by = hostiles.reduce((a, b) => (combatSize(a.units) >= combatSize(b.units) ? a : b)).owner;
+  if (!st.blockade || st.blockade.by !== by) {
+    st.blockade = { by, since: w.time };
+    logEvent(w, 'blockade.start', [by, st.owner], { system: systemId });
   }
-  logEvent(w, 'battle', [attacker.owner, victimId], {
-    at: systems[0], attackerWins: result.attackerWins,
-    attackerLosses: result.attackerLosses, defenderLosses: result.defenderLosses,
-  });
-  return result.attackerWins && fleetSize(attacker.units) > 0;
 }
 
-function loot(w: World, attacker: Colony, victim: Colony, size: number): void {
+function loot(w: World, attacker: Colony, victim: Colony, systemId: string, size: number): void {
   if (colonyScore(w, attacker) > B.BULLY_SCORE_RATIO * Math.max(1, colonyScore(w, victim))) {
     attacker.influence = Math.max(0, attacker.influence - 5);
     logEvent(w, 'raid.bully', [attacker.id, victim.id]);
     return;
   }
+  const st = w.systems[systemId]!;
   const taken: StockDelta = {};
   for (const r of B.RESOURCE_LIST) {
-    const amount = Math.min(Math.floor(victim.stock[r] * B.LOOT_FRACTION), size * 5);
-    if (amount > 0) { victim.stock[r] -= amount; attacker.stock[r] += amount; taken[r] = amount; }
+    const amount = Math.min(Math.floor(st.stock[r] * B.LOOT_FRACTION), size * 5);
+    if (amount > 0) { st.stock[r] -= amount; taken[r] = amount; }
   }
-  logEvent(w, 'raid.loot', [attacker.id, victim.id], { taken });
+  // Loot travels home with the fleet as cargo-less plunder: credited to the raider's capital.
+  depositClamped(w, attacker.capital, taken);
+  logEvent(w, 'raid.loot', [attacker.id, victim.id], { taken, system: systemId });
+}
+
+/** Angle on the plateau edge from which a fleet arrives, based on where it came from. */
+function approachAngle(w: World, from: string | null, to: string): number {
+  if (!from) return 180;
+  const a = w.galaxy.systems[from]!, b = w.galaxy.systems[to]!;
+  return ((Math.atan2(a.y - b.y, a.x - b.x) * 180) / Math.PI + 360) % 360;
 }
 
 function arrive(w: World, fleet: FleetState): void {
@@ -660,38 +856,116 @@ function arrive(w: World, fleet: FleetState): void {
   const dest = fleet.destination ?? fleet.at!;
   fleet.at = dest;
   fleet.destination = null;
+  const st = w.systems[dest]!;
   const order = fleet.order;
-  if (order.kind === 'raid') {
-    const relay = w.relays[order.relay];
-    const victim = relay ? w.colonies[relay.owner] : undefined;
-    if (!relay || !victim || relayActive(relay, w.time) === false) { fleet.order = { kind: 'idle' }; return; }
-    if (isShielded(w, victim) || isShielded(w, colony) || atPeace(w, colony.id, victim.id)) { fleet.order = { kind: 'idle' }; logEvent(w, 'raid.refused', [colony.id, victim.id]); return; }
-    if (fight(w, fleet, victim.id, [relay.a, relay.b])) {
-      relay.cutUntil = w.time + B.RELAY_CUT_HOURS * 3600;
-      logEvent(w, 'relay.cut', [colony.id, victim.id], { relay: relay.id });
-      loot(w, colony, victim, fleetSize(fleet.units));
+  const friendly = st.owner === colony.id || (st.owner !== null && isAlly(w, colony.id, st.owner));
+  const hostileHere = plateauFleets(w, dest).some((g) => g.owner !== colony.id && !isAlly(w, g.owner, colony.id) && !atPeace(w, g.owner, colony.id) && combatSize(g.units) > 0)
+    || (st.owner !== null && !friendly && !atPeace(w, colony.id, st.owner) && !isShielded(w, colony) && !isShielded(w, w.colonies[st.owner]!));
+
+  if (order.kind === 'convoy') {
+    if (hostileHere && (fleet.path.length > 0 || dest !== order.to || true)) {
+      // Exposed on the plateau; it continues (or unloads) once the engagement ends.
+      fleet.pos = { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+      return;
     }
+    continueConvoy(w, fleet);
+    return;
+  }
+  if (order.kind === 'move' || order.kind === 'return') {
     fleet.order = { kind: 'idle' };
-  } else if (order.kind === 'blockade') {
-    const st = w.systems[dest]!;
-    const victim = st.owner ? w.colonies[st.owner] : undefined;
-    if (!victim || victim.id === colony.id || isShielded(w, victim) || isShielded(w, colony) || atPeace(w, colony.id, victim.id)) { fleet.order = { kind: 'idle' }; return; }
-    if (fight(w, fleet, victim.id, [dest])) {
-      st.blockade = { by: colony.id, since: w.time };
-      logEvent(w, 'blockade.start', [colony.id, victim.id], { system: dest });
-    } else fleet.order = { kind: 'idle' };
-  } else if (order.kind === 'defend') {
-    const st = w.systems[dest]!;
-    if (st.blockade && st.blockade.by !== colony.id && !isAlly(w, st.blockade.by, colony.id)) {
-      const blockader = st.blockade.by;
-      if (fight(w, fleet, blockader, [dest])) {
-        st.blockade = null;
-        for (const f of fleetsAt(w, dest)) if (f.owner === blockader) f.order = { kind: 'idle' };
-        logEvent(w, 'blockade.lifted', [colony.id, blockader], { system: dest });
+    fleet.pos = friendly && !hostileHere ? null : { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+    return;
+  }
+  if (order.kind === 'defend' || order.kind === 'ambush') {
+    fleet.pos = friendly && !hostileHere ? null : { r: 2, a: approachAngle(w, fleet.from, dest) };
+    return;
+  }
+  // raid / blockade: hostile intent, on the plateau from the edge.
+  const victim = st.owner ? w.colonies[st.owner] : undefined;
+  if (!victim || victim.id === colony.id || isShielded(w, victim) || isShielded(w, colony) || atPeace(w, colony.id, victim.id)) {
+    fleet.order = { kind: 'idle' };
+    fleet.pos = friendly ? null : { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+    logEvent(w, 'raid.refused', [colony.id, victim?.id ?? dest]);
+    return;
+  }
+  fleet.pos = { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+}
+
+/** Next leg, or unloading at the destination. Called on arrival and when an engagement ends. */
+function continueConvoy(w: World, f: FleetState): void {
+  const colony = w.colonies[f.owner]!;
+  if (f.order.kind !== 'convoy' || f.at === null) return;
+  const st = w.systems[f.at]!;
+  if (f.path.length > 0) {
+    const next = f.path.shift()!;
+    const plan = planPath(w, colony, f.at, next);
+    const speed = fleetSpeed(colony, f.units, plan.onNet);
+    f.from = f.at; f.at = null; f.pos = null; f.destination = next; f.departAt = w.time; f.arriveAt = w.time + Math.ceil(plan.length / speed);
+    return;
+  }
+  if (f.at !== f.order.to) { // rerouted or path exhausted: try again from here
+    const res = depart(w, colony, f, f.order.to, f.order);
+    if (!res.ok) { f.order = { kind: 'idle' }; f.pos = null; }
+    return;
+  }
+  // Unload. Overflow stays aboard; the cargos are then free for the next route.
+  const lost = depositClamped(w, f.at, f.cargo);
+  f.cargo = lost;
+  if (stockTotal(lost) === 0) f.cargo = B.emptyStock();
+  const raidPlunder = st.owner !== f.owner && st.owner !== null && !isAlly(w, f.owner, st.owner);
+  const routeId = f.order.route;
+  logEvent(w, 'convoy.arrived', [f.owner], { system: f.at, route: routeId, kept: stockTotal(lost) });
+  f.order = { kind: 'idle' };
+  f.pos = raidPlunder ? { r: B.PLATEAU_RADIUS, a: 0 } : null;
+  // Barter and market couriers vanish once delivered.
+  if ((f as FleetState & { courier?: boolean }).courier) { delete w.fleets[f.id]; return; }
+  // Route cargos shuttle back to the origin for the next trip.
+  const route = routeId ? w.routes[routeId] : undefined;
+  if (route && route.active && route.to === f.at && f.pos === null && stockTotal(f.cargo) === 0) {
+    const back = depart(w, colony, f, route.from, { kind: 'convoy', to: route.from, route: null });
+    if (back.ok) return;
+  }
+  // Merge with an idle fleet of the same class at the destination.
+  const cargoClass = combatSize(f.units) === 0 && f.units.cargo > 0;
+  const other = Object.values(w.fleets).find((g) => g.id !== f.id && g.owner === f.owner && g.at === f.at && g.order.kind === 'idle' && g.pos === null && (combatSize(g.units) === 0 && g.units.cargo > 0) === cargoClass);
+  if (other && f.pos === null) { other.units = addFleet(other.units, f.units); stockAdd(other.cargo, f.cargo); delete w.fleets[f.id]; }
+}
+
+/** Standing routes: idle cargos at the origin carry what the destination lacks. */
+function processRoutes(w: World): void {
+  // Idle cargos by "owner@system", one pass.
+  const idleCargos = new Map<string, number>();
+  for (const f of Object.values(w.fleets)) if (f.at && f.order.kind === 'idle' && f.units.cargo > 0) idleCargos.set(`${f.owner}@${f.at}`, (idleCargos.get(`${f.owner}@${f.at}`) ?? 0) + f.units.cargo);
+  for (const route of Object.values(w.routes)) {
+    if (!route.active) continue;
+    const colony = w.colonies[route.owner];
+    const from = w.systems[route.from], to = w.systems[route.to];
+    if (!colony || !from || !to || from.owner !== route.owner) { if (from && from.owner !== route.owner) delete w.routes[route.id]; continue; }
+    if (from.blockade || w.time - route.lastRunAt < ROUTE_INTERVAL_S) continue;
+    const cargos = idleCargos.get(`${route.owner}@${route.from}`) ?? 0;
+    if (!cargos) continue;
+    const capacity = Math.min(route.perTrip, cargos * B.CARGO_CAPACITY);
+    const load: StockDelta = {};
+    if (route.resource === 'all') {
+      // Everything above a working reserve at the origin, split across resources.
+      const reserve = 120;
+      let budget = capacity;
+      for (const r of B.RESOURCE_LIST) {
+        const surplus = Math.floor(from.stock[r] - reserve);
+        if (surplus <= 0 || budget <= 0) continue;
+        const take = Math.min(surplus, budget, Math.max(0, capacityOf(w, route.to) - to.stock[r]));
+        if (take > 0) { load[r] = take; budget -= take; }
       }
+    } else {
+      const r = route.resource;
+      if (to.stock[r] >= route.whenBelow) continue;
+      const room = Math.max(0, capacityOf(w, route.to) - to.stock[r]);
+      const take = Math.min(capacity, Math.floor(from.stock[r]), room, route.whenBelow === Infinity ? capacity : Math.ceil(route.whenBelow - to.stock[r]));
+      if (take > 0) load[r] = take;
     }
-  } else if (order.kind === 'move' || order.kind === 'return') {
-    fleet.order = { kind: 'idle' };
+    if (stockTotal(load) < 20) continue;
+    const res = sendConvoy(w, colony, route.from, route.to, load, null, route.id);
+    if (res.ok) { route.lastRunAt = w.time; idleCargos.set(`${route.owner}@${route.from}`, cargos - Math.ceil(stockTotal(load) / B.CARGO_CAPACITY)); }
   }
 }
 
@@ -701,12 +975,19 @@ function capture(w: World, systemId: string, by: string): void {
   if (w.colonies[prev]?.capital === systemId) return; // capitals are never captured
   setOwner(w, systemId, by);
   st.blockade = null;
-  st.buildings = st.buildings.slice(0, Math.max(0, st.buildings.length - 1));
+  for (const s of st.structures) s.hp = Math.max(1, Math.floor(s.hp * 0.5));
+  st.stationHp = Math.min(st.stationHp, 100) || 100;
   st.buildQueue = [];
   st.trainQueue = [];
   st.population *= 0.5;
   for (const r of colonyRelays(w, prev)) if (r.a === systemId || r.b === systemId) removeRelay(w, r.id);
-  for (const f of fleetsAt(w, systemId)) if (f.owner === by && f.order.kind === 'blockade') f.order = { kind: 'idle' };
+  for (const id of Object.keys(w.routes)) if (w.routes[id]!.from === systemId || w.routes[id]!.to === systemId) delete w.routes[id];
+  for (const f of fleetsAt(w, systemId)) if (f.owner === by) { f.order = { kind: 'idle' }; f.pos = null; }
+  const winner = w.colonies[by];
+  if (winner) {
+    const rid = newId(w, 'R');
+    w.routes[rid] = { id: rid, owner: by, from: systemId, to: winner.capital, resource: 'all', perTrip: B.CARGO_CAPACITY * 2, whenBelow: Infinity, active: true, lastRunAt: -1e9 };
+  }
   logEvent(w, 'system.captured', [by, prev], { system: systemId });
 }
 
@@ -724,7 +1005,7 @@ function resolveMission(w: World, id: string): void {
     if (!relay) return;
     const victim = w.colonies[relay.owner];
     if (!victim || atPeace(w, owner.id, victim.id) || isShielded(w, victim)) return;
-    const bastions = [relay.a, relay.b].filter((s) => w.systems[s]!.owner === victim.id && w.systems[s]!.buildings.includes('bastion')).length;
+    const bastions = [relay.a, relay.b].filter((s) => w.systems[s]!.owner === victim.id && hasStructure(w.systems[s]!, 'bastion')).length;
     const p = B.SABOTAGE_BASE_SUCCESS - 0.2 * bastions;
     if (rng.next() < p) {
       relay.cutUntil = w.time + B.RELAY_CUT_HOURS * 3600;
@@ -754,7 +1035,6 @@ function runDraw(w: World): void {
   const drawn = new Set(draw.bands);
   const nextDrawAt = w.time + B.DRAW_INTERVAL_S;
 
-  // Storms shorten relays: those now out of range go dark for the hour.
   if (draw.event.kind === 'storm') {
     for (const colony of Object.values(w.colonies)) {
       const ctx = rangeContext(w, colony);
@@ -766,25 +1046,30 @@ function runDraw(w: World): void {
   }
 
   for (const colony of Object.values(w.colonies)) {
-    // Upkeep: unpowered relays go dark, farthest from the capital first.
-    let net = colonyNetwork(w, colony);
-    const relays = colonyRelays(w, colony.id).filter((r) => relayActive(r, w.time));
-    let upkeep = networkUpkeep(relays);
-    if (upkeep > colony.stock.energy) {
-      relays.sort((x, y) => Math.max(net.get(y.a) ?? 1e9, net.get(y.b) ?? 1e9) - Math.max(net.get(x.a) ?? 1e9, net.get(x.b) ?? 1e9));
-      while (upkeep > colony.stock.energy && relays.length) {
-        const r = relays.shift()!;
-        r.cutUntil = Math.max(r.cutUntil, nextDrawAt);
-        upkeep = networkUpkeep(relays);
-      }
-      logEvent(w, 'relays.unpowered', [colony.id]);
-      net = colonyNetwork(w, colony);
+    // Upkeep: each station pays half of its relays' share from its own stock; short stations darken relays.
+    const relays = colonyRelays(w, colony.id).filter((r) => relayLive(w, r));
+    const total = networkUpkeep(relays);
+    const base = relays.reduce((s, r) => s + r.upkeep, 0);
+    const scale = base > 0 ? total / base : 1;
+    let unpowered = 0;
+    const net0 = colonyNetwork(w, colony);
+    relays.sort((x, y) => Math.max(net0.get(y.a) ?? 1e9, net0.get(y.b) ?? 1e9) - Math.max(net0.get(x.a) ?? 1e9, net0.get(x.b) ?? 1e9));
+    for (const r of relays) {
+      const share = (r.upkeep * scale) / 2;
+      const sa = w.systems[r.a]!, sb = w.systems[r.b]!;
+      const payA = sa.owner === colony.id ? sa : sb, payB = sb.owner === colony.id ? sb : sa;
+      const home = w.systems[colony.marketSystem]!;
+      if (payA.stock.energy >= share && payB.stock.energy >= share) { payA.stock.energy -= share; payB.stock.energy -= share; }
+      else if (payA.stock.energy >= share * 2) payA.stock.energy -= share * 2;
+      else if (payB.stock.energy >= share * 2) payB.stock.energy -= share * 2;
+      else if (home.stock.energy >= share * 2) home.stock.energy -= share * 2; // the capital covers young outposts
+      else { r.cutUntil = Math.max(r.cutUntil, nextDrawAt); unpowered++; }
     }
-    colony.stock.energy -= upkeep;
+    if (unpowered) logEvent(w, 'relays.unpowered', [colony.id], { count: unpowered });
 
-    // Production from connected systems.
+    const net = colonyNetwork(w, colony);
     const produced = B.emptyStock();
-    let foodNeed = 0;
+    const overflow = B.emptyStock();
     const productive = ownedSystems(w, colony.id).filter((id) => net.has(id));
     for (const id of productive) {
       const sys = w.galaxy.systems[id]!;
@@ -792,27 +1077,28 @@ function runDraw(w: World): void {
       if (st.blockade) continue;
       let mult = 1;
       if (drawn.has(sys.band)) mult = draw.event.kind === 'eruption' && draw.event.band === sys.band ? B.DRAW_ERUPTION_MULT : B.DRAW_MATCH_MULT;
-      if (st.buildings.includes('extractor')) mult *= B.EXTRACTOR_MULT;
+      if (hasStructure(st, 'extractor')) mult *= B.EXTRACTOR_MULT;
       mult *= 1 + B.POP_YIELD_BONUS * st.population;
-      produced[sys.resource] += B.BASE_YIELD * sys.baseYield * mult;
+      const local = B.emptyStock();
+      local[sys.resource] += B.BASE_YIELD * sys.baseYield * mult;
       const generic = (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
-      for (const r of B.RESOURCE_LIST) produced[r] += generic;
-      foodNeed += st.population * B.POP_FOOD_PER_UNIT * 20;
-    }
-    stockAdd(colony.stock, produced);
-    colony.lastProduced = produced;
-    for (const r of B.RESOURCE_LIST) colony.avgProduced[r] = w.drawIndex === 0 ? produced[r] : colony.avgProduced[r] * 0.8 + produced[r] * 0.2;
-    // Population: fed systems grow, starving ones shrink.
-    const fed = colony.stock.food >= foodNeed;
-    colony.stock.food = Math.max(0, colony.stock.food - foodNeed);
-    for (const id of productive) {
-      const st = w.systems[id]!;
+      for (const r of B.RESOURCE_LIST) local[r] += generic;
+      // Population eats locally; fed systems grow.
+      const foodNeed = st.population * B.POP_FOOD_PER_UNIT * 20;
+      const fed = st.stock.food + local.food >= foodNeed;
+      local.food -= Math.min(local.food, foodNeed);
+      if (local.food === 0 && st.stock.food < foodNeed - 0) st.stock.food = Math.max(0, st.stock.food - foodNeed);
       st.population = fed ? Math.min(1, st.population + B.POP_GROWTH) : Math.max(0, st.population - 2 * B.POP_GROWTH);
+      const lost = depositClamped(w, id, local);
+      stockAdd(produced, local);
+      stockAdd(overflow, lost);
     }
+    colony.lastProduced = produced;
+    colony.lastOverflow = overflow;
+    for (const r of B.RESOURCE_LIST) colony.avgProduced[r] = w.drawIndex === 0 ? produced[r] : colony.avgProduced[r] * 0.8 + produced[r] * 0.2;
     colony.influence += produced.crystal * B.INFLUENCE_PER_CRYSTAL;
     colony.credits += productive.length * B.CREDITS_PER_SYSTEM_PER_DRAW;
-    if (draw.event.kind === 'echo' && net.has(draw.event.beacon)) { colony.stock.crystal += 100; logEvent(w, 'echo.bonus', [colony.id]); }
-
+    if (draw.event.kind === 'echo' && net.has(draw.event.beacon)) { depositClamped(w, draw.event.beacon, { crystal: 100 }); logEvent(w, 'echo.bonus', [colony.id]); }
     colony.scoreWindow.push(productive.length);
     if (colony.scoreWindow.length > B.SCORE_WINDOW_DRAWS) colony.scoreWindow.shift();
   }
@@ -843,11 +1129,11 @@ function settleMarkets(w: World): void {
       const o = w.orders[f.order]!;
       const colony = w.colonies[o.colony]!;
       let fee = B.MARKET_FEE;
-      if (ownedSystems(w, colony.id).some((s) => w.systems[s]!.buildings.includes('tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
+      if (ownedSystems(w, colony.id).some((s) => hasBuilding(w, s, 'tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
       if (colony.faction === 'guild') fee *= B.GUILD_FEE_MULT;
       if (o.side === 'buy') {
-        colony.stock[resource] += f.qty;
-        colony.credits += f.qty * (o.price - f.price); // refund the difference from escrow
+        depositClamped(w, colony.marketSystem, { [resource]: f.qty });
+        colony.credits += f.qty * (o.price - f.price);
         colony.credits -= f.qty * f.price * fee;
       } else {
         colony.credits += f.qty * f.price * (1 - fee);
@@ -857,10 +1143,9 @@ function settleMarkets(w: World): void {
       if (o.qty <= 0) delete w.orders[o.id];
     }
   }
-  // Unfilled orders expire at the draw: escrow returns.
   for (const o of Object.values(w.orders)) {
     const colony = w.colonies[o.colony]!;
-    if (o.side === 'sell') colony.stock[o.resource] += o.qty; else colony.credits += o.qty * o.price;
+    if (o.side === 'sell') depositClamped(w, colony.marketSystem, { [o.resource]: o.qty }); else colony.credits += o.qty * o.price;
     delete w.orders[o.id];
   }
   for (const colony of Object.values(w.colonies)) {
@@ -869,19 +1154,32 @@ function settleMarkets(w: World): void {
   }
 }
 
+/** Accepted barters become two couriers: the goods physically cross the galaxy. */
 function settleBarters(w: World): void {
   for (const b of Object.values(w.barters)) {
     const from = w.colonies[b.from], to = w.colonies[b.to];
-    if (b.accepted && from && to && stockHas(to.stock, b.want)) {
-      stockSub(to.stock, b.want);
-      stockAdd(from.stock, b.want);
-      stockAdd(to.stock, b.give);
+    const toMs = to ? w.systems[to.marketSystem]! : null;
+    if (b.accepted && from && to && toMs && stockHas(toMs.stock, b.want)) {
+      stockSub(toMs.stock, b.want);
+      courier(w, from, from.marketSystem, to.marketSystem, b.give);
+      courier(w, to, to.marketSystem, from.marketSystem, b.want);
       logEvent(w, 'barter.done', [b.from, b.to], { give: b.give, want: b.want });
     } else if (from) {
-      stockAdd(from.stock, b.give); // refund
+      depositClamped(w, from.marketSystem, b.give); // refund
     }
     delete w.barters[b.id];
   }
+}
+
+/** A neutral courier convoy (interceptable, escortable by nobody) that vanishes on delivery. */
+function courier(w: World, owner: Colony, from: string, to: string, cargo: StockDelta): void {
+  const units = emptyFleet();
+  units.cargo = Math.max(1, Math.ceil(stockTotal(cargo) / B.CARGO_CAPACITY));
+  const f = newFleet(w, owner.id, from, units);
+  (f as FleetState & { courier?: boolean }).courier = true;
+  stockAdd(f.cargo, cargo);
+  const res = depart(w, owner, f, to, { kind: 'convoy', to, route: null });
+  if (!res.ok) { depositClamped(w, to, cargo); delete w.fleets[f.id]; }
 }
 
 function updateTitles(w: World): void {
@@ -891,7 +1189,7 @@ function updateTitles(w: World): void {
   for (const c of Object.values(w.colonies)) {
     const n = productiveSystems(w, c).length;
     if (n > netBest) { netBest = n; network = c.id; }
-    const f = Object.values(w.fleets).filter((x) => x.owner === c.id).reduce((s, x) => s + fleetSize(x.units), 0);
+    const f = Object.values(w.fleets).filter((x) => x.owner === c.id).reduce((s, x) => s + combatSize(x.units), 0);
     if (f > fleetBest) { fleetBest = f; admiralty = c.id; }
     const v = c.marketVolume7d.reduce((s, x) => s + x, 0);
     if (v > volBest) { volBest = v; exchange = c.id; }
@@ -915,3 +1213,6 @@ function endSeason(w: World, reason: 'silence' | 'renaissance'): void {
   w.ended = { at: w.time, reason, winner };
   logEvent(w, 'season.ended', winner ? [winner] : [], { reason });
 }
+
+// Exposed for the General and tests.
+export { continueConvoy, sendConvoy, loot, depart };
