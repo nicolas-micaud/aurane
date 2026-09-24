@@ -3,6 +3,7 @@ import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol
 import { connect, createGuest, fetchPublicConfig, redeem } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
+import { InstallButton } from './bits.js';
 
 export function Landing() {
   const [name, setName] = useState('');
@@ -63,6 +64,7 @@ export function Landing() {
         {error && <p class="error">{error}</p>}
         <button class="primary" disabled={busy || name.trim().length < 2 || (requireInvite && invite.trim().length < 4)}>{t('play')}</button>
         <p class="muted small"><button type="button" class="link" onClick={() => setJoining(!joining)}>{t('haveColony')}</button></p>
+        <InstallButton compact />
         {joining && (
           <div class="join">
             <label>{t('pasteLink')}<input value={joinCode} onInput={(e) => setJoinCode((e.target as HTMLInputElement).value)} placeholder="https://play.playaurane.com/#join=…" /></label>

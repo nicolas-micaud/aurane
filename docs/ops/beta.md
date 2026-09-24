@@ -32,3 +32,19 @@ Pas d'e-mail ni de mot de passe en bêta fermée : le jeton d'appareil est le co
 un second appareil, « Lier un autre appareil » dans le panneau du Général donne un lien valable 24 h
 qui ouvre la même Colonie ; la page d'accueil accepte aussi ce lien collé. Un joueur qui perd tous ses
 appareils demande un nouveau lien à l'admin (à ajouter si le besoin apparaît : `/api/admin/link`).
+
+## Installer Aurane sur mobile (PWA)
+
+Le client est une application web installable : même code, même serveur, icône sur l'écran d'accueil,
+plein écran sans barre d'adresse, mises à jour automatiques (bandeau « Nouvelle version » quand une
+livraison arrive). Consignes pour les testeurs :
+
+- **Android (Chrome)** : ouvrir `https://play.playaurane.com`, toucher « Installer l'application » sur
+  l'écran d'entrée (ou le menu ⋮ → « Installer l'application »).
+- **iPhone / iPad (Safari)** : ouvrir l'adresse dans Safari, bouton Partager, puis « Sur l'écran
+  d'accueil ». L'écran d'entrée le rappelle. Les autres navigateurs iOS ne permettent pas l'installation.
+- **Ordinateur (Chrome, Edge)** : icône d'installation dans la barre d'adresse.
+
+Limites face à une application native, à garder pour le portage iOS/Android : pas de notifications
+push sur iPhone tant que l'app n'est pas installée (et seulement depuis iOS 16.4), pas de présence sur
+les stores, stockage hors ligne limité à la coquille de l'app (la partie exige le réseau).

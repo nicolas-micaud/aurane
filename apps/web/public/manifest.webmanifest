@@ -1,15 +1,26 @@
 {
+  "id": "/",
   "name": "Aurane",
   "short_name": "Aurane",
-  "description": "can't stop the signal",
-  "start_url": "/",
+  "description": "can't stop the signal — stratégie galactique persistante, gratuite, dans le navigateur.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#070b16",
   "theme_color": "#070b16",
+  "categories": ["games", "strategy"],
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Gazette", "short_name": "Gazette", "description": "La Gazette du jour", "url": "/gazette", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }
