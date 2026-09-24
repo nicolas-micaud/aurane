@@ -107,6 +107,12 @@ export function createHttpServer(engine: Engine): Server {
         return r ? json(res, 200, r) : json(res, 404, { error: 'no such battle' });
       }
       if (req.method === 'GET' && url.pathname === '/api/briefing') return json(res, 200, await engine.briefing(colony.id, url.searchParams.get('lang') === 'en' ? 'en' : 'fr'));
+      if (req.method === 'GET' && url.pathname === '/api/talk') return json(res, 200, { history: engine.history(colony.id) });
+      if (req.method === 'POST' && url.pathname === '/api/talk') {
+        const parsed = z.object({ text: z.string().trim().min(1).max(1500), lang: z.enum(['fr', 'en']).default('fr') }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid message' });
+        return json(res, 200, await engine.talk(colony.id, parsed.data.text, parsed.data.lang));
+      }
       if (req.method === 'POST' && url.pathname === '/api/doctrine') {
         const parsed = z.object({ text: z.string().max(2000), lang: z.enum(['fr', 'en']).default('fr') }).safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid doctrine' });

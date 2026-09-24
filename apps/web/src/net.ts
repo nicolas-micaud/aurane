@@ -109,6 +109,18 @@ export async function fetchBriefing(lang: 'fr' | 'en'): Promise<{ text: string; 
   return res.ok ? (await res.json() as { text: string; source: string; awaySeconds: number }) : null;
 }
 
+export interface Turn { who: 'me' | 'general'; text: string; at: number }
+/** Talk to the General: small talk, questions, orders. */
+export async function talk(text: string, lang: 'fr' | 'en'): Promise<{ reply: string; source: string; policyChanged: boolean; history: Turn[] } | null> {
+  try {
+    const res = await fetch('/api/talk', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
+    return res.ok ? (await res.json() as { reply: string; source: string; policyChanged: boolean; history: Turn[] }) : null;
+  } catch { return null; }
+}
+export async function fetchTalk(): Promise<Turn[]> {
+  try { const res = await fetch('/api/talk', { headers: authHeaders() }); return res.ok ? ((await res.json() as { history: Turn[] }).history) : []; } catch { return []; }
+}
+
 export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{ summary: string; source: string; warnings: string[]; reply: string } | null> {
   try {
     const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });

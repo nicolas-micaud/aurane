@@ -6,7 +6,7 @@ import {
   apply, battleList, battleReport, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { clientFromEnv, compilePolicy, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient } from '@aurane/general';
+import { clientFromEnv, compilePolicy, converse, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -280,6 +280,37 @@ export class Engine {
     apply(this.world, c.id, { type: 'set_policy', policy: compiled.policy });
     this.dirtyColonies.add(c.id);
     return { policy: compiled.policy, summary: compiled.summary, source: compiled.source, warnings: compiled.warnings, reply: compiled.reply };
+  }
+
+  /** Conversation with the General, per colony (last turns kept in memory; the snapshot does not carry them). */
+  private talks = new Map<string, Turn[]>();
+
+  history(colonyId: string): Turn[] { return this.talks.get(colonyId) ?? []; }
+
+  async talk(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ reply: string; source: string; policyChanged: boolean; history: Turn[] } | null> {
+    const c = this.world.colonies[colonyId];
+    if (!c) return null;
+    const systems: Record<string, string> = {};
+    for (const [id, st] of Object.entries(this.world.systems)) if (st.owner === c.id) systems[id] = this.world.galaxy.systems[id]!.name;
+    const colonies: Record<string, string> = {};
+    for (const o of Object.values(this.world.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
+    const alliances: Record<string, string> = {};
+    for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
+    const names: Record<string, string> = {};
+    for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
+    const history = this.history(c.id);
+    const client = this.quota.take(c.id, 'talk') ? this.llm : null;
+    const res = await converse({ text, lang, persona: c.persona, history, view: viewFor(this.world, c), ctx: { lang, current: c.policy, systems, colonies, alliances, persona: c.persona } }, client, names);
+    let policyChanged = false;
+    if (res.policy) {
+      res.policy.defendFirst = res.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
+      apply(this.world, c.id, { type: 'set_policy', policy: res.policy });
+      this.dirtyColonies.add(c.id);
+      policyChanged = true;
+    }
+    const next = [...history, { who: 'me' as const, text: text.slice(0, 1500), at: Date.now() }, { who: 'general' as const, text: res.reply, at: Date.now() }].slice(-16);
+    this.talks.set(c.id, next);
+    return { reply: res.reply, source: res.source, policyChanged, history: next };
   }
 
   async briefing(colonyId: string, lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {

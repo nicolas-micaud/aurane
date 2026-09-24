@@ -263,6 +263,12 @@ Le LLM **ne joue jamais un tick**. Il fait deux choses : il **écrit** et il **c
 4. **La Gazette** (écrit). Chaque jour, un article public par région et un pour la galaxie, générés à partir du journal d'événements : batailles, trahisons, records, Phares rallumés, Silence qui approche.
 5. **Mémoire**. À la fin de chaque saison, le Général rédige des **mémoires** de trois paragraphes, stockées avec le compte. Il en cite des extraits la saison suivante. Le joueur les relit, les partage.
 
+**Conversation** (décision 0006, 25.09.2026) : l'onglet Général est un fil de discussion. Ordre, question sur les
+règles ou provocation, le Général répond en personnage, en une à trois phrases, et compile les ordres au passage.
+Chaque personnage a une fiche (tempérament, humour, style, interdits, spécialité) et connaît les mécaniques du jeu
+par un mémento joint à chaque appel ; il voit la situation réelle de la Colonie. Sans modèle, un repli à mots-clés
+répond encore dans sa voix.
+
 ### 9.2 Niveaux (via l'Académie)
 
 - Niveau 1 (d'office) : briefing, doctrine économique (Marché, entretien, construction).

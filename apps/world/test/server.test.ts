@@ -57,8 +57,12 @@ describe('world server', () => {
     expect(doc.policy.aggression).toBe(0);
     expect((doc as { reply: string }).reply.length).toBeGreaterThan(10); // the General always answers, in its voice
     // Small talk is not an order: the General says so instead of staying silent.
-    const chat = await (await fetch(`${base}/api/doctrine`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ text: 'Fais-moi rire.', lang: 'fr' }) })).json() as { reply: string };
-    expect(chat.reply).toMatch(/ordre|règles/);
+    const chat = await (await fetch(`${base}/api/talk`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ text: 'Fais-moi rire.', lang: 'fr' }) })).json() as { reply: string; policyChanged: boolean; history: unknown[] };
+    expect(chat.policyChanged).toBe(false);
+    expect(chat.reply.length).toBeGreaterThan(20);
+    expect(chat.history).toHaveLength(2);
+    const hist = await (await fetch(`${base}/api/talk`, { headers: { authorization: `Bearer ${token}` } })).json() as { history: unknown[] };
+    expect(hist.history).toHaveLength(2);
     expect(doc.policy.defendFirst).toContain(engine.world.colonies[colonyId]!.capital);
     const brief = await (await fetch(`${base}/api/briefing?lang=en`, { headers: { authorization: `Bearer ${token}` } })).json() as { text: string; source: string };
     expect(brief.source).toBe('template');

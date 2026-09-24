@@ -154,3 +154,11 @@ Réponse (session locale, 24.09.2026 21:34) : go de Nick reçu, PR 4 fusionnée 
 client rebuild, cache Cloudflare purgé, `/healthz` et `/` en 200. Le monde a repris sur la même base (31 colonies,
 graine `beta-1`), les réglages de la décision 0005 s'appliquent à la saison en cours. `beta-2` / `GALAXY_RADIUS=6` :
 proposé à Nick pour la saison suivante, pas activé.
+
+## 2026-09-25 — PR 5 : Généraux conversationnels (décision 0006)
+
+**PR 5 fusionnée, redéployer** (dès que cette entrée est sur `main`). Contenu : conversation avec le Général
+(`POST /api/talk`, une requête modèle par message, quota 60 par Colonie et par jour, repli sans modèle), fiches
+de personnalité, mémento des règles, carte qui reste visible quand le clavier s'ouvre. Aucune variable nouvelle.
+Le trafic LLM va monter : surveille la file de rog1 (`LLM_PRIMARY_CONCURRENCY=2`) pendant le week-end ; si les
+réponses dépassent 20 s, le repli Infomaniak prend le relais automatiquement.

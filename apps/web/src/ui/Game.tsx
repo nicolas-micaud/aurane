@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import type { Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, fetchBriefing, status, submitDoctrine, toast, view, requestLink } from '../net.js';
+import { act, fetchBriefing, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type Turn } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -439,34 +439,39 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
   );
 }
 
-const talk = signal<{ who: 'me' | 'general'; text: string }[]>([]);
+const talk = signal<Turn[]>([]);
+let talkLoaded = false;
 
 function GeneralPanel({ v }: { v: PlayerView }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const thread = useSig(talk);
+  const endRef = useRef<HTMLDivElement>(null);
   const p = v.me.policy;
+  useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } }, []);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
   const submit = async () => {
     const said = text.trim();
     if (!said) return;
     setBusy(true); setText('');
-    talk.value = [...talk.value.slice(-5), { who: 'me', text: said }];
-    const r = await submitDoctrine(said, lang.value);
+    talk.value = [...talk.value, { who: 'me', text: said, at: Date.now() }];
+    const r = await sendTalk(said, lang.value);
     setBusy(false);
-    talk.value = [...talk.value.slice(-5), { who: 'general', text: r ? r.reply : t('generalOffline') }];
+    if (r) { talk.value = r.history; if (r.policyChanged) toast.value = { text: t('compiled'), kind: 'ok' }; }
+    else talk.value = [...talk.value, { who: 'general', text: t('generalOffline'), at: Date.now() }];
   };
   return (
-    <div>
-      <h2>{t(v.me.persona as 'vane')}</h2>
-      <p class="muted">{t('doctrineHint')}</p>
-      <div class="talk">
-        {thread.length === 0 && <p class="bubble general">{t('generalHello')}</p>}
-        {thread.map((m, i) => <p key={i} class={`bubble ${m.who}`}>{m.text}</p>)}
-        {busy && <p class="bubble general muted">{t('compiling')}</p>}
-      </div>
+    <div class="generalpanel">
+      <h2>{t(v.me.persona as 'vane')} <small class="muted">{t(`${v.me.persona}Desc` as 'vaneDesc')}</small></h2>
       <div class="say">
         <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
-        <button class="primary" disabled={busy || text.trim().length < 2} onClick={() => void submit()}>{t('send')}</button>
+        <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>
+      </div>
+      <div class="talk">
+        {thread.length === 0 && <p class="bubble general">{t('generalHello')}</p>}
+        {thread.slice(-12).map((m, i) => <p key={`${m.at}-${i}`} class={`bubble ${m.who}`}>{m.text}</p>)}
+        {busy && <p class="bubble general muted">{t('thinking')}</p>}
+        <div ref={endRef} />
       </div>
       {p.notes && <p class="muted small">{t('doctrine')} : {p.notes}</p>}
       <h3>{t('policy')}</h3>
