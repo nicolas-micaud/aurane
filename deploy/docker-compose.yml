@@ -21,6 +21,16 @@ services:
       TIME_SCALE: "1"
       HOST: 0.0.0.0
       PORT: "8080"
+      # LLM (packages/general/src/llm.ts) : primaire rog1 via le tailnet, repli Infomaniak. Valeurs dans .env
+      # (Vaultwarden collection aurane, items env=LLM_*). Absentes = pas de Général LLM, le monde tourne quand même.
+      LLM_PRIMARY_BASE_URL: ${LLM_PRIMARY_BASE_URL:-}
+      LLM_PRIMARY_API_KEY: ${LLM_PRIMARY_API_KEY:-}
+      LLM_PRIMARY_MODEL: ${LLM_PRIMARY_MODEL:-}
+      LLM_PRIMARY_CONCURRENCY: ${LLM_PRIMARY_CONCURRENCY:-2}
+      LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      LLM_FALLBACK_CONCURRENCY: ${LLM_FALLBACK_CONCURRENCY:-4}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
