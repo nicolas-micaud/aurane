@@ -1,6 +1,6 @@
 // What one colony is allowed to see. The server sends nothing else; fog of war is enforced
 // here, not in the client.
-import type { Building, Fleet, Resource, Stock } from '@starnet/protocol';
+import type { Building, Fleet, Resource, Stock } from '@aurane/protocol';
 import type { Circle } from './geometry.js';
 import type { Draw } from './draw.js';
 import type { Colony, LitBeacon, World } from './state.js';

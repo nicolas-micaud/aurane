@@ -3,7 +3,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
-import { CommandSchema, FACTIONS, PERSONAS } from '@starnet/protocol';
+import { CommandSchema, FACTIONS, PERSONAS } from '@aurane/protocol';
 import type { Engine } from './engine.js';
 
 const GuestSchema = z.object({

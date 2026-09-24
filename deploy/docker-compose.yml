@@ -4,10 +4,10 @@
 # deploy time, never committed.
 services:
   world:
-    image: ${WORLD_IMAGE:-starnet-world:latest}
+    image: ${WORLD_IMAGE:-aurane-world:latest}
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://starnet:${POSTGRES_PASSWORD}@postgres:5432/starnet
+      DATABASE_URL: postgres://aurane:${POSTGRES_PASSWORD}@postgres:5432/aurane
       SEASON_SEED: ${SEASON_SEED:-season-0}
       GALAXY_RADIUS: ${GALAXY_RADIUS:-12}
       SEASON_DAYS: ${SEASON_DAYS:-56}
@@ -28,13 +28,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: starnet
-      POSTGRES_DB: starnet
+      POSTGRES_USER: aurane
+      POSTGRES_DB: aurane
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U starnet -d starnet"]
+      test: ["CMD-SHELL", "pg_isready -U aurane -d aurane"]
       interval: 10s
       timeout: 5s
       retries: 10

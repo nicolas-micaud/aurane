@@ -1,5 +1,5 @@
-import { FACTIONS, PERSONAS, type Faction, type Persona } from '@starnet/protocol';
-import { apply, colonyScore, createWorld, decide, fleetSize, productiveSystems, spawnColony, tick, type World } from '@starnet/sim';
+import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol';
+import { apply, colonyScore, createWorld, decide, fleetSize, productiveSystems, spawnColony, tick, type World } from '@aurane/sim';
 
 export interface SeasonOptions {
   seed: string;

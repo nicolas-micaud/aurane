@@ -1,5 +1,5 @@
-import type { Building, Command, Faction, Fleet, Persona, Resource, Stock, StockDelta, UnitType } from '@starnet/protocol';
-import { DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@starnet/protocol';
+import type { Building, Command, Faction, Fleet, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
+import { DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@aurane/protocol';
 import * as B from './balance.js';
 import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { hexNeighbors, hexKey } from './hex.js';

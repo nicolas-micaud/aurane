@@ -1,5 +1,5 @@
 # World server image: one process per season. Built from the monorepo root:
-#   docker build -f apps/world/Dockerfile -t starnet-world:<sha> .
+#   docker build -f apps/world/Dockerfile -t aurane-world:<sha> .
 FROM node:22-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./

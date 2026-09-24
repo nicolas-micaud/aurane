@@ -1,4 +1,4 @@
-import type { Hex, Resource } from '@starnet/protocol';
+import type { Hex, Resource } from '@aurane/protocol';
 import { createRng, subSeed, type Rng } from './rng.js';
 import { hexDisk, hexKey, hexRing, hexToPixel, regionKey } from './hex.js';
 import { SECTOR_SIZE } from './balance.js';

@@ -1,7 +1,7 @@
 // The deterministic rule engine that executes a Policy. Both NPC colonies and players'
 // Generals run this; the LLM only writes the Policy and narrates. No randomness beyond a
 // seeded stream per colony and decision tick, so a season replays bit-for-bit.
-import type { Command, Policy, Resource, Stock } from '@starnet/protocol';
+import type { Command, Policy, Resource, Stock } from '@aurane/protocol';
 import * as B from './balance.js';
 import type { StarSystem } from './galaxy.js';
 import { hexDistance } from './hex.js';

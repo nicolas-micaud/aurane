@@ -1,5 +1,5 @@
 // Every tunable number in one place. Balanced by accelerated seasons, not by feel.
-import type { Building, Resource, Stock, UnitType } from '@starnet/protocol';
+import type { Building, Resource, Stock, UnitType } from '@aurane/protocol';
 
 export const SECTOR_SIZE = 1000;          // world units per sector edge box
 export const BASE_RANGE = 260;            // relay range in world units (systems are ~130 apart on average)

@@ -1,11 +1,11 @@
 // The world process: one simulation, a real-time loop, NPC and absent-player Generals,
 // snapshots, and a fan-out of per-colony views to connected clients.
 import { createHash, randomBytes } from 'node:crypto';
-import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@starnet/protocol';
+import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@aurane/protocol';
 import {
   apply, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, tick, viewFor,
   type ApplyResult, type Colony, type PlayerView, type World,
-} from '@starnet/sim';
+} from '@aurane/sim';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -159,12 +159,12 @@ export class Engine {
   }
 }
 
-import { colonyScore as colonyScoreOf } from '@starnet/sim';
+import { colonyScore as colonyScoreOf } from '@aurane/sim';
 
 export const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
 const NPC_FIRST = ['Ilse', 'Tamsin', 'Orrin', 'Vesna', 'Kael', 'Maren', 'Dario', 'Nyra', 'Haldor', 'Selin', 'Bram', 'Odile'];
 const NPC_LAST = ['Vantor', 'Quill', 'Ashgrove', 'Merrow', 'Solace', 'Draven', 'Hale', 'Corvin', 'Estrid', 'Lorne'];
 function npcName(i: number): string {
-  return `Maison ${NPC_FIRST[i % NPC_FIRST.length]} ${NPC_LAST[Math.floor(i / NPC_FIRST.length) % NPC_LAST.length]}`;
+  return `Colonie ${NPC_FIRST[i % NPC_FIRST.length]} ${NPC_LAST[Math.floor(i / NPC_FIRST.length) % NPC_LAST.length]}`;
 }

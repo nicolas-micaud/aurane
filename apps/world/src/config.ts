@@ -22,7 +22,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST ?? '127.0.0.1',
     databaseUrl: env.DATABASE_URL ?? null,
     snapshotDir: env.SNAPSHOT_DIR ?? './data',
-    seasonSeed: env.SEASON_SEED ?? 'season-0',
+    seasonSeed: env.SEASON_SEED ?? 'aurane-s0',
     galaxyRadius: num(env.GALAXY_RADIUS, 12),
     seasonDays: num(env.SEASON_DAYS, 56),
     npcCount: num(env.NPC_COUNT, 30),

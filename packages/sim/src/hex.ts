@@ -1,4 +1,4 @@
-import type { Hex } from '@starnet/protocol';
+import type { Hex } from '@aurane/protocol';
 
 export const hexKey = (h: Hex): string => `${h.q},${h.r}`;
 export const parseHex = (key: string): Hex => {

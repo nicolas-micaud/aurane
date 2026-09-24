@@ -1,4 +1,4 @@
-import type { Fleet, UnitType } from '@starnet/protocol';
+import type { Fleet, UnitType } from '@aurane/protocol';
 import { COMBAT_VARIANCE, COUNTERS, COUNTER_MULT, UNIT_POWER } from './balance.js';
 import { createRng } from './rng.js';
 import { fleetSize } from './state.js';

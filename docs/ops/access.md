@@ -33,11 +33,11 @@ Deux voies, cumulables :
 
 Le même hook, si `BW_SERVER`, `BW_CLIENTID`, `BW_CLIENTSECRET` et `BW_PASSWORD` sont
 définis et que le CLI `bw` est installé (script de setup : `npm i -g @bitwarden/cli`),
-se connecte à Vaultwarden, lit le dossier `starnet` et exporte chaque élément comme
+se connecte à Vaultwarden, lit le collection `aurane` et exporte chaque élément comme
 variable d'environnement nommée d'après son champ personnalisé `env`
 (ex. `LLM_FALLBACK_API_KEY`) via `$CLAUDE_ENV_FILE`.
 
-Un compte Vaultwarden **dédié, en lecture seule** sur le dossier `starnet` est
+Un compte Vaultwarden **dédié, en lecture seule** sur le collection `aurane` est
 préférable au compte personnel : les identifiants vivent dans les variables de
 l'environnement cloud, pas dans le dépôt, et se révoquent d'un clic.
 

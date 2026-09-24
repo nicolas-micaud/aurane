@@ -15,7 +15,7 @@ let dir: string;
 let server: ReturnType<typeof createHttpServer>;
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'starnet-'));
+  dir = await mkdtemp(join(tmpdir(), 'aurane-'));
   const cfg = loadConfig({ SNAPSHOT_DIR: dir, GALAXY_RADIUS: '4', NPC_COUNT: '6', SEASON_SEED: 'server-test', TIME_SCALE: '3600' });
   engine = new Engine(cfg, new FileStore(dir));
   await engine.init();

@@ -1,4 +1,4 @@
-import type { Building, Faction, Fleet, Persona, Policy, Resource, Stock, StockDelta, UnitType } from '@starnet/protocol';
+import type { Building, Faction, Fleet, Persona, Policy, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
 import type { Galaxy } from './galaxy.js';
 import type { Relay } from './network.js';
 import type { Draw } from './draw.js';

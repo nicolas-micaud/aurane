@@ -1,4 +1,4 @@
-import type { Resource } from '@starnet/protocol';
+import type { Resource } from '@aurane/protocol';
 import type { MarketOrder } from './state.js';
 
 export interface Fill { order: string; colony: string; qty: number; price: number }

@@ -1,4 +1,4 @@
-# StarNet — Document de game design (Saison 0)
+# Aurane — Document de game design (Saison 0)
 
 > *can't stop the signal*
 >
@@ -8,17 +8,17 @@
 
 ## 1. Vision
 
-StarNet est un jeu de stratégie **web, gratuit, persistant et massivement multijoueur**, jouable en cinq minutes sur mobile et en cinq heures sur grand écran. Le joueur incarne une **Colonie** qui étend un réseau de relais à travers une galaxie partagée, produit et échange des ressources au rythme d'un tirage horaire, se bat pour des goulets stratégiques et confie son empire à un **Général**, un général IA qui joue en son absence et le briefe à son retour.
+Aurane (nom de travail initial : Aurane, abandonné le 24 septembre 2026 pour cause d'homonymes) est un jeu de stratégie **web, gratuit, persistant et massivement multijoueur**, jouable en cinq minutes sur mobile et en cinq heures sur grand écran. Le joueur incarne une **Colonie** qui étend un réseau de relais à travers une galaxie partagée, produit et échange des ressources au rythme d'un tirage horaire, se bat pour des goulets stratégiques et confie son empire à un **Général**, un général IA qui joue en son absence et le briefe à son retour.
 
 ### 1.1 Piliers
 
-1. **Un seul verbe : relier.** Toute la stratégie découle d'une mécanique que l'on comprend en trente secondes : deux étoiles reliées forment un relais, et seul ce qui est relié à la capitale existe vraiment.
+1. **Un seul verbe : relier.** Le jeu porte le nom de sa galaxie : on ne joue pas *à* Aurane, on joue *dans* l'Aurane. Toute la stratégie découle d'une mécanique que l'on comprend en trente secondes : deux étoiles reliées forment un relais, et seul ce qui est relié à la capitale existe vraiment.
 2. **Le temps réel des timers, pas du réflexe.** Tout ordre aboutit dans un délai connu, que le joueur soit présent ou non. Aucun avantage à la vitesse de clic ; tout l'avantage à la qualité des décisions.
 3. **Le Tirage.** Chaque heure, la galaxie bat : tirage des ressources, règlement de tous les échanges, publication des nouvelles. Un rendez-vous partagé par toute la galaxie, qui structure la journée du joueur et rend le monde vivant.
 4. **Horizontal, pas vertical.** Un joueur de six semaines n'écrase pas un joueur de six jours par ses statistiques, seulement par son réseau, ses alliés et son intelligence. Les saisons de huit semaines remettent tout le monde sur la ligne de départ.
 5. **Le Général.** L'IA n'est pas un gadget : c'est un personnage qui a une mémoire, une personnalité, qui exécute ta doctrine quand tu dors et qui te raconte ce qui s'est passé. C'est la raison de revenir.
 
-### 1.2 Ce que StarNet n'est pas
+### 1.2 Ce que Aurane n'est pas
 
 - Pas de pay-to-win. Aucun achat n'influence la simulation. Le modèle est le trafic, puis éventuellement des cosmétiques (skins de relais, voix de Général, titres).
 - Pas de progression de compte qui survit à la saison, hors cosmétiques, titres et mémoire du Général.
@@ -387,7 +387,7 @@ Sans dates ; l'ordre compte, pas le calendrier.
 |---|---|---|
 | l'Aurane | the Aurane | la galaxie |
 | les Anciens | the Ancients | les bâtisseurs disparus |
-| le Réseau | the Network | les relais du joueur (StarNet) |
+| le Réseau | the Network | les relais du joueur (Aurane) |
 | le Signal | the Signal | ce qui circule sur le Réseau |
 | le Réveil | the Waking | début de saison |
 | le Silence | the Silence | fin de saison, reset |

@@ -1,4 +1,4 @@
-import { BAND_COUNT, BANDS_PER_DRAW } from '@starnet/protocol';
+import { BAND_COUNT, BANDS_PER_DRAW } from '@aurane/protocol';
 import { DRAW_EVENT_PROBABILITY, DRAW_MEMORY_PENALTY } from './balance.js';
 import { createRng, subSeed } from './rng.js';
 

@@ -3,7 +3,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
-import type { WorldSnapshot } from '@starnet/sim';
+import type { WorldSnapshot } from '@aurane/sim';
 
 export interface PlayerRecord { id: string; colonyId: string; tokenHash: string; name: string; createdAt: number }
 

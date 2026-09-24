@@ -1,4 +1,4 @@
-import type { Faction, Stock } from '@starnet/protocol';
+import type { Faction, Stock } from '@aurane/protocol';
 import {
   AMPLIFIER_RANGE_MULT, BASE_RANGE, BEACON_RANGE_MULT, CONCORDAT_RANGE_MULT, NEBULA_COST_MULT,
   PULSAR_RANGE_MULT, RELAY_BUILD_SECONDS_PER_UNIT, RELAY_COST_PER_UNIT, RELAY_UPKEEP_PER_UNIT, STORM_RANGE_MULT,

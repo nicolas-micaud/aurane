@@ -1,8 +1,8 @@
 {
-  "name": "starnet",
+  "name": "aurane",
   "version": "0.1.0",
   "private": true,
-  "description": "StarNet — can't stop the signal. Free, persistent, web-only MMO strategy by ninabot.",
+  "description": "Aurane — can't stop the signal. Free, persistent, web-only MMO strategy by ninabot.",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "season": "npm run -w @starnet/season-sim start --"
+    "season": "npm run -w @aurane/season-sim start --"
   },
   "engines": {
     "node": ">=22"
