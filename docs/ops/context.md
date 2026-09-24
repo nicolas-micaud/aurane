@@ -1,5 +1,9 @@
-# Contexte ninabot pour StarNet
+# Contexte ninabot pour Aurane (ex StarNet)
 
+> **Renommage 24.09.2026** : le jeu s'appelle **Aurane** (StarNet est trop proche d'autres jeux) ; domaine
+> cible `playaurane.com` (achat en cours par une autre session). Les noms techniques ci-dessous suivent :
+> collection Vaultwarden `aurane`, rôle IAM `terraform-aurane`, tag Tailscale `tag:aurane`.
+>
 > Rassemblé le 24 septembre 2026 depuis la mémoire ninabot (corthexis / sokkan-memory) et vérifié
 > sur les machines. **Aucun secret ici** : les valeurs vivent dans Vaultwarden, ce document dit
 > seulement où. Les adresses internes (tailnet, IP) sont volontairement omises ; les hôtes se
@@ -46,9 +50,12 @@ Règles tirées de ces modules :
 - **Credentials par l'environnement**, jamais dans les `.tf` ni les tfvars commités
   (`terraform.tfvars` gitignored ; le README du module documente le chargement depuis Vaultwarden
   en début de session).
-- **Clé API scopée** : rôle IAM Exoscale least-privilege (`default-deny`, seulement les services
-  utilisés, aucune permission org-level). Créer un rôle et une clé dédiés à StarNet sur ce modèle,
-  stockés dans Vaultwarden.
+- **Clé API scopée — FAIT le 24.09** : rôle IAM `terraform-aurane` (`default-deny`, services `compute`,
+  `dbaas`, `sos` autorisés, aucune permission org-level ; validé à chaud : compute/dbaas OK, iam/dns
+  refusés) et clé API du même nom. Dans la collection Vaultwarden `aurane` : items
+  `exoscale-aurane-api-key` (`env=EXOSCALE_API_KEY`) et `exoscale-aurane-api-secret`
+  (`env=EXOSCALE_API_SECRET`), valeur dans `login.password`. Pas de `sks` dans le rôle : la Saison 0
+  est en VM + Compose ; à élargir le jour où SKS revient.
 - **Security group deny-all ingress** ; SSH par Tailscale (`tailscale up --ssh`), entrée web par
   tunnel Cloudflare (connexion sortante). Seul UDP 41641 ouvert pour le chemin direct Tailscale.
 - **cloud-init** installe docker, tailscale (clé d'enrôlement éphémère taguée, frappée via l'API
@@ -63,7 +70,7 @@ Règles tirées de ces modules :
   `exo dbaas show --uri` ; sous systemd, `exo` a besoin de `HOME` et d'un `PATH` explicite ; les IP
   CGNAT Tailscale n'atteignent pas l'endpoint public d'une DBaaS (allowlister l'IP publique).
 - Convention de nommage des VMs : `<projet>-<rôle><n>` (`ninabot-front1`, `ninjob-dr1`,
-  `maic-runner1`). Pour StarNet : `starnet-<rôle>1`. Label `role=<…>` sur l'instance.
+  `maic-runner1`). Pour Aurane : `aurane-<rôle>1`. Label `role=<…>` sur l'instance.
 - VMs Exoscale naissent en UTC : passer `Europe/Zurich` avant tout timer.
 - Il n'y a **pas encore de SKS** chez ninabot : StarNet serait le premier cluster Kubernetes managé.
   Le GDD tranche pour SKS ; la mémoire ne contredit rien, mais tout ce qui existe est « une VM +
@@ -89,8 +96,11 @@ Règles tirées de ces modules :
 - **Mode d'auth : aucun.** Les serveurs écoutent sur l'interface Tailscale de rog1 et sur
   loopback, sans clé API. La sécurité est l'ACL du tailnet : les VMs Exoscale portent un tag
   (`tag:ninabot-infra`) dont le grant vers rog1 est limité à une liste de ports, dont 8007 ; un
-  nœud tagué ne joint rien d'autre. Pour StarNet, préférer un tag dédié `tag:starnet` avec un
-  grant limité à `rog1:8007` (le tag partagé donne aussi accès à d'autres services du groupe).
+  nœud tagué ne joint rien d'autre. **Aurane a son tag dédié depuis le 24.09 : `tag:aurane`**,
+  grant limité à `rog1:8007`, SSH ops depuis les devices membres, et un test d'ACL qui refuse
+  gmk1:22, rog1:22, rog1:5432, rog1:8003 et la forge (Tailscale exécute ces tests à chaque
+  enregistrement de la politique). Une clé d'enrôlement se frappe par l'API tailnet
+  (`tags:["tag:aurane"]`, éphémère, 1 usage) au moment de créer la VM.
 - **Limites mesurées** : llama.cpp sans continuous batching → le 80B sert **~2 utilisateurs
   simultanés** ; le budget GDD (18 M tokens/jour) impose une file de jobs et des quotas, pas des
   appels synchrones. `reasoning_effort: "low"` sur gpt-oss ramène un appel à ~2 s. Un `max_tokens`
@@ -105,7 +115,7 @@ Règles tirées de ces modules :
   avec service token. En attendant, développer contre Infomaniak.
 - **La mémoire ninabot, elle, est joignable** depuis le 24.09.2026 : MCP `sokkan-memory`
   (`memory_search`, `memory_get`, lecture seule) en streamable-HTTP sur `https://memory.ninabot.ch/mcp`,
-  jeton Bearer applicatif (`SOKKAN_MEMORY_MCP_TOKEN`, collection Vaultwarden `starnet`), `/healthz`
+  jeton Bearer applicatif (`SOKKAN_MEMORY_MCP_TOKEN`, collection Vaultwarden `aurane`), `/healthz`
   sans jeton. Pas de Cloudflare Access devant : un connecteur MCP ne sait pas présenter un service
   token. Config Claude Code : `{"type":"http","url":"https://memory.ninabot.ch/mcp","headers":{"Authorization":"Bearer ${SOKKAN_MEMORY_MCP_TOKEN}"}}`.
 - Avant toute expérience GPU sur rog1 : énumérer ce qui tourne (`clinfo -l`, `docker ps`), c'est
@@ -158,22 +168,22 @@ Règles tirées de ces modules :
 - **Instance** : Vaultwarden auto-hébergée sur gmk1 (derrière Cloudflare), compte propriétaire
   unique de ninabot, TOTP natif. Sauvegarde quotidienne vers R2.
 - **Organisation du coffre** (état au 24.09.2026, après-midi) : le compte propriétaire garde ses
-  dossiers personnels (`ninabot` pour tout le groupe, `starnet` pour les références côté propriétaire),
-  et une **Organisation Bitwarden `ninabot`** existe désormais avec la **collection `starnet`**. C'est
+  dossiers personnels (`ninabot` pour tout le groupe, `aurane` pour les références côté propriétaire),
+  et une **Organisation Bitwarden `ninabot`** existe désormais avec la **collection `aurane`**. C'est
   la collection que lit le hook cloud. Convention de nommage des éléments : `ninabot/<service>` ou
   `<service>-<usage>` ; les secrets multiples d'un même service vont en **champs personnalisés**, pas
   dans les notes.
 - **Convention StarNet** (attendue par le hook de `docs/ops/access.md`) : un élément par variable,
-  dans la collection `starnet`, avec un champ personnalisé **`env`** = nom de la variable. Premier
+  dans la collection `aurane`, avec un champ personnalisé **`env`** = nom de la variable. Premier
   élément en place : `sokkan-memory-mcp` (`env=SOKKAN_MEMORY_MCP_TOKEN`, plus `url`). À venir :
   `LLM_PRIMARY_*`, `LLM_FALLBACK_*`, `EXOSCALE_API_KEY`, `EXOSCALE_API_SECRET`, `CLOUDFLARE_API_TOKEN`,
   `TS_API_TOKEN`.
 - **Compte de service en lecture seule — FAIT** : membre `nina+starnet@ninabot.ch` (rôle User,
-  confirmé, accès limité à la collection `starnet` en Read only). Vérifié depuis un profil `bw` isolé :
+  confirmé, accès limité à la collection `aurane` en Read only). Vérifié depuis un profil `bw` isolé :
   il voit une organisation, une collection, un élément ; l'édition et la création dans la collection
   sont refusées. Ses identifiants CLI et son mot de passe maître vont dans les variables de
   l'environnement cloud (`BW_SERVER`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD`), jamais dans le
-  dépôt ; Nick les tient depuis le coffre (élément `vaultwarden-starnet-ci` du dossier propriétaire).
+  dépôt ; Nick les tient depuis le coffre (élément `vaultwarden-aurane-ci` du dossier propriétaire).
   Révocation = retirer le membre de l'organisation. Outil qui a tout créé, idempotent :
   `infra/vw-tools/vw_starnet_bootstrap.py` (ninabot-pro), API REST + cryptographie client, sans accès
   à la base.
@@ -284,9 +294,9 @@ Ce qui est constant dans les dépôts existants :
 
 ## 7. Ce qui manque encore (à ouvrir avec Nick)
 
-1. Rôle + clé IAM Exoscale scopés `starnet` (compute, sks, dbaas, sos) → Vaultwarden `starnet`.
-2. Tag Tailscale `tag:starnet` avec grant `rog1:8007` seul ; clé d'enrôlement frappée par l'API.
-3. ~~Organisation Vaultwarden + collection `starnet` + compte de service lecture seule~~ fait le 24.09 (§4).
+1. ~~Rôle + clé IAM Exoscale scopés~~ fait le 24.09 (`terraform-aurane`, compute/dbaas/sos).
+2. ~~Tag Tailscale avec grant `rog1:8007` seul~~ fait le 24.09 (`tag:aurane`).
+3. ~~Organisation Vaultwarden + collection `aurane` + compte de service lecture seule~~ fait le 24.09 (§4).
 4. Exposition du 8007 pour les sessions cloud (Funnel ou Tunnel + Access).
-5. Dépôt `ninabot/starnet` sur la forge (miroir GitHub) ou GitHub Actions assumé.
+5. Dépôt `ninabot/aurane` sur la forge (renommer aussi le dépôt GitHub) (miroir GitHub) ou GitHub Actions assumé.
 6. Budget : SKS + DBaaS + Valkey ≈ 150–250 CHF/mois au-delà du crédit → validation avant `apply`.
