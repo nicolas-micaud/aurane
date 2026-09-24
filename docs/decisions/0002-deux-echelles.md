@@ -215,3 +215,24 @@ est incapturable, le Bouclier de débutant reste).
    emplacement) ? **2 orbites pour les systèmes à 1 emplacement, 3 au-delà.**
 4. **Escadrilles** : combattre unité par unité ou par escadrille de 5 dès la simulation ? **Par
    unité dans la simulation (le RPS reste lisible), groupement côté rendu seulement.**
+
+## Résultats du palier 1 (saison accélérée, 56 jours, 40 colonies PNJ, graine `s1`)
+
+| Mesure | Valeur |
+|---|---|
+| Systèmes connectés (médiane / max) | 8 / 31 |
+| Relais construits / coupés | 570 / 7 |
+| Engagements sur plateau | 50 |
+| Systèmes capturés | 0 (les Généraux PNJ ne tiennent pas 12 h de blocus) |
+| Trocs réglés | 1549 |
+| Colonies bloquées à 1 système | 3 |
+| Anomalies (stocks négatifs, famine) | aucune |
+| Temps de calcul | 484 s (4 jours : 2,6 s) |
+
+Lecture : l'économie locale ne casse pas l'expansion (médiane inchangée par rapport à 0001), la
+capitale couvre l'entretien des jeunes avant-postes (règle ajoutée au palier 1 : si une station ne
+peut pas payer sa moitié, l'autre extrémité puis la capitale paient). Les captures restent à
+provoquer par des joueurs ou une doctrine plus agressive ; à revoir au palier 2 avec les rapports de
+bataille. Le coût CPU croît avec le nombre de flottes (1720 en fin de saison, cargos compris) : le
+serveur à 1 s/tick est loin de la limite, mais la saison accélérée mérite un regroupement des cargos
+oisifs si elle dépasse dix minutes.
