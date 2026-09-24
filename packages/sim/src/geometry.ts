@@ -1,7 +1,10 @@
-export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+export interface Point { x: number; y: number }
+export interface Circle extends Point { r: number }
+
+export const dist = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 
 /** Shortest distance from point p to segment [a, b]. */
-export function pointSegmentDistance(p, a, b) {
+export function pointSegmentDistance(p: Point, a: Point, b: Point): number {
   const dx = b.x - a.x, dy = b.y - a.y;
   const len2 = dx * dx + dy * dy;
   let t = len2 === 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
@@ -9,8 +12,8 @@ export function pointSegmentDistance(p, a, b) {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-/** Length of the part of segment [a, b] that lies inside circle c (x, y, r). */
-export function segmentLengthInCircle(a, b, c) {
+/** Length of the part of segment [a, b] that lies inside circle c. */
+export function segmentLengthInCircle(a: Point, b: Point, c: Circle): number {
   const dx = b.x - a.x, dy = b.y - a.y;
   const fx = a.x - c.x, fy = a.y - c.y;
   const A = dx * dx + dy * dy;

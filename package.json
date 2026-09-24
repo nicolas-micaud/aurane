@@ -1,11 +1,30 @@
 {
   "name": "starnet",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "StarNet — can't stop the signal. A daily cosmic network puzzle.",
+  "description": "StarNet — can't stop the signal. Free, persistent, web-only MMO strategy by ninabot.",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "start": "npx --yes http-server -c-1 -p 8080 ."
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "season": "npm run -w @starnet/season-sim start --"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.12.0",
+    "vitest": "^2.1.4"
   }
 }

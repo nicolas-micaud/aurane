@@ -1,0 +1,8 @@
+{
+  "name": "@starnet/season-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -b", "start": "node dist/main.js" },
+  "dependencies": { "@starnet/sim": "0.1.0", "@starnet/protocol": "0.1.0" }
+}
