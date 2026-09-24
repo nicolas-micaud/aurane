@@ -54,7 +54,7 @@ export class SystemScene {
   private planetKey = '';
   private planetSprite: Sprite | null = null;
   /** The station sits in orbit beside the planet (the plateau's centre in the simulation). */
-  private static readonly STATION_VIS = { r: 1.05, a: 325 };
+  private static readonly STATION_VIS = { r: 1.15, a: 325 };
 
   /** Orbit captions, set by the UI in the player's language. */
   orbitNames: string[] = ['I', 'II', 'III'];
@@ -149,7 +149,7 @@ export class SystemScene {
     const type = planetTypeFor(v.resource, v.hue);
     const key = `${v.id}:${type}`;
     if (this.planetKey !== key || !this.planet) { this.planet = new PlanetFilter(type, (v.hue % 97) * 0.37 + 1.3, { ring: type === 'gas' }); this.planetKey = key; }
-    const R = this.unit * 0.78;
+    const R = this.unit * 0.64;
     const pad = this.planet.padFraction;
     const sprite = new Sprite(Texture.WHITE);
     sprite.anchor.set(0.5); sprite.width = sprite.height = R * 2 * (1 + 2 * pad);
@@ -240,7 +240,7 @@ export class SystemScene {
         node.addChild(arc);
       }
       const heading = (s.angle * Math.PI) / 180; // faces outward, away from the planet
-      const size = this.unit * Math.min(1.15, Math.max(0.55, 0.28 * spriteRadius(s.kind)));
+      const size = this.unit * Math.min(1.35, Math.max(0.7, 0.36 * spriteRadius(s.kind)));
       const model = hasSprite(s.kind) ? this.spriteNode(s.kind, heading, size, ownerColor) : null;
       if (model) {
         if (selected) { const ring = new Graphics(); ring.circle(0, 0, size * 0.55); ring.stroke({ color: 0xffffff, width: 2, alpha: 0.9 }); node.addChild(ring); }
@@ -271,7 +271,7 @@ export class SystemScene {
     const pos = this.stationXY();
     node.position.set(pos.x, pos.y);
     const down = v.station.hp <= 0;
-    const size = this.unit * 1.45;
+    const size = this.unit * 2.1;
     const model = hasSprite('station') ? this.spriteNode('station', (SystemScene.STATION_VIS.a * Math.PI) / 180, size, down ? 0x444a55 : color, down ? 0.55 : 1) : null;
     if (model) {
       node.addChild(model);
@@ -323,7 +323,7 @@ export class SystemScene {
       const cargoOnly = f.combat === 0 && f.size > 0;
       const heading = f.pos ? Math.atan2(-target.y, -target.x) : Math.PI; // nose toward the planet, or parked
       const kind = cargoOnly ? 'cargo' : f.units ? (f.units.cruiser > 0 ? 'cruiser' : f.units.frigate >= f.units.corvette ? 'frigate' : 'corvette') : f.size >= 6 ? 'cruiser' : 'frigate';
-      const size = this.unit * Math.min(1.0, (cargoOnly ? 0.38 : kind === 'cruiser' ? 0.7 : kind === 'frigate' ? 0.5 : 0.4) * (1 + Math.log2(1 + f.size) * 0.12));
+      const size = this.unit * Math.min(1.3, (cargoOnly ? 0.5 : kind === 'cruiser' ? 0.95 : kind === 'frigate' ? 0.68 : 0.52) * (1 + Math.log2(1 + f.size) * 0.12));
       const model = hasSprite(kind) ? this.spriteNode(kind, heading, size, color, f.docked ? 0.7 : 1) : null;
       if (model) {
         if (!cargoOnly && f.size > 1) { // wingmen: a couple of smaller silhouettes behind

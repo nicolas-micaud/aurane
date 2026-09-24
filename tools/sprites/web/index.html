@@ -1,29 +1,38 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Aurane sprite renderer</title>
-<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "/three/three.module.js", "three/addons/": "/three-addons/" } }</script>
 <style>body{margin:0;background:#111}canvas{display:block}</style>
 </head><body>
 <script type="module">
 import * as THREE from 'three';
-import { MODELS } from './models.js';
+import { MODELS, TEAM_BASE } from './models.js';
 
 // Three-quarter top-down view, as StarCraft: the camera looks down at ELEVATION degrees.
 const ELEVATION = 52 * Math.PI / 180;
 const FRAMES = 16;
 
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-3, 6, 4);
-const fill = new THREE.DirectionalLight(0x9fc4ff, 0.9); fill.position.set(4, 2, -2);
-const rim = new THREE.DirectionalLight(0xffffff, 1.4); rim.position.set(0, 2, -6);
-const amb = new THREE.AmbientLight(0x6b7a99, 0.55);
+// Image-based lighting gives the metal something to reflect; the key light casts real shadows.
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.3;
+const key = new THREE.DirectionalLight(0xfff0d8, 3.6); key.position.set(-6, 10, 7);
+key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0005; key.shadow.normalBias = 0.02;
+const fill = new THREE.DirectionalLight(0x8fb8ff, 0.7); fill.position.set(6, 3, -3);
+const rim = new THREE.DirectionalLight(0xffffff, 1.2); rim.position.set(1, 3, -8);
+const amb = new THREE.AmbientLight(0x3d4a66, 0.3);
 scene.add(key, fill, rim, amb);
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -51,7 +60,8 @@ window.renderModel = function renderModel(kind, px) {
   scene.add(group);
   camera.left = -radius; camera.right = radius; camera.top = radius; camera.bottom = -radius;
   camera.updateProjectionMatrix();
-  const ss = 2; // supersampling
+  const sc = key.shadow.camera; sc.left = -radius * 1.6; sc.right = radius * 1.6; sc.top = radius * 1.6; sc.bottom = -radius * 1.6; sc.near = 0.5; sc.far = 60; sc.updateProjectionMatrix();
+  const ss = 3; // supersampling
   renderer.setSize(px * ss, px * ss, false);
   const sheets = {};
   for (const pass of ['base', 'lights']) {
@@ -63,7 +73,7 @@ window.renderModel = function renderModel(kind, px) {
       group.traverse((o) => {
         if (!o.isMesh) return;
         if (!o.userData.base) o.userData.base = o.material;
-        if (pass === 'base') o.material = o.userData.base;
+        if (pass === 'base') o.material = o.userData.team ? TEAM_BASE : o.userData.base;
         else o.material = o.userData.team ? white : black;
       });
       const lightsOn = pass === 'base';
