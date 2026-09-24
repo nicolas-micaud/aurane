@@ -4,8 +4,8 @@ import {
   PULSAR_RANGE_MULT, RELAY_BUILD_SECONDS_PER_UNIT, RELAY_COST_PER_UNIT, RELAY_UPKEEP_PER_UNIT, STORM_RANGE_MULT,
   RESOURCE_LIST,
 } from './balance.js';
-import type { Galaxy, StarSystem } from './galaxy.js';
-import { dist, pointSegmentDistance, segmentLengthInCircle } from './geometry.js';
+import { MAX_LINK_LENGTH, type Galaxy, type StarSystem } from './galaxy.js';
+import { dist, pointSegmentDistance } from './geometry.js';
 import { hexDistance } from './hex.js';
 
 export interface Relay {
@@ -51,23 +51,37 @@ export type LinkVerdict =
   | { ok: true; length: number; cost: Stock; upkeep: number; buildSeconds: number }
   | { ok: false; reason: 'range' | 'blackhole' | 'same' | 'far'; length: number };
 
-/** Can a relay be built between a and b, and what does it cost? */
-export function evaluateLink(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: RangeContext): LinkVerdict {
-  if (a.id === b.id) return { ok: false, reason: 'same', length: 0 };
-  const length = dist(a, b);
-  const sa = galaxy.sectors[a.sector]!, sb = galaxy.sectors[b.sector]!;
-  if (hexDistance(sa.hex, sb.hex) > 1) return { ok: false, reason: 'far', length };
+function verdictFromGeometry(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: RangeContext, length: number, extra: number): LinkVerdict {
   if (length > relayRange(galaxy, a, b, ctx)) return { ok: false, reason: 'range', length };
-  const sectors = sa.key === sb.key ? [sa] : [sa, sb];
-  for (const s of sectors) {
-    for (const bh of s.blackHoles) if (pointSegmentDistance(bh, a, b) < bh.r) return { ok: false, reason: 'blackhole', length };
-  }
-  let extra = 0;
-  for (const s of sectors) for (const neb of s.nebulae) extra += segmentLengthInCircle(a, b, neb);
   const effective = length + extra * (NEBULA_COST_MULT - 1);
   const cost = { metal: 0, energy: 0, food: 0, crystal: 0 } as Stock;
   for (const r of RESOURCE_LIST) cost[r] = Math.ceil(RELAY_COST_PER_UNIT[r] * effective);
   return { ok: true, length, cost, upkeep: RELAY_UPKEEP_PER_UNIT * effective, buildSeconds: Math.round(RELAY_BUILD_SECONDS_PER_UNIT * length) };
+}
+
+/** Can a relay be built between a and b, and what does it cost? Uses the precomputed geometry. */
+export function evaluateLink(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: RangeContext): LinkVerdict {
+  if (a.id === b.id) return { ok: false, reason: 'same', length: 0 };
+  const cand = galaxy.candidates[a.id]?.find((c) => c.to === b.id);
+  if (cand) return verdictFromGeometry(galaxy, a, b, ctx, cand.length, cand.extra);
+  // Not a candidate: explain why (rare path, only for hand-issued commands).
+  const length = dist(a, b);
+  const sa = galaxy.sectors[a.sector]!, sb = galaxy.sectors[b.sector]!;
+  if (hexDistance(sa.hex, sb.hex) > 1 || length > MAX_LINK_LENGTH) return { ok: false, reason: 'far', length };
+  const sectors = sa.key === sb.key ? [sa] : [sa, sb];
+  for (const s of sectors) for (const bh of s.blackHoles) if (pointSegmentDistance(bh, a, b) < bh.r) return { ok: false, reason: 'blackhole', length };
+  return { ok: false, reason: 'range', length };
+}
+
+/** All buildable links from `a` for this owner, cheapest first. */
+export function linkOptions(galaxy: Galaxy, a: StarSystem, ctx: RangeContext): { to: StarSystem; verdict: Extract<LinkVerdict, { ok: true }> }[] {
+  const out: { to: StarSystem; verdict: Extract<LinkVerdict, { ok: true }> }[] = [];
+  for (const c of galaxy.candidates[a.id] ?? []) {
+    const b = galaxy.systems[c.to]!;
+    const v = verdictFromGeometry(galaxy, a, b, ctx, c.length, c.extra);
+    if (v.ok) out.push({ to: b, verdict: v });
+  }
+  return out;
 }
 
 export const relayActive = (r: Relay, now: number): boolean => r.readyAt <= now && r.cutUntil <= now;

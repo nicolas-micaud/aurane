@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   apply, createWorld, spawnColony, tick, colonyNetwork, productiveSystems, evaluateLink, rangeContext,
-  clearAuction, resolveBattle, colonyScore, fleetsAt, planRoute, type World, type Colony, type MarketOrder,
+  clearAuction, resolveBattle, colonyScore, fleetsAt, planRoute, setOwner, type World, type Colony, type MarketOrder,
 } from '../src/index.js';
 
 function nearestBuildable(w: World, c: Colony): { a: string; b: string } {
@@ -85,9 +85,9 @@ describe('world', () => {
     // Move the buyer's capital into the seller's region so they share a market.
     const region = w.galaxy.systems[seller.capital]!.region;
     const other = Object.values(w.galaxy.systems).find((s) => s.region === region && !w.systems[s.id]!.owner && s.slots >= 1)!;
-    w.systems[buyer.capital]!.owner = null;
+    setOwner(w, buyer.capital, null);
     buyer.capital = other.id;
-    w.systems[other.id]!.owner = buyer.id;
+    setOwner(w, other.id, buyer.id);
     expect(apply(w, seller.id, { type: 'market_order', region, resource: 'food', side: 'sell', qty: 50, price: 2 }).ok).toBe(true);
     expect(seller.stock.food).toBe(150);
     expect(apply(w, buyer.id, { type: 'market_order', region, resource: 'food', side: 'buy', qty: 50, price: 3 }).ok).toBe(true);

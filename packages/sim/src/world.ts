@@ -4,7 +4,7 @@ import * as B from './balance.js';
 import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { hexNeighbors, hexKey } from './hex.js';
 import { dist } from './geometry.js';
-import { connectedFrom, evaluateLink, relayActive, relayId, type RangeContext, type Relay } from './network.js';
+import { connectedFrom, evaluateLink, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
 import { rollDraw, type Draw } from './draw.js';
 import { clearAuction, marketKey } from './market.js';
 import { addFleet, resolveBattle, subtractFleet } from './combat.js';
@@ -35,7 +35,7 @@ export function createWorld(seed: number | string, opts: WorldOptions = {}): Wor
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
     treaties: {}, proposals: [], alliances: {}, missions: {}, reveals: {}, litBeacons: {}, lastClearing: [],
-    events: [], titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
+    events: [], titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1, owned: {},
   };
 }
 
@@ -90,7 +90,7 @@ export function stormSectors(w: World): Set<string> {
 
 export function rangeContext(w: World, colony: Colony): RangeContext {
   const amplifiers = new Set<string>();
-  for (const [id, st] of Object.entries(w.systems)) if (st.owner === colony.id && st.buildings.includes('amplifier')) amplifiers.add(id);
+  for (const id of ownedSystems(w, colony.id)) if (w.systems[id]!.buildings.includes('amplifier')) amplifiers.add(id);
   return { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w) };
 }
 
@@ -100,7 +100,19 @@ export function colonyNetwork(w: World, colony: Colony): Map<string, number> {
 }
 
 export function ownedSystems(w: World, colonyId: string): string[] {
-  return Object.entries(w.systems).filter(([, s]) => s.owner === colonyId).map(([id]) => id);
+  return w.owned[colonyId] ?? [];
+}
+
+/** The only way ownership changes: keeps the per-colony index in sync. */
+export function setOwner(w: World, systemId: string, owner: string | null): void {
+  const st = w.systems[systemId]!;
+  if (st.owner === owner) return;
+  if (st.owner) {
+    const list = w.owned[st.owner];
+    if (list) { const i = list.indexOf(systemId); if (i >= 0) list.splice(i, 1); }
+  }
+  st.owner = owner;
+  if (owner) (w.owned[owner] ??= []).push(systemId);
 }
 
 /** Owned systems that are connected to the capital right now. */
@@ -188,16 +200,7 @@ export interface SpawnOptions { name: string; faction: Faction; persona: Persona
 /** Number of free systems a relay could reach from `sys` (own sector and neighbours). */
 function countLinkable(w: World, sys: StarSystem, faction: Faction): number {
   const ctx: RangeContext = { faction, amplifiers: new Set(), litBeacons: [], stormSectors: new Set() };
-  let n = 0;
-  const sector = w.galaxy.sectors[sys.sector]!;
-  const keys = [sector.key, ...hexNeighbors(sector.hex).map(hexKey)];
-  for (const k of keys) {
-    for (const id of w.galaxy.sectors[k]?.systems ?? []) {
-      if (id === sys.id || w.systems[id]!.owner) continue;
-      if (evaluateLink(w.galaxy, sys, w.galaxy.systems[id]!, ctx).ok) n++;
-    }
-  }
-  return n;
+  return linkOptions(w.galaxy, sys, ctx).filter((o) => !w.systems[o.to.id]!.owner).length;
 }
 
 /** Places a new colony on the rim, as far as possible from existing capitals. */
@@ -227,7 +230,7 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
   };
   w.colonies[id] = colony;
   const st = w.systems[best.id]!;
-  st.owner = id;
+  setOwner(w, best.id, id);
   st.buildings = ['extractor'];
   st.population = 0.5;
   logEvent(w, 'colony.founded', [id], { capital: best.id, faction: opts.faction });
@@ -420,7 +423,7 @@ function buildRelay(w: World, colony: Colony, aId: string, bId: string): ApplyRe
   w.relays[id] = { id, a: id.split('|')[0]!, b: id.split('|')[1]!, owner: colony.id, length: verdict.length, upkeep: verdict.upkeep, readyAt: w.time + verdict.buildSeconds, cutUntil: 0 };
   for (const sid of [aId, bId]) {
     const st = w.systems[sid]!;
-    if (!st.owner) { st.owner = colony.id; st.population = 0.1; logEvent(w, 'system.claimed', [colony.id], { system: sid }); }
+    if (!st.owner) { setOwner(w, sid, colony.id); st.population = 0.1; logEvent(w, 'system.claimed', [colony.id], { system: sid }); }
   }
   return { ok: true, id };
 }
@@ -515,11 +518,11 @@ function proposeTreaty(w: World, colony: Colony, withId: string, kind: TreatyKin
 // ---------------------------------------------------------------------------
 
 /** Advance the simulation by `seconds`. Timers resolve in order; the Draw fires on each hour. */
-export function tick(w: World, seconds: number): void {
+export function tick(w: World, seconds: number, maxStep = 60): void {
   let remaining = seconds;
   while (remaining > 0 && !w.ended) {
     const nextHour = (Math.floor(w.time / 3600) + 1) * 3600;
-    const step = Math.min(remaining, nextHour - w.time, 60);
+    const step = Math.min(remaining, nextHour - w.time, maxStep);
     w.time += step;
     remaining -= step;
     processTimers(w);
@@ -662,7 +665,7 @@ function capture(w: World, systemId: string, by: string): void {
   const st = w.systems[systemId]!;
   const prev = st.owner!;
   if (w.colonies[prev]?.capital === systemId) return; // capitals are never captured
-  st.owner = by;
+  setOwner(w, systemId, by);
   st.blockade = null;
   st.buildings = st.buildings.slice(0, Math.max(0, st.buildings.length - 1));
   st.buildQueue = [];
@@ -801,7 +804,7 @@ function settleMarkets(w: World): void {
       const o = w.orders[f.order]!;
       const colony = w.colonies[o.colony]!;
       let fee = B.MARKET_FEE;
-      if (ownedSystems(w, colony.id).some((s) => hasBuilding(w, s, 'tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
+      if (ownedSystems(w, colony.id).some((s) => w.systems[s]!.buildings.includes('tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
       if (colony.faction === 'guild') fee *= B.GUILD_FEE_MULT;
       if (o.side === 'buy') {
         colony.stock[resource] += f.qty;

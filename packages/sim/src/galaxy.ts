@@ -3,7 +3,8 @@ import { createRng, subSeed, type Rng } from './rng.js';
 import { hexDisk, hexKey, hexRing, hexToPixel, regionKey } from './hex.js';
 import { SECTOR_SIZE } from './balance.js';
 import type { Point, Circle } from './geometry.js';
-import { dist } from './geometry.js';
+import { dist, pointSegmentDistance, segmentLengthInCircle } from './geometry.js';
+import { hexNeighbors } from './hex.js';
 
 export type SystemKind = 'normal' | 'pulsar' | 'beacon';
 
@@ -33,13 +34,21 @@ export interface Sector {
   blackHoles: Circle[];
 }
 
+/** Static part of a possible relay: geometry never changes, only the owner's range does. */
+export interface LinkCandidate { to: string; length: number; extra: number }
+
 export interface Galaxy {
   seed: number;
   radius: number;
   sectors: Record<string, Sector>;
   systems: Record<string, StarSystem>;
   beacons: string[];
+  /** Per system: reachable neighbours within MAX_LINK_LENGTH, not blocked by a black hole. */
+  candidates: Record<string, LinkCandidate[]>;
 }
+
+/** Upper bound of any relay range with every multiplier stacked. */
+export const MAX_LINK_LENGTH = 520;
 
 const SYLLABLES = ['ka', 'ra', 'vex', 'lo', 'mi', 'zen', 'tor', 'qua', 'nyx', 'sol', 'dra', 'eo',
   'lum', 'is', 'ar', 'cy', 'ven', 'tha', 'or', 'phe', 'xi', 'ul', 'no', 'bel', 'am', 'ir'];
@@ -85,7 +94,7 @@ export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}):
   const root = typeof seed === 'string' ? createRng(seed).state() : seed >>> 0;
   const radius = opts.radius ?? 12;
   const [minSys, maxSys] = opts.systemsPerSector ?? [6, 12];
-  const galaxy: Galaxy = { seed: root, radius, sectors: {}, systems: {}, beacons: [] };
+  const galaxy: Galaxy = { seed: root, radius, sectors: {}, systems: {}, beacons: [], candidates: {} };
   const hexes = hexDisk(radius);
 
   // Beacon sectors: the centre plus six around it at distance 2, one per direction.
@@ -142,7 +151,35 @@ export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}):
     }
     galaxy.sectors[key] = sector;
   }
+  computeCandidates(galaxy);
   return galaxy;
+}
+
+/** Static geometry of every possible relay (same or adjacent sector, within MAX_LINK_LENGTH). */
+function computeCandidates(galaxy: Galaxy): void {
+  for (const id of Object.keys(galaxy.systems)) galaxy.candidates[id] = [];
+  for (const sector of Object.values(galaxy.sectors)) {
+    const nearby = [sector, ...hexNeighbors(sector.hex).map((h) => galaxy.sectors[hexKey(h)]).filter((x): x is Sector => !!x)];
+    for (const aId of sector.systems) {
+      const a = galaxy.systems[aId]!;
+      for (const other of nearby) {
+        for (const bId of other.systems) {
+          if (bId <= aId && other.key === sector.key) continue; // each intra-sector pair once
+          if (other.key !== sector.key && bId < aId) continue;
+          const b = galaxy.systems[bId]!;
+          const length = dist(a, b);
+          if (length > MAX_LINK_LENGTH) continue;
+          const sectors = other.key === sector.key ? [sector] : [sector, other];
+          if (sectors.some((s) => s.blackHoles.some((bh) => pointSegmentDistance(bh, a, b) < bh.r))) continue;
+          let extra = 0;
+          for (const s of sectors) for (const neb of s.nebulae) extra += segmentLengthInCircle(a, b, neb);
+          galaxy.candidates[aId]!.push({ to: bId, length, extra });
+          galaxy.candidates[bId]!.push({ to: aId, length, extra });
+        }
+      }
+    }
+  }
+  for (const list of Object.values(galaxy.candidates)) list.sort((x, y) => x.length - y.length || (x.to < y.to ? -1 : 1));
 }
 
 /** Sectors adjacent to a given sector key, restricted to those that exist. */

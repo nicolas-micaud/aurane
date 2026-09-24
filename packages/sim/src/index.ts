@@ -10,3 +10,4 @@ export * from './market.js';
 export * from './combat.js';
 export * from './diplomacy.js';
 export * from './world.js';
+export * from './general.js';
