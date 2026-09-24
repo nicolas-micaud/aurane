@@ -14,9 +14,9 @@
 		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
 		<style>
 			/* Aurane : quatre entrées de menu de largeur égale, pour que le trait central tombe sur une bordure */
-			#header nav ul li { flex: 1 1 0; }
+			#header nav ul { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 			#header nav ul li a { min-width: 0; width: 100%; box-sizing: border-box; text-align: center; padding: 0 1rem; white-space: nowrap; }
-			@media screen and (max-width: 736px) { #header nav ul li { flex: none; } }
+			@media screen and (max-width: 736px) { #header nav ul { display: flex; } }
 		</style>
 	</head>
 	<body class="is-preload">
