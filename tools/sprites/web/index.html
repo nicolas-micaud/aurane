@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Aurane sprite renderer</title>
+<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+<style>body{margin:0;background:#111}canvas{display:block}</style>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { MODELS } from './models.js';
+
+// Three-quarter top-down view, as StarCraft: the camera looks down at ELEVATION degrees.
+const ELEVATION = 52 * Math.PI / 180;
+const FRAMES = 16;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const key = new THREE.DirectionalLight(0xfff1dc, 2.6); key.position.set(-3, 6, 4);
+const fill = new THREE.DirectionalLight(0x9fc4ff, 0.9); fill.position.set(4, 2, -2);
+const rim = new THREE.DirectionalLight(0xffffff, 1.4); rim.position.set(0, 2, -6);
+const amb = new THREE.AmbientLight(0x6b7a99, 0.55);
+scene.add(key, fill, rim, amb);
+
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const dist = 30;
+camera.position.set(0, Math.sin(ELEVATION) * dist, Math.cos(ELEVATION) * dist);
+camera.lookAt(0, 0, 0);
+
+const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+function fit(group) {
+  const box = new THREE.Box3().setFromObject(group);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  group.position.sub(center);
+  // Radius of the bounding sphere in the ground plane plus height: everything stays inside the frame at every angle.
+  const radius = Math.max(Math.hypot(size.x, size.z) / 2, size.y / 2) * 1.12;
+  return radius;
+}
+
+/** Renders one model to two sheets (base, lights) of FRAMES frames of `px` pixels. Returns data URLs. */
+window.renderModel = function renderModel(kind, px) {
+  const group = MODELS[kind]();
+  const radius = fit(group);
+  scene.add(group);
+  camera.left = -radius; camera.right = radius; camera.top = radius; camera.bottom = -radius;
+  camera.updateProjectionMatrix();
+  const ss = 2; // supersampling
+  renderer.setSize(px * ss, px * ss, false);
+  const sheets = {};
+  for (const pass of ['base', 'lights']) {
+    const canvas = document.createElement('canvas');
+    canvas.width = px * FRAMES; canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    for (let i = 0; i < FRAMES; i++) {
+      group.rotation.y = (i / FRAMES) * Math.PI * 2;
+      group.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!o.userData.base) o.userData.base = o.material;
+        if (pass === 'base') o.material = o.userData.base;
+        else o.material = o.userData.team ? white : black;
+      });
+      const lightsOn = pass === 'base';
+      key.visible = fill.visible = rim.visible = amb.visible = lightsOn;
+      renderer.render(scene, camera);
+      ctx.drawImage(renderer.domElement, 0, 0, px * ss, px * ss, i * px, 0, px, px);
+    }
+    if (pass === 'lights') {
+      // Alpha from luminance so the sheet tints cleanly.
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = img.data;
+      for (let k = 0; k < d.length; k += 4) { const l = d[k]; d[k] = d[k + 1] = d[k + 2] = 255; d[k + 3] = Math.min(d[k + 3], l); }
+      ctx.putImageData(img, 0, 0);
+    }
+    sheets[pass] = canvas.toDataURL('image/png');
+  }
+  scene.remove(group);
+  key.visible = fill.visible = rim.visible = amb.visible = true;
+  return { ...sheets, frames: FRAMES, px, radius };
+};
+/** One large frame with the faction colour baked in, for icons and the showcase site. */
+window.renderIcon = function renderIcon(kind, px, teamHex, frame = 2) {
+  const r = window.renderModel(kind, px);
+  return new Promise((resolve) => {
+    const base = new Image(), lights = new Image();
+    let n = 0;
+    const done = () => {
+      if (++n < 2) return;
+      const c = document.createElement('canvas'); c.width = px; c.height = px;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(base, frame * px, 0, px, px, 0, 0, px, px);
+      const tint = document.createElement('canvas'); tint.width = px; tint.height = px;
+      const tctx = tint.getContext('2d');
+      tctx.drawImage(lights, frame * px, 0, px, px, 0, 0, px, px);
+      tctx.globalCompositeOperation = 'source-in'; tctx.fillStyle = teamHex; tctx.fillRect(0, 0, px, px);
+      ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(tint, 0, 0); ctx.globalAlpha = 0.5; ctx.drawImage(tint, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    base.onload = done; lights.onload = done; base.src = r.base; lights.src = r.lights;
+  });
+};
+window.MODEL_KINDS = Object.keys(MODELS);
+window.__ready = true;
+</script>
+</body></html>

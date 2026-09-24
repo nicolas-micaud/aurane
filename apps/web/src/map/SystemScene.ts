@@ -2,10 +2,12 @@
 // station-relais at the centre, three orbits of structures, fleets moving on the plateau,
 // turret arcs and shots while an engagement runs. Rebuilt from each SystemDetailView frame
 // (2 Hz); the ticker only interpolates ships, spins the decor and flickers the fire.
-import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import type { SystemDetailView } from '@aurane/sim';
 import { FACTION_COLOR, RESOURCE_COLOR } from './GalaxyMap.js';
 import { cargoTexture, coreTexture, glowTexture, shipTexture, stationTexture, structureTexture } from './textures.js';
+import { hasSprite, lightsFrame, loadSprites, spriteFrame, spriteRadius } from './sprites.js';
+import { PlanetFilter, planetTypeFor } from './PlanetFilter.js';
 
 export type SceneSelection =
   | { kind: 'structure'; id: string }
@@ -48,6 +50,11 @@ export class SystemScene {
   private ready = false;
   private tex!: { glow: Texture; core: Texture; ship: Texture; cargo: Texture; station: Texture };
   private lastFrameAt = 0;
+  private planet: PlanetFilter | null = null;
+  private planetKey = '';
+  private planetSprite: Sprite | null = null;
+  /** The station sits in orbit beside the planet (the plateau's centre in the simulation). */
+  private static readonly STATION_VIS = { r: 1.05, a: 325 };
 
   /** Orbit captions, set by the UI in the player's language. */
   orbitNames: string[] = ['I', 'II', 'III'];
@@ -69,9 +76,26 @@ export class SystemScene {
     this.ready = true;
     this.layout();
     if (this.view && this.ctx) this.render(this.view, this.ctx);
+    void loadSprites().then(() => { if (this.ready && this.view && this.ctx) this.render(this.view, this.ctx); });
   }
 
   destroy(): void { this.app.destroy(true, { children: true }); }
+
+  private stationXY(): { x: number; y: number } { return this.xy(SystemScene.STATION_VIS.r, SystemScene.STATION_VIS.a); }
+
+  /** A pre-rendered model at a heading, with its faction lights; null when the sheet is not loaded. */
+  private spriteNode(kind: string, heading: number, size: number, tint: number, alpha = 1): Container | null {
+    const b = spriteFrame(kind, heading), l = lightsFrame(kind, heading);
+    if (!b || !l) return null;
+    const node = new Container();
+    const shadow = new Sprite(this.tex.glow);
+    shadow.anchor.set(0.5); shadow.tint = 0x000000; shadow.alpha = 0.45 * alpha; shadow.width = size * 1.3; shadow.height = size * 0.9; shadow.position.set(size * 0.04, size * 0.1);
+    const base = new Sprite(b); base.anchor.set(0.5); base.width = base.height = size; base.alpha = alpha;
+    const lights = new Sprite(l); lights.anchor.set(0.5); lights.width = lights.height = size; lights.tint = tint; lights.blendMode = 'add'; lights.alpha = alpha;
+    const glow = new Sprite(l); glow.anchor.set(0.5); glow.width = glow.height = size * 1.06; glow.tint = tint; glow.blendMode = 'add'; glow.alpha = 0.5 * alpha;
+    node.addChild(shadow, base, glow, lights);
+    return node;
+  }
 
   setSelection(sel: SceneSelection): void { this.selection = sel; }
 
@@ -110,15 +134,29 @@ export class SystemScene {
   private drawBackground(v: SystemDetailView): void {
     this.bg.removeChildren();
     const color = RESOURCE_COLOR[v.resource] ?? 0xffffff;
-    const halo = new Sprite(this.tex.glow);
-    halo.anchor.set(0.5); halo.tint = color; halo.blendMode = 'add'; halo.alpha = 0.35;
-    halo.width = halo.height = this.unit * 3.2;
+    // The star, far off to the upper left: it lights the planet from that side.
+    const sx = -this.unit * 5.2, sy = -this.unit * 3.9;
     const corona = new Sprite(this.tex.glow);
-    corona.anchor.set(0.5); corona.tint = v.engaged ? DANGER : SIGNAL; corona.blendMode = 'add'; corona.alpha = v.engaged ? 0.18 : 0.12;
-    corona.width = corona.height = this.unit * 9.6;
+    corona.anchor.set(0.5); corona.tint = color; corona.blendMode = 'add'; corona.alpha = 0.5;
+    corona.width = corona.height = this.unit * 9; corona.position.set(sx, sy);
     const star = new Sprite(this.tex.core);
-    star.anchor.set(0.5); star.tint = color; star.width = star.height = this.unit * 0.9;
-    this.bg.addChild(corona, halo, star);
+    star.anchor.set(0.5); star.tint = 0xffffff; star.width = star.height = this.unit * 1.6; star.position.set(sx, sy);
+    const tint = new Sprite(this.tex.glow);
+    tint.anchor.set(0.5); tint.tint = v.engaged ? DANGER : SIGNAL; tint.blendMode = 'add'; tint.alpha = v.engaged ? 0.16 : 0.08;
+    tint.width = tint.height = this.unit * 9.6;
+    this.bg.addChild(corona, star, tint);
+    // The planet this plateau orbits, drawn by shader.
+    const type = planetTypeFor(v.resource, v.hue);
+    const key = `${v.id}:${type}`;
+    if (this.planetKey !== key || !this.planet) { this.planet = new PlanetFilter(type, (v.hue % 97) * 0.37 + 1.3, { ring: type === 'gas' }); this.planetKey = key; }
+    const R = this.unit * 0.78;
+    const pad = this.planet.padFraction;
+    const sprite = new Sprite(Texture.WHITE);
+    sprite.anchor.set(0.5); sprite.width = sprite.height = R * 2 * (1 + 2 * pad);
+    sprite.filters = [this.planet];
+    this.planet.padding = 0;
+    this.planetSprite = sprite;
+    this.bg.addChild(sprite);
     // Plateau edge: where fleets arrive.
     const edge = new Graphics();
     edge.circle(0, 0, v.plateauRadius * this.unit);
@@ -201,13 +239,22 @@ export class SystemScene {
         arc.stroke({ color: v.engaged ? DANGER : ownerColor, width: 1, alpha: selected ? 0.7 : v.engaged ? 0.3 : 0.15 });
         node.addChild(arc);
       }
-      const pad = new Graphics();
-      pad.circle(0, 0, this.unit * 0.4); pad.fill({ color: 0x0a1020, alpha: 0.9 }); pad.stroke({ color: ownerColor, width: selected ? 3 : 1.5, alpha: selected ? 1 : 0.8 });
-      node.addChild(pad);
-      const sp = new Sprite(structureTexture(s.kind));
-      sp.anchor.set(0.5); sp.tint = s.hp < s.maxHp * 0.35 ? DANGER : 0xe8eefc; sp.width = sp.height = this.unit * 0.62;
-      sp.rotation = (s.angle * Math.PI) / 180 + Math.PI / 2; // faces outward
-      node.addChild(sp);
+      const heading = (s.angle * Math.PI) / 180; // faces outward, away from the planet
+      const size = this.unit * Math.min(1.15, Math.max(0.55, 0.28 * spriteRadius(s.kind)));
+      const model = hasSprite(s.kind) ? this.spriteNode(s.kind, heading, size, ownerColor) : null;
+      if (model) {
+        if (selected) { const ring = new Graphics(); ring.circle(0, 0, size * 0.55); ring.stroke({ color: 0xffffff, width: 2, alpha: 0.9 }); node.addChild(ring); }
+        if (s.hp < s.maxHp * 0.35) { const fire = new Sprite(this.tex.glow); fire.anchor.set(0.5); fire.tint = DANGER; fire.blendMode = 'add'; fire.width = fire.height = size; fire.alpha = 0.6; node.addChild(fire); }
+        node.addChild(model);
+      } else {
+        const pad = new Graphics();
+        pad.circle(0, 0, this.unit * 0.4); pad.fill({ color: 0x0a1020, alpha: 0.9 }); pad.stroke({ color: ownerColor, width: selected ? 3 : 1.5, alpha: selected ? 1 : 0.8 });
+        node.addChild(pad);
+        const sp = new Sprite(structureTexture(s.kind));
+        sp.anchor.set(0.5); sp.tint = s.hp < s.maxHp * 0.35 ? DANGER : 0xe8eefc; sp.width = sp.height = this.unit * 0.62;
+        sp.rotation = heading + Math.PI / 2;
+        node.addChild(sp);
+      }
       if (s.hp < s.maxHp) node.addChild(this.hpBar(s.hp / s.maxHp, this.unit * 0.6, this.unit * 0.42));
       node.eventMode = 'static'; node.cursor = 'pointer';
       node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= this.unit * 0.46 };
@@ -221,24 +268,30 @@ export class SystemScene {
     if (!v.station || !v.owner) return;
     const color = v.owner === ctx.me ? SIGNAL : FACTION_COLOR[ctx.factionOf.get(v.owner) ?? ''] ?? 0xaaaaaa;
     const node = new Container();
+    const pos = this.stationXY();
+    node.position.set(pos.x, pos.y);
     const down = v.station.hp <= 0;
-    const halo = new Sprite(this.tex.glow);
-    halo.anchor.set(0.5); halo.tint = down ? DANGER : color; halo.blendMode = 'add'; halo.alpha = down ? 0.25 : 0.5; halo.width = halo.height = this.unit * 1.8;
-    const sp = new Sprite(this.tex.station);
-    sp.anchor.set(0.5); sp.tint = down ? 0x66707f : 0xf2f6ff; sp.width = sp.height = this.unit * 1.1; sp.alpha = down ? 0.6 : 1;
-    node.addChild(halo, sp);
-    const ring = new Graphics();
-    ring.circle(0, 0, this.unit * 0.55);
-    ring.stroke({ color, width: this.selection?.kind === 'station' ? 3 : 1.5, alpha: 0.9 });
-    node.addChild(ring);
+    const size = this.unit * 1.45;
+    const model = hasSprite('station') ? this.spriteNode('station', (SystemScene.STATION_VIS.a * Math.PI) / 180, size, down ? 0x444a55 : color, down ? 0.55 : 1) : null;
+    if (model) {
+      node.addChild(model);
+      if (down) { const fire = new Sprite(this.tex.glow); fire.anchor.set(0.5); fire.tint = DANGER; fire.blendMode = 'add'; fire.width = fire.height = size * 0.8; fire.alpha = 0.5; node.addChild(fire); }
+    } else {
+      const halo = new Sprite(this.tex.glow);
+      halo.anchor.set(0.5); halo.tint = down ? DANGER : color; halo.blendMode = 'add'; halo.alpha = down ? 0.25 : 0.5; halo.width = halo.height = this.unit * 1.8;
+      const sp = new Sprite(this.tex.station);
+      sp.anchor.set(0.5); sp.tint = down ? 0x66707f : 0xf2f6ff; sp.width = sp.height = this.unit * 1.1; sp.alpha = down ? 0.6 : 1;
+      node.addChild(halo, sp);
+    }
+    if (this.selection?.kind === 'station') { const ring = new Graphics(); ring.circle(0, 0, size * 0.5); ring.stroke({ color: 0xffffff, width: 2, alpha: 0.9 }); node.addChild(ring); }
     // Station HP as an arc around the hub.
     const frac = Math.max(0, v.station.hp / v.station.maxHp);
     const arc = new Graphics();
-    arc.arc(0, 0, this.unit * 0.66, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-    arc.stroke({ color: frac < 0.35 ? DANGER : frac < 0.7 ? 0xffd166 : 0x7ee2a8, width: 4, alpha: 0.95 });
+    arc.arc(0, 0, size * 0.52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+    arc.stroke({ color: frac < 0.35 ? DANGER : frac < 0.7 ? 0xffd166 : 0x7ee2a8, width: 3, alpha: 0.95 });
     node.addChild(arc);
     node.eventMode = 'static'; node.cursor = 'pointer';
-    node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= this.unit * 0.7 };
+    node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= size * 0.5 };
     node.on('pointertap', () => this.cb.onSelect({ kind: 'station' }));
     this.stationLayer.addChild(node);
   }
@@ -257,8 +310,9 @@ export class SystemScene {
       let target: { x: number; y: number };
       if (f.pos) target = this.xy(f.pos.r, f.pos.a);
       else { // docked: parked in a bay beside the station
-        const a = 200 + dockIdx * 28; dockIdx++;
-        target = this.xy(0.62, a);
+        const a = 250 + dockIdx * 30; dockIdx++;
+        const st = this.stationXY();
+        target = { x: st.x + Math.cos((a * Math.PI) / 180) * this.unit * 0.95, y: st.y + Math.sin((a * Math.PI) / 180) * this.unit * 0.95 };
       }
       const prev = this.anims.get(f.id);
       const from = prev ? { x: prev.node.position.x, y: prev.node.position.y } : target;
@@ -267,16 +321,28 @@ export class SystemScene {
       seen.add(f.id);
 
       const cargoOnly = f.combat === 0 && f.size > 0;
-      const tex = cargoOnly ? this.tex.cargo : this.tex.ship;
-      const count = Math.min(5, Math.max(1, Math.ceil(f.size / 2)));
-      for (let i = 0; i < count; i++) {
-        const sp = new Sprite(tex);
-        sp.anchor.set(0.5); sp.tint = color; sp.width = sp.height = this.unit * (cargoOnly ? 0.32 : 0.4);
-        const spread = (i - (count - 1) / 2) * this.unit * 0.16;
-        sp.position.set(-spread * 0.4, spread);
-        sp.rotation = f.pos ? Math.atan2(-target.y, -target.x) : Math.PI; // nose toward the star, or parked
-        sp.alpha = f.docked ? 0.6 : 1;
-        node.addChild(sp);
+      const heading = f.pos ? Math.atan2(-target.y, -target.x) : Math.PI; // nose toward the planet, or parked
+      const kind = cargoOnly ? 'cargo' : f.units ? (f.units.cruiser > 0 ? 'cruiser' : f.units.frigate >= f.units.corvette ? 'frigate' : 'corvette') : f.size >= 6 ? 'cruiser' : 'frigate';
+      const size = this.unit * Math.min(1.0, (cargoOnly ? 0.38 : kind === 'cruiser' ? 0.7 : kind === 'frigate' ? 0.5 : 0.4) * (1 + Math.log2(1 + f.size) * 0.12));
+      const model = hasSprite(kind) ? this.spriteNode(kind, heading, size, color, f.docked ? 0.7 : 1) : null;
+      if (model) {
+        if (!cargoOnly && f.size > 1) { // wingmen: a couple of smaller silhouettes behind
+          const wing = Math.min(2, Math.floor(f.size / 3));
+          for (let i = 0; i < wing; i++) { const w = this.spriteNode(kind, heading, size * 0.7, color, 0.8)!; const side = i === 0 ? 1 : -1; w.position.set(-Math.cos(heading) * size * 0.45 + Math.sin(heading) * side * size * 0.42, -Math.sin(heading) * size * 0.45 - Math.cos(heading) * side * size * 0.42); node.addChild(w); }
+        }
+        node.addChild(model);
+      } else {
+        const tex = cargoOnly ? this.tex.cargo : this.tex.ship;
+        const count = Math.min(5, Math.max(1, Math.ceil(f.size / 2)));
+        for (let i = 0; i < count; i++) {
+          const sp = new Sprite(tex);
+          sp.anchor.set(0.5); sp.tint = color; sp.width = sp.height = this.unit * (cargoOnly ? 0.32 : 0.4);
+          const spread = (i - (count - 1) / 2) * this.unit * 0.16;
+          sp.position.set(-spread * 0.4, spread);
+          sp.rotation = heading;
+          sp.alpha = f.docked ? 0.6 : 1;
+          node.addChild(sp);
+        }
       }
       if (f.hp < 1) node.addChild(this.hpBar(f.hp, this.unit * 0.5, this.unit * 0.36));
       const label = new Text({ text: String(f.size), style: new TextStyle({ fill: color, fontSize: 13, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '700', stroke: { color: 0x04060d, width: 4 } }) });
@@ -337,7 +403,7 @@ export class SystemScene {
       const targets: { x: number; y: number }[] = [
         ...defenders.map(pos),
         ...v.structures.map((s) => this.xy(s.orbit, s.angle)),
-        ...(v.station && v.station.hp > 0 ? [{ x: 0, y: 0 }] : []),
+        ...(v.station && v.station.hp > 0 ? [this.stationXY()] : []),
       ];
       const t = nearest(me, targets, (p) => p, R);
       if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: colorOf(f.owner), phase: Math.random() * Math.PI * 2, heavy: f.size >= 6 });
@@ -361,6 +427,8 @@ export class SystemScene {
     // Decor rotation: very slow, stopped during a fight.
     if (!this.view.engaged) this.spin += dtMs * 0.000012;
     this.plateau.rotation = this.spin;
+    if (this.planet) this.planet.time = now / 1000;
+    if (this.planetSprite) this.planetSprite.rotation = -this.spin; // the shader's light stays with the star
     for (const l of this.labels) l.rotation = -this.spin;
     // Ships glide between frames (the stream is 2 Hz).
     for (const a of this.anims.values()) {
@@ -387,7 +455,7 @@ export class SystemScene {
     const sel = this.selection;
     if (sel) {
       let p: { x: number; y: number } | null = null, r = this.unit * 0.5;
-      if (sel.kind === 'station') { p = { x: 0, y: 0 }; r = this.unit * 0.8; }
+      if (sel.kind === 'station') { p = this.stationXY(); r = this.unit * 0.8; }
       else if (sel.kind === 'structure') { const s = this.view.structures.find((x) => x.id === sel.id); if (s) p = this.xy(s.orbit, s.angle); }
       else if (sel.kind === 'fleet') { const a = this.anims.get(sel.id); if (a) { p = { x: a.node.position.x, y: a.node.position.y }; r = this.unit * 0.55; } }
       else if (sel.kind === 'slot') { p = this.xy(sel.orbit, sel.angle); r = this.unit * 0.36; }

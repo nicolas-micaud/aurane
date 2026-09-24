@@ -1,0 +1,16 @@
+{
+  "name": "@aurane/sprites",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pre-rendered 3D sprite sheets for the System view (three.js in headless Chromium).",
+  "scripts": {
+    "render": "node src/render.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.56.0"
+  }
+}

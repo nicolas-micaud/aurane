@@ -1,0 +1,55 @@
+{
+  "px": 128,
+  "frames": 16,
+  "elevation": 52,
+  "models": {
+    "corvette": {
+      "radius": 2.224862353782677
+    },
+    "frigate": {
+      "radius": 3.4813186241812004
+    },
+    "cruiser": {
+      "radius": 6.329459404662562
+    },
+    "cargo": {
+      "radius": 3.338069772387091
+    },
+    "station": {
+      "radius": 8.377385527899579
+    },
+    "relay": {
+      "radius": 2.1560000033378603
+    },
+    "turret_light": {
+      "radius": 2.5324138156758047
+    },
+    "turret_heavy": {
+      "radius": 3.223886317157395
+    },
+    "launcher": {
+      "radius": 2.015382735283653
+    },
+    "bastion": {
+      "radius": 3.980595466779219
+    },
+    "extractor": {
+      "radius": 3.0182555443594223
+    },
+    "warehouse": {
+      "radius": 3.1836382117294044
+    },
+    "shipyard": {
+      "radius": 4.941028239199017
+    },
+    "antenna": {
+      "radius": 2.85600000333786
+    },
+    "amplifier": {
+      "radius": 2.2400000083446505
+    },
+    "tradepost": {
+      "radius": 4.704000010013582
+    }
+  }
+}
