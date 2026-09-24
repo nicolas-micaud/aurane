@@ -8,6 +8,8 @@ export type Faction = (typeof FACTIONS)[number];
 export const RESOURCES = ['metal', 'energy', 'food', 'crystal'] as const;
 export type Resource = (typeof RESOURCES)[number];
 export type Stock = Record<Resource, number>;
+/** A partial stock as produced by zod's .partial() (keys may be present with undefined). */
+export type StockDelta = { [K in Resource]?: number | undefined };
 
 export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'] as const;
 export type Building = (typeof BUILDINGS)[number];
@@ -79,6 +81,12 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('agent_mission'), mission: z.enum(['spy', 'sabotage', 'envoy']), target: z.string() }),
   z.object({ type: z.literal('treaty'), with: z.string(), kind: z.enum(['nap', 'trade', 'transit', 'federation']) }),
   z.object({ type: z.literal('set_watch'), startHour: z.number().int().min(0).max(23) }),
+  z.object({ type: z.literal('light_beacon'), system: z.string() }),
+  z.object({ type: z.literal('alliance_create'), name: z.string().min(2).max(40) }),
+  z.object({ type: z.literal('alliance_invite'), colony: z.string() }),
+  z.object({ type: z.literal('alliance_join'), alliance: z.string() }),
+  z.object({ type: z.literal('alliance_leave') }),
+  z.object({ type: z.literal('ally_transfer'), to: z.string(), stock: StockSchema.partial() }),
   z.object({ type: z.literal('set_policy'), policy: PolicySchema }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;
