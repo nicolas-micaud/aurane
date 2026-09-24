@@ -48,6 +48,43 @@ Réponse attendue : l'URL publique, la confirmation des variables posées (noms 
 qui bloque. Une fois en ligne, la session cloud frappe les premiers codes d'invitation avec
 `ADMIN_TOKEN` transmis par Nick, ou la session locale les frappe et les remet à Nick.
 
-Réponse :
+Réponse (session locale, 24.09.2026 20:10) :
 
-_(à remplir par la session locale)_
+**En ligne : https://play.playaurane.com** — décision Nick : le jeu vit sur `play.`, la vitrine reste sur
+l'apex (GitHub Pages) avec un bouton « Jouer » ; `PUBLIC_ORIGIN=https://play.playaurane.com`.
+
+1. `main` fast-forwardé sur `3d1534a` (PR #1 fusionnée). Puis trois commits de déploiement de ma part sur
+   `main` : `cfc730a` (le compose passe `LLM_PRIMARY_*`/`LLM_FALLBACK_*` au service `world`, ils n'y étaient pas),
+   `2e28fc4` + `deploy/web/nginx.conf` (voir 3), `b125a2c` (sauvegarde).
+2. VM `aurane-app1` (Exoscale ch-gva-2, standard.medium, `infra/` appliqué), stack `deploy/docker-compose.yml`
+   dans `/srv/aurane` : `world`, `postgres:16`, `cloudflared` (tunnel dédié), **plus un service `web` nginx que
+   j'ai ajouté** : le world server ne sert aucun statique (`/` répondait 401), donc nginx sert le build Vite de
+   `apps/web` et proxie `/api`, `/ws` (upgrade), `/gazette`, `/c/`, `/healthz` vers `world:8080`. L'image world est
+   construite sur gmk1 depuis `main` et expédiée par `docker save | ssh load` : **l'image GHCR est privée** (401
+   anonyme) et le jeton gh n'a pas `read:packages` — si tu passes le paquet en public, je repasserai à GHCR.
+   Redéploiement : `ninabot-pro/infra/aurane-deploy/deploy.sh` (build world + web, envoi, compose, sondes) —
+   à relancer après chaque merge sur `main` (dis-le à Nick ou écris-le ici).
+3. Domaine : `play.playaurane.com` → tunnel dédié → `web:80`. HTTPS Cloudflare. `starnet.uno` ne résout plus
+   nulle part (domaine expiré ?) : pas de redirection possible.
+4. Variables posées sur la VM (noms) : `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `LLM_PRIMARY_BASE_URL`
+   (rog1 par IP tailnet : les conteneurs ne résolvent pas MagicDNS), `LLM_PRIMARY_API_KEY`, `LLM_PRIMARY_MODEL`,
+   `LLM_PRIMARY_CONCURRENCY=2`, `LLM_FALLBACK_BASE_URL/_API_KEY/_MODEL` (Infomaniak, Apertus-70B),
+   `REQUIRE_INVITE=1`, `ADMIN_TOKEN`, `AUTH_SECRET`, `PUBLIC_ORIGIN`, `SEASON_SEED=beta-1`, `SEASON_DAYS=7`,
+   `NPC_COUNT=30`. Tous les secrets sont dans Vaultwarden, collection `aurane` (`aurane-postgres-password`,
+   `aurane-admin-token`, `aurane-auth-secret`, `llm-*`, `exoscale-aurane-*`).
+5. Sauvegarde : `pg_dump -Fc` quotidien 04:20 vers SOS `aurane-backups` (ch-gva-2), rétention 14 jours,
+   `deploy/backup/`. Test de restauration fait (`pg-restore-test.sh` : base jetable, 3 tables).
+6. Surveillance : Uptime Kuma sur `/healthz` toutes les 60 s, alerte Telegram après 3 échecs ; logs conteneurs
+   json-file 20 Mo × 5 (≈ 7 jours au rythme actuel).
+7. LLM : depuis le conteneur `world`, `LLM_PRIMARY_BASE_URL/models` répond (qwen3-next-80b) et l'endpoint
+   Infomaniak aussi ; rog1:22 est refusé (ACL `tag:aurane` → 8007 seul). Le basculement primaire→repli est ta
+   logique (`packages/general/src/llm.ts`), je n'ai pas coupé rog1 pour l'éprouver : à tester à ta convenance.
+8. Invitations : **10 codes frappés** (`POST /api/admin/invites`, note « vague 1 »), déposés dans Vaultwarden
+   collection `aurane`, note `aurane-invites-vague-1` — Nick les a. Rien dans ce fichier.
+
+Vérifié en public : `/` 200 (écran d'entrée, 0 erreur console), `/api/public/config` 200, `/healthz` 200,
+`/gazette` 200, `/ws` 401 sans jeton (proxy WebSocket OK).
+
+Bloquant : rien. Points d'attention : (a) l'image GHCR privée ; (b) `main` reçoit mes commits de déploiement,
+rebase ta branche avant la PR 2 ; (c) le cron de veille lit ce fichier sur `main` — écris-y sur `main` ou
+préviens Nick.
