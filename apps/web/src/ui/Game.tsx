@@ -7,16 +7,17 @@ import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.
 import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
+import { SystemMode } from './SystemView.js';
+import { LogisticsPanel } from './Logistics.js';
+import { Cost, RES, fmt, hms } from './bits.js';
 
-type Tab = 'colony' | 'system' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
+type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 const selected = signal<string | null>(null);
 const linkFrom = signal<string | null>(null);
 const tab = signal<Tab>('colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
-const RES: Resource[] = ['metal', 'energy', 'food', 'crystal'];
-
-const fmt = (n: number): string => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0));
-const hms = (s: number): string => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60; return h ? `${h}h${String(m).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`; };
+/** The system whose plateau is open full-screen, or null for the galaxy. */
+export const systemMode = signal<string | null>(null);
 
 export function Game() {
   const host = useRef<HTMLDivElement>(null);
@@ -26,6 +27,7 @@ export function Game() {
   const toastV = useSig(toast);
   const linkV = useSig(linkFrom);
   const selV = useSig(selected);
+  const sysMode = useSig(systemMode);
 
   useEffect(() => {
     const m = new GalaxyMap({
@@ -68,6 +70,22 @@ export function Game() {
         </div>
       )}
       <Panel v={v} map={map} />
+      {sysMode && <SystemMode v={v} systemId={sysMode} onLeave={() => { systemMode.value = null; selected.value = sysMode; tab.value = 'system'; }} />}
+    </div>
+  );
+}
+
+/** Live alerts: fights and blockades on the colony's systems, one tap from the plateau. */
+function Alerts({ v }: { v: PlayerView }) {
+  const hot = v.systems.filter((s) => s.owner === v.me.id && (s.engaged || s.blockadedBy));
+  if (!hot.length) return null;
+  return (
+    <div class="alerts">
+      {hot.slice(0, 3).map((s) => (
+        <button key={s.id} class="alert" onClick={() => { systemMode.value = s.id; }}>
+          <i /> {(s.engaged ? t('alertBattle') : t('alertBlockade')).replace('{s}', s.name)} <b>{t('enter')} ›</b>
+        </button>
+      ))}
     </div>
   );
 }
@@ -110,6 +128,7 @@ function Hud({ v }: { v: PlayerView }) {
           <p class="muted">{t('coach3')}</p>
         </div>
       )}
+      <Alerts v={v} />
       <Coach />
     </div>
   );
@@ -118,7 +137,7 @@ function Hud({ v }: { v: PlayerView }) {
 function Coach() {
   const key = 'aurane.coach';
   const [step, setStep] = useState<number>(() => { try { return Number(localStorage.getItem(key) ?? 0); } catch { return 0; } });
-  const steps = [t('coach1'), t('coach2'), t('coach3')];
+  const steps = [t('coach1'), t('coach2'), t('coach3'), t('coach4'), t('coach5'), t('coach6')];
   if (step >= steps.length) return null;
   const advance = () => { const n = step + 1; setStep(n); try { localStorage.setItem(key, String(n)); } catch { /* ignore */ } };
   return (
@@ -136,8 +155,8 @@ view.subscribe(() => { hudReceivedAt = Date.now(); });
 function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const [open, setOpen] = useState(true);
   const current = useSig(tab);
-  const tabs: Tab[] = ['colony', 'system', 'market', 'fleets', 'diplomacy', 'general', 'log'];
-  const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog') };
+  const tabs: Tab[] = ['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'];
+  const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), logistics: t('tabLogistics'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog') };
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
@@ -147,6 +166,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
       <div class="body">
         {current === 'colony' && <ColonyPanel v={v} map={map} />}
         {current === 'system' && <SystemPanel v={v} />}
+        {current === 'logistics' && <LogisticsPanel v={v} onCenter={(id) => { selected.value = id; map.current?.centerOn(id); }} />}
         {current === 'market' && <MarketPanel v={v} />}
         {current === 'fleets' && <FleetsPanel v={v} map={map} />}
         {current === 'diplomacy' && <DiplomacyPanel v={v} />}
@@ -176,10 +196,6 @@ function ColonyPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | nu
   );
 }
 
-function Cost({ cost }: { cost: Partial<Record<Resource, number | undefined>> }) {
-  return <span class="cost">{RES.filter((r) => cost[r]).map((r) => <span key={r} class={`r-${r}`}><Icon name={r} size={12} />{cost[r]}</span>)}</span>;
-}
-
 function SystemPanel({ v }: { v: PlayerView }) {
   const sel = useSig(selected);
   const s = v.systems.find((x) => x.id === sel);
@@ -202,6 +218,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
         {s.stock && <span>{t('localStock')} : {(['metal', 'energy', 'food', 'crystal'] as const).map((r) => <b key={r} class={`r-${r}`}> {Math.round(s.stock![r])}</b>)} <small>/ {s.capacity}</small></span>}
       </div>
       <div class="actions">
+        <button class={`enter ${s.engaged ? 'hot' : ''}`} onClick={() => { systemMode.value = s.id; }}>◎ {t('enterSystem')}</button>
         <button class="primary" onClick={() => { linkFrom.value = s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
         {s.kind === 'beacon' && mine && !s.lit && <button onClick={() => void act({ type: 'light_beacon', system: s.id })}>{t('lightBeacon')}</button>}
         {s.lit && <span class="tag">{t('lit')} {t('by')} {v.colonies.find((c) => c.id === s.lit!.by)?.name}</span>}

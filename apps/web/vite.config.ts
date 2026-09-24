@@ -13,5 +13,13 @@ export default defineConfig({
       '/ws': { target: 'ws://127.0.0.1:8080', ws: true },
     },
   },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': 'http://127.0.0.1:8080',
+      '/healthz': 'http://127.0.0.1:8080',
+      '/ws': { target: 'ws://127.0.0.1:8080', ws: true },
+    },
+  },
   build: { outDir: 'dist', sourcemap: true, target: 'es2022' },
 });

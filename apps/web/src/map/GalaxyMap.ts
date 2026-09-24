@@ -3,7 +3,7 @@
 // animates: the Signal pulsing along relays, ships in flight, the selection reticle.
 import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
 import { hexDisk, hexToPixel, SECTOR_SIZE, type PlayerView, type RelayView, type SystemView } from '@aurane/sim';
-import { coreTexture, dotTexture, glowTexture, glyphTexture, nebulaTexture, pulseTexture, ringTexture, shipTexture } from './textures.js';
+import { cargoTexture, coreTexture, dotTexture, glowTexture, glyphTexture, nebulaTexture, pulseTexture, ringTexture, shipTexture } from './textures.js';
 
 export const FACTION_COLOR: Record<string, number> = { concordat: 0xe8c872, guild: 0xe07a3f, oracles: 0x9b7bff, corsairs: 0xd9534f };
 export const RESOURCE_COLOR: Record<string, number> = { metal: 0xb8c4d0, energy: 0xffd166, food: 0x7ee2a8, crystal: 0x8be9ff };
@@ -48,14 +48,15 @@ export class GalaxyMap {
   private simTimeAtReceive = 0;
   private receivedAt = 0;
   private lastLabelScale = -1;
-  private tex!: { glow: Texture; core: Texture; dot: Texture; ring: Texture; ship: Texture; pulse: Texture };
+  private tex!: { glow: Texture; core: Texture; dot: Texture; ring: Texture; ship: Texture; cargo: Texture; pulse: Texture };
+  private engagedRings: Graphics[] = [];
 
   constructor(private readonly cb: MapCallbacks) {}
 
   async mount(el: HTMLElement): Promise<void> {
     await this.app.init({ resizeTo: el, background: 0x05070f, antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true });
     el.appendChild(this.app.canvas);
-    this.tex = { glow: glowTexture(), core: coreTexture(), dot: dotTexture(), ring: ringTexture(), ship: shipTexture(), pulse: pulseTexture() };
+    this.tex = { glow: glowTexture(), core: coreTexture(), dot: dotTexture(), ring: ringTexture(), ship: shipTexture(), cargo: cargoTexture(), pulse: pulseTexture() };
     this.world.addChild(this.starfield, this.fogLayer, this.sectorLayer, this.nebulaLayer, this.holeLayer, this.relayGlow, this.relayLayer, this.pulseLayer, this.systemLayer, this.fleetLayer, this.reticle, this.labelLayer);
     this.app.stage.addChild(this.world);
     this.world.scale.set(Math.min(0.5, Math.max(0.28, el.clientWidth / 2600)));
@@ -220,6 +221,7 @@ export class GalaxyMap {
   private drawSystems(v: PlayerView): void {
     this.systemLayer.removeChildren();
     this.labelLayer.removeChildren();
+    this.engagedRings = [];
     const style = new TextStyle({ fill: 0xe6ecf7, fontSize: 34, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '600', letterSpacing: 1, stroke: { color: 0x05070f, width: 6 } });
     const small = new TextStyle({ fill: 0x9fb0d0, fontSize: 26, fontFamily: 'Rajdhani, system-ui, sans-serif', stroke: { color: 0x05070f, width: 5 } });
     for (const s of v.systems) {
@@ -266,6 +268,7 @@ export class GalaxyMap {
         node.addChild(ring);
       }
       if (s.blockadedBy) { const bl = new Graphics(); bl.circle(0, 0, base + 20); bl.stroke({ color: DANGER, width: 4, alpha: 0.9 }); node.addChild(bl); }
+      if (s.engaged) { const eg = new Graphics(); eg.circle(0, 0, base + 26); eg.stroke({ color: DANGER, width: 3, alpha: 0.9 }); node.addChild(eg); this.engagedRings.push(eg); }
 
       // Resource glyph, so the map reads without a legend.
       const glyph = new Sprite(glyphTexture(s.resource));
@@ -303,17 +306,21 @@ export class GalaxyMap {
   private drawFleets(v: PlayerView): void {
     this.fleetLayer.removeChildren();
     this.ships = [];
+    let parked = new Map<string, number>();
     for (const f of v.fleets) {
       const mine = f.owner === v.me.id;
-      const color = mine ? 0xffffff : FACTION_COLOR[this.factionOf.get(f.owner) ?? ''] ?? DANGER;
-      const sp = new Sprite(this.tex.ship);
-      sp.anchor.set(0.5); sp.tint = color; sp.width = sp.height = 44 + Math.min(30, f.size);
+      const convoy = f.order === 'convoy' || (f.combat === 0 && f.size > 0);
+      const color = mine ? (convoy ? 0xbfefff : 0xffffff) : FACTION_COLOR[this.factionOf.get(f.owner) ?? ''] ?? DANGER;
+      const sp = new Sprite(convoy ? this.tex.cargo : this.tex.ship);
+      sp.anchor.set(0.5); sp.tint = color; sp.width = sp.height = (convoy ? 34 : 44) + Math.min(30, f.combat || f.size);
       if (f.at) {
         const s = this.systemById.get(f.at);
         if (!s) continue;
-        sp.position.set(s.x + 34, s.y - 34); sp.rotation = -Math.PI / 4;
+        const n = parked.get(f.at) ?? 0; parked.set(f.at, n + 1);
+        const a = -Math.PI / 4 + n * 0.5;
+        sp.position.set(s.x + Math.cos(a) * 48, s.y + Math.sin(a) * 48); sp.rotation = a + Math.PI;
         this.fleetLayer.addChild(sp);
-        if (f.order === 'blockade') { const ring = new Graphics(); ring.circle(s.x, s.y, 46); ring.stroke({ color: DANGER, width: 2, alpha: 0.8 }); this.fleetLayer.addChild(ring); }
+        if (f.order === 'blockade' || f.order === 'raid' || f.order === 'ambush') { const ring = new Graphics(); ring.circle(s.x, s.y, 46); ring.stroke({ color: DANGER, width: 2, alpha: 0.8 }); this.fleetLayer.addChild(ring); }
       } else {
         const from = f.from ? this.systemById.get(f.from) : undefined;
         const to = f.destination ? this.systemById.get(f.destination) : undefined;
@@ -321,10 +328,17 @@ export class GalaxyMap {
         const fx = from?.x ?? to.x, fy = from?.y ?? to.y;
         sp.rotation = Math.atan2(to.y - fy, to.x - fx);
         this.fleetLayer.addChild(sp);
-        const trail = new Graphics(); dashed(trail, fx, fy, to.x, to.y, 6, 14, { color, width: 1.5, alpha: 0.35 }); this.fleetLayer.addChildAt(trail, 0);
+        const trail = new Graphics(); dashed(trail, fx, fy, to.x, to.y, 6, 14, { color, width: 1.5, alpha: 0.35 });
+        // A convoy's remaining hops, so a player sees where it can be caught.
+        if (convoy && f.path.length) {
+          let lx = to.x, ly = to.y;
+          for (const wp of f.path) { const s = this.systemById.get(wp); if (!s) break; dashed(trail, lx, ly, s.x, s.y, 4, 16, { color, width: 1.2, alpha: 0.22 }); lx = s.x; ly = s.y; }
+        }
+        this.fleetLayer.addChildAt(trail, 0);
         this.ships.push({ sprite: sp, fromX: fx, fromY: fy, toX: to.x, toY: to.y, departAt: f.departAt, arriveAt: f.arriveAt });
       }
     }
+    parked = new Map();
   }
 
   private animate(dtMs: number): void {
@@ -341,6 +355,8 @@ export class GalaxyMap {
       s.sprite.position.set(s.fromX + (s.toX - s.fromX) * t, s.fromY + (s.toY - s.fromY) * t);
     }
     for (const r of this.rings) r.rotation += dtMs * 0.00008;
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 180);
+    for (const eg of this.engagedRings) eg.alpha = pulse;
     const sel = this.selected ? this.systemById.get(this.selected) : undefined;
     this.reticle.clear();
     if (sel) {

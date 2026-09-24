@@ -257,3 +257,25 @@ oisifs si elle dépasse dix minutes.
 - **Gazette** : nouvelle rubrique « Les sièges » (les trois plus gros engagements du jour avec durée et
   coques perdues, blocus ouverts, stations tombées, convois perdus), en français et en anglais.
 - Client : `net.ts` expose `watch(systemId)` et le signal `systemView` pour le palier 3.
+
+## Résultats du palier 3 (client)
+
+- **Vue Système** plein écran (`apps/web/src/map/SystemScene.ts`, scène PixiJS dédiée) : étoile et
+  station-relais au centre avec arc de PV, trois orbites légendées (Industrie, Défense, Signal),
+  emplacements libres cliquables, installations dessinées (textures procédurales par type) avec PV et
+  arc de portée pour les tourelles, bouclier du Bastion, flottes sur le plateau interpolées entre deux
+  trames (le flux est à 2 Hz), flottes amarrées dans une baie près de la station, arrivées prévues au
+  bord avec compte à rebours, tirs et impacts pendant un engagement, rotation très lente du décor
+  arrêtée pendant le combat. Transition d'entrée (zoom + fondu), bouton « Retour à la galaxie ».
+- **Dock** à quatre onglets : Plateau (objet sélectionné, construction par orbite avec emplacements
+  restants et coût vérifié sur le stock local, entraînement, files), Flottes (présentes, adverses,
+  en approche, ordres : défendre, replier, scinder, cibler la station ou une installation, renforts
+  depuis d'autres systèmes), Logistique (routes touchant ce système, envoi de convoi avec escorte),
+  Bataille (combat en cours avec coques abattues par camp, rapports chronologiques).
+- **Onglet Logistique** en vue galaxie : alerte d'entrepôts pleins, routes avec limite, création de
+  route, envoi de convoi depuis n'importe quel système, convois en route avec cargaison et arrivée.
+- **Carte** : convois dessinés avec une coque de cargo et leurs prochains sauts en pointillé,
+  anneau rouge pulsant sur les systèmes engagés, alertes « Combat à X — Entrer » dans le bandeau.
+- **Coach** : trois étapes de plus (route et cargos, tourelle à la première menace, sélection dans un
+  système). Vérification visuelle en Chromium headless (bureau 1280×800 et mobile 390×844) avec une
+  trame d'engagement synthétique via `#debug`.

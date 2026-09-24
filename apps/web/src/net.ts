@@ -1,7 +1,7 @@
 // Talks to the world server: guest creation, the WebSocket view stream and commands.
 import { signal } from '@preact/signals';
 import type { Command, Faction, Persona } from '@aurane/protocol';
-import type { ApplyResult, PlayerView, SystemDetailView } from '@aurane/sim';
+import type { ApplyResult, BattleReport, PlayerView, SystemDetailView } from '@aurane/sim';
 
 export const view = signal<PlayerView | null>(null);
 export const status = signal<'idle' | 'connecting' | 'online' | 'offline'>('idle');
@@ -34,7 +34,7 @@ export function connect(): void {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data as string) as { type: 'view'; view: PlayerView } | { type: 'system'; view: SystemDetailView } | { type: 'result'; id?: string; result: ApplyResult } | { type: 'error'; error: string };
     if (msg.type === 'view') view.value = msg.view;
-    else if (msg.type === 'system') { if (msg.view.id === watched) systemView.value = msg.view; }
+    else if (msg.type === 'system') { if (msg.view.id === watched && !frozen) systemView.value = msg.view; }
     else if (msg.type === 'result' && msg.id) { pending.get(msg.id)?.(msg.result); pending.delete(msg.id); }
     else if (msg.type === 'error') toast.value = { text: msg.error, kind: 'err' };
   };
@@ -85,3 +85,17 @@ export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{
   const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
   return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[] }) : null;
 }
+
+export type BattleSummary = { id: string; system: string; systemName: string; startedAt: number; endedAt: number | null; sides: string[]; kills: number };
+export async function fetchBattles(): Promise<BattleSummary[]> {
+  const res = await fetch('/api/battles', { headers: authHeaders() });
+  return res.ok ? (await res.json() as BattleSummary[]) : [];
+}
+export async function fetchBattle(id: string): Promise<BattleReport | null> {
+  const res = await fetch(`/api/battle/${encodeURIComponent(id)}`, { headers: authHeaders() });
+  return res.ok ? (await res.json() as BattleReport) : null;
+}
+
+// Debug hook for visual checks: open the app with #debug, freeze the stream and set a System frame by hand.
+let frozen = false;
+if (typeof location !== 'undefined' && location.hash === '#debug') (globalThis as unknown as { __aurane: unknown }).__aurane = { systemView, view, freeze: (on: boolean) => { frozen = on; } };
