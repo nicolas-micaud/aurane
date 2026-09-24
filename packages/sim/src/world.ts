@@ -137,6 +137,12 @@ export function productiveSystems(w: World, colony: Colony): string[] {
   return ownedSystems(w, colony.id).filter((id) => net.has(id));
 }
 
+/** Energy per Draw for a set of active relays: superlinear, so empires pay for their size. */
+export function networkUpkeep(relays: readonly Relay[]): number {
+  const base = relays.reduce((s, r) => s + r.upkeep, 0);
+  return base * (1 + B.UPKEEP_SCALE_PER_RELAY * relays.length);
+}
+
 export function colonyRelays(w: World, colonyId: string): Relay[] {
   return (w.relaysByOwner[colonyId] ?? []).map((id) => w.relays[id]!);
 }
@@ -755,13 +761,13 @@ function runDraw(w: World): void {
     // Upkeep: unpowered relays go dark, farthest from the capital first.
     let net = colonyNetwork(w, colony);
     const relays = colonyRelays(w, colony.id).filter((r) => relayActive(r, w.time));
-    let upkeep = relays.reduce((s, r) => s + r.upkeep, 0);
+    let upkeep = networkUpkeep(relays);
     if (upkeep > colony.stock.energy) {
       relays.sort((x, y) => Math.max(net.get(y.a) ?? 1e9, net.get(y.b) ?? 1e9) - Math.max(net.get(x.a) ?? 1e9, net.get(x.b) ?? 1e9));
       while (upkeep > colony.stock.energy && relays.length) {
         const r = relays.shift()!;
         r.cutUntil = Math.max(r.cutUntil, nextDrawAt);
-        upkeep -= r.upkeep;
+        upkeep = networkUpkeep(relays);
       }
       logEvent(w, 'relays.unpowered', [colony.id]);
       net = colonyNetwork(w, colony);

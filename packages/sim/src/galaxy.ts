@@ -48,7 +48,7 @@ export interface Galaxy {
 }
 
 /** Upper bound of any relay range with every multiplier stacked. */
-export const MAX_LINK_LENGTH = 520;
+export const MAX_LINK_LENGTH = 700;
 
 const SYLLABLES = ['ka', 'ra', 'vex', 'lo', 'mi', 'zen', 'tor', 'qua', 'nyx', 'sol', 'dra', 'eo',
   'lum', 'is', 'ar', 'cy', 'ven', 'tha', 'or', 'phe', 'xi', 'ul', 'no', 'bel', 'am', 'ir'];
@@ -93,7 +93,7 @@ export interface GalaxyOptions {
 export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}): Galaxy {
   const root = typeof seed === 'string' ? createRng(seed).state() : seed >>> 0;
   const radius = opts.radius ?? 12;
-  const [minSys, maxSys] = opts.systemsPerSector ?? [6, 12];
+  const [minSys, maxSys] = opts.systemsPerSector ?? [10, 16];
   const galaxy: Galaxy = { seed: root, radius, sectors: {}, systems: {}, beacons: [], candidates: {} };
   const hexes = hexDisk(radius);
 

@@ -10,7 +10,7 @@ import { createRng, subSeed } from './rng.js';
 import { fleetSize, type Colony, type World } from './state.js';
 import { atPeace, isAlly } from './diplomacy.js';
 import {
-  colonyNetwork, colonyRelays, colonyScore, fleetsAt, hasBuilding, isShielded, ownedSystems, rangeContext,
+  colonyNetwork, colonyRelays, colonyScore, fleetsAt, hasBuilding, isShielded, networkUpkeep, ownedSystems, rangeContext,
   reachableRegions, slotsOf,
 } from './world.js';
 
@@ -31,7 +31,7 @@ interface Ctx {
 
 /** Default reserves scale with the network: enough energy for six hours of upkeep, food for the population. */
 function reserves(w: World, c: Colony, p: Policy, productive: string[]): Stock {
-  const upkeep = colonyRelays(w, c.id).filter((r) => relayActive(r, w.time)).reduce((s, r) => s + r.upkeep, 0);
+  const upkeep = networkUpkeep(colonyRelays(w, c.id).filter((r) => relayActive(r, w.time)));
   const pop = productive.reduce((s, id) => s + w.systems[id]!.population, 0);
   return {
     metal: p.reserves.metal ?? 80,
@@ -237,8 +237,8 @@ function decideDiplomacy(ctx: Ctx): void {
       const cand = Object.values(w.colonies).find((o) => !o.alliance && o.faction === c.faction && !a.invites.includes(o.id) && hexDistance(w.galaxy.sectors[w.galaxy.systems[o.capital]!.sector]!.hex, w.galaxy.sectors[w.galaxy.systems[c.capital]!.sector]!.hex) <= 4);
       if (cand) ctx.out.push({ type: 'alliance_invite', colony: cand.id });
     }
-    if (p.aggression < 0.3 && c.influence >= B.TREATY_COST_INFLUENCE.nap) {
-      const n = hostileNeighbours(ctx).filter((o) => fleetStrength(w, o.id) > fleetStrength(w, c.id));
+    if (p.aggression < 0.3 && c.influence >= 3 * B.TREATY_COST_INFLUENCE.nap) {
+      const n = hostileNeighbours(ctx).filter((o) => fleetStrength(w, o.id) > fleetStrength(w, c.id) && !w.proposals.some((pr) => pr.from === c.id && pr.to === o.id));
       if (n.length) ctx.out.push({ type: 'treaty', with: ctx.rng.pick(n).id, kind: 'nap' });
     }
   }

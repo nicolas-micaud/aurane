@@ -85,7 +85,7 @@ Sept systèmes fixes, placés vers le cœur de l'Aurane, portant un nom et une l
 
 - **Secteurs** : la galaxie est un plateau d'hexagones. Saison 0 : rayon 12, soit 469 secteurs. Le plateau peut s'agrandir d'un anneau en cours de saison si la population l'exige (« l'Expansion », annoncée par la Gazette).
 - **Régions** : groupes de sept secteurs (une fleur d'hexagones). Chaque région possède un **Marché**. C'est aussi l'unité de la carte publique et du Tirage.
-- **Systèmes** : chaque secteur contient de 6 à 12 systèmes stellaires positionnés en coordonnées continues. Un système a un type de ressource, une **bande** (1 à 8), un rendement de base, et de 1 à 3 emplacements de construction.
+- **Systèmes** : chaque secteur contient de 10 à 16 systèmes stellaires positionnés en coordonnées continues (environ 130 unités entre voisins). Un système a un type de ressource, une **bande** (1 à 8), un rendement de base, et de 1 à 3 emplacements de construction.
 - **Phénomènes** (issus du prototype) : **pulsars** (portée des relais ×1,5 au départ ou à l'arrivée), **nébuleuses** (coût de traversée ×2), **trous noirs** (aucun relais ne les traverse). Ils sont générés de façon déterministe à partir de la graine de saison.
 
 ### 3.2 Placement des joueurs
@@ -103,9 +103,9 @@ Un joueur voit les secteurs que son Réseau touche, ceux de ses alliés, et ceux
 C'est le cœur du jeu et l'héritage direct du prototype.
 
 - Un **relais** relie deux systèmes. Il est instantanément fonctionnel une fois construit (délai de construction : 2 à 20 min selon la longueur).
-- **Portée** : base 190 unités (le secteur fait 1000 de côté). Pulsar : ×1,5. Amplificateur construit sur un système : +25 % pour les relais partant de ce système.
+- **Portée** : base 260 unités (le secteur fait 1000 de côté). Pulsar : ×1,5. Amplificateur construit sur un système : +25 % pour les relais partant de ce système.
 - **Coût** de construction : Métal + Énergie proportionnels à la longueur, doublés sur la portion traversant une nébuleuse.
-- **Entretien** : chaque relais consomme de l'Énergie à chaque Tirage. C'est le régulateur fondamental : un Réseau trop grand pour son énergie voit ses relais les plus lointains s'éteindre en premier. Pas de blob.
+- **Entretien** : chaque relais consomme de l'Énergie à chaque Tirage, et l'entretien total croît plus vite que le nombre de relais (+3 % par relais actif). C'est le régulateur fondamental : un Réseau trop grand pour son énergie voit ses relais les plus lointains s'éteindre en premier. Pas de blob.
 - **Connexion** : un système ne produit, ne construit et ne compte au score que s'il existe un chemin de relais actifs jusqu'à la capitale. Couper un relais coupe tout ce qui est derrière.
 - **Relais partagés** : deux Colonies alliées peuvent transiter par le Réseau l'une de l'autre (flottes et commerce) selon les termes de leur traité.
 - **Redondance** : rien n'empêche de bâtir des boucles. C'est le premier geste du joueur malin : identifier ses **ponts** (au sens de la théorie des graphes) et les doubler. Le client les met en évidence d'une couleur discrète, pour que le débutant les voie aussi.
@@ -134,7 +134,7 @@ Le déséquilibre géographique (Énergie au centre, Vivres en bordure) est volo
 
 Chaque heure, à la minute 0 (UTC), le serveur tire **trois bandes distinctes parmi huit**, identiques pour toute la galaxie.
 
-- Un système dont la bande est tirée produit **×3** son rendement de base ; les autres produisent **×1**. Il n'y a pas d'heure morte, seulement des heures fastes.
+- Un système dont la bande est tirée produit **×3** son rendement de base ; les autres produisent **×1**. Il n'y a pas d'heure morte, seulement des heures fastes. Chaque système connecté ajoute un petit filet de chacune des quatre ressources (la capitale trois fois plus) : la spécialité fait la richesse, le filet évite la mort par asphyxie.
 - La production d'une Colonie est la somme des systèmes **connectés** à l'instant du Tirage. L'empreinte spatiale est donc littéralement le revenu.
 - Les Oracles connaissent une des trois bandes une heure à l'avance. Les autres voient l'historique : les bandes sont tirées avec une légère mémoire (une bande tirée deux fois de suite voit sa probabilité baisser), ce qui récompense l'observation sans permettre la certitude.
 - Une fois sur douze en moyenne, le Tirage porte un **événement** : *Éruption* (une bande produit ×5), *Tempête* (les relais d'une région perdent 20 % de portée jusqu'au prochain Tirage ; les relais trop longs s'éteignent), *Écho* (un Phare émet : le premier à s'y relier dans l'heure gagne une prime de Cristal).
@@ -145,7 +145,7 @@ Les échanges se décident pendant l'heure et **se règlent tous à l'instant du
 
 Deux voies :
 
-1. **Le Marché régional** : chaque Marché de région tient un carnet d'ordres par ressource, libellé en **Crédits** (unité de compte, non stockable d'une saison à l'autre, créée uniquement par le marché). Les ordres d'achat et de vente sont appariés au Tirage par **enchère uniforme** : un seul prix de règlement par ressource et par région. Simple à comprendre (« je vends 40 Vivres à au moins 3 »), robuste aux bots, et il crée de l'**arbitrage entre régions** pour ceux qui aiment ça.
+1. **Le Marché régional** : chaque Marché de région tient un carnet d'ordres par ressource, libellé en **Crédits** (unité de compte, non stockable d'une saison à l'autre ; chaque système connecté en crée deux par Tirage, les frais de marché les détruisent). Les ordres d'achat et de vente sont appariés au Tirage par **enchère uniforme** : un seul prix de règlement par ressource et par région. Simple à comprendre (« je vends 40 Vivres à au moins 3 »), robuste aux bots, et il crée de l'**arbitrage entre régions** pour ceux qui aiment ça.
 2. **Le troc direct** : une Colonie propose à une autre « 30 Métal contre 20 Énergie ». Si l'offre est acceptée avant le Tirage, elle s'exécute au Tirage. Les alliés disposent en plus d'un transfert gratuit plafonné par Tirage.
 
 **Portée commerciale** : une Colonie accède au Marché de toute région que son Réseau touche, plus une région par **Comptoir** construit. La Guilde des Marchands a +1 région d'office. Le troc direct est possible avec toute Colonie partageant un Marché accessible.

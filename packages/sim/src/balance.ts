@@ -2,13 +2,14 @@
 import type { Building, Resource, Stock, UnitType } from '@starnet/protocol';
 
 export const SECTOR_SIZE = 1000;          // world units per sector edge box
-export const BASE_RANGE = 190;            // relay range in world units
+export const BASE_RANGE = 260;            // relay range in world units (systems are ~130 apart on average)
 export const PULSAR_RANGE_MULT = 1.5;
 export const AMPLIFIER_RANGE_MULT = 1.25;
 export const CONCORDAT_RANGE_MULT = 1.1;
 export const NEBULA_COST_MULT = 2;
 export const RELAY_COST_PER_UNIT: Stock = { metal: 0.08, energy: 0.04, food: 0, crystal: 0 };
 export const RELAY_UPKEEP_PER_UNIT = 0.01; // energy per draw per world unit of relay
+export const UPKEEP_SCALE_PER_RELAY = 0.03; // total upkeep × (1 + 0.03 × active relays): big networks pay superlinearly
 export const RELAY_BUILD_SECONDS_PER_UNIT = 4; // 190 units ≈ 13 min
 export const RELAY_REPAIR_COST_FRACTION = 0.5;
 export const RELAY_CUT_HOURS = 6;

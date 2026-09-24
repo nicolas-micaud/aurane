@@ -31,7 +31,7 @@ describe('galaxy', () => {
   it('has seven named beacons near the core and systems in every sector', () => {
     expect(g.beacons).toHaveLength(7);
     for (const b of g.beacons) expect(g.systems[b]!.beaconName).toBeDefined();
-    for (const s of Object.values(g.sectors)) expect(s.systems.length).toBeGreaterThanOrEqual(6);
+    for (const s of Object.values(g.sectors)) expect(s.systems.length).toBeGreaterThanOrEqual(8);
   });
   it('puts food on the rim and energy at the core', () => {
     const share = (ring: (r: number) => boolean, res: string) => {
