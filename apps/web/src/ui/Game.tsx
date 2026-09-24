@@ -3,14 +3,15 @@ import { signal } from '@preact/signals';
 import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
 import type { PlayerView, SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, status, toast, view } from '../net.js';
-import { t, tError } from '../i18n/index.js';
+import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.js';
+import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 
 type Tab = 'colony' | 'system' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 const selected = signal<string | null>(null);
 const linkFrom = signal<string | null>(null);
 const tab = signal<Tab>('colony');
+const briefing = signal<{ text: string; source: string } | null>(null);
 const RES: Resource[] = ['metal', 'energy', 'food', 'crystal'];
 
 const fmt = (n: number): string => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(0));
@@ -46,6 +47,8 @@ export function Game() {
   }, []);
 
   useEffect(() => { map.current?.update(v); }, [v]);
+  useEffect(() => { void fetchBriefing(lang.value).then((b) => { if (b && b.awaySeconds >= 600) briefing.value = b; }); }, []);
+  const brief = useSig(briefing);
   useEffect(() => { map.current?.setSelection(selV); }, [selV]);
   useEffect(() => { map.current?.setLinkFrom(linkV); }, [linkV]);
 
@@ -56,6 +59,13 @@ export function Game() {
       {st !== 'online' && <div class="banner">{t('offline')}</div>}
       {toastV && <div class={`toast ${toastV.kind}`}>{toastV.text}</div>}
       {linkV && <div class="hint">{t('linkHint')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
+      {brief && (
+        <div class="briefing">
+          <h3>{t('briefing')} · {t(v.me.persona as 'vane')}</h3>
+          <pre>{brief.text}</pre>
+          <button class="primary" onClick={() => { briefing.value = null; }}>{t('dismiss')}</button>
+        </div>
+      )}
       <Panel v={v} map={map} />
     </div>
   );
@@ -266,19 +276,29 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
 
 function GeneralPanel({ v }: { v: PlayerView }) {
   const [text, setText] = useState(v.me.policy.notes);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ summary: string; source: string } | null>(null);
   const p = v.me.policy;
+  const submit = async () => {
+    setBusy(true);
+    const r = await submitDoctrine(text, lang.value);
+    setBusy(false);
+    if (r) setResult(r);
+  };
   return (
     <div>
       <h2>{t(v.me.persona as 'vane')}</h2>
       <p class="muted">{t('doctrineHint')}</p>
       <textarea rows={4} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
-      <button class="primary" onClick={() => void act({ type: 'set_policy', policy: { ...p, notes: text } })}>{t('apply')}</button>
+      <button class="primary" disabled={busy || text.trim().length < 3} onClick={() => void submit()}>{busy ? t('compiling') : t('apply')}</button>
+      {result && <p class="tag">{t('compiled')} · {result.source === 'llm' ? t('viaModel') : t('viaRules')}<br /><small>{result.summary}</small></p>}
       <h3>{t('policy')}</h3>
       <p>{t('expansion')}: {(p.expansion * 100).toFixed(0)} % · {t('aggression')}: {(p.aggression * 100).toFixed(0)} %</p>
       <div class="row">
         <label>{t('expansion')}<input type="range" min={0} max={1} step={0.1} value={p.expansion} onChange={(e) => void act({ type: 'set_policy', policy: { ...p, expansion: Number((e.target as HTMLInputElement).value) } })} /></label>
         <label>{t('aggression')}<input type="range" min={0} max={1} step={0.1} value={p.aggression} onChange={(e) => void act({ type: 'set_policy', policy: { ...p, aggression: Number((e.target as HTMLInputElement).value) } })} /></label>
       </div>
+      <button onClick={() => void fetchBriefing(lang.value).then((b) => { if (b) briefing.value = b; })}>{t('briefing')}</button>
     </div>
   );
 }

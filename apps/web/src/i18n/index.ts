@@ -38,6 +38,7 @@ const STRINGS = {
     ended: 'Le Silence est tombé.', renaissance: 'La Renaissance ! Le Signal est revenu.',
     errors: { range: 'Hors de portée', blackhole: 'Un trou noir avale le signal', far: 'Trop loin', same: 'Même étoile', 'relay exists': 'Relais déjà construit', 'not enough resources': 'Pas assez de ressources', 'not connected to your network': 'Pas relié à ton Réseau', 'system held by another colony': 'Système tenu par une autre Colonie' } as Record<string, string>,
     lightBeacon: 'Rallumer le Phare', lit: 'Rallumé', by: 'par',
+    briefing: 'Briefing', dismiss: 'Compris', compiling: 'Ton Général relit ta doctrine…', compiled: 'Doctrine appliquée', viaModel: 'interprétée par ton Général', viaRules: 'interprétée par les règles de base (modèle indisponible)',
   },
   en: {
     tagline: "can't stop the signal",
@@ -74,6 +75,7 @@ const STRINGS = {
     ended: 'The Silence has fallen.', renaissance: 'The Renaissance! The Signal is back.',
     errors: { range: 'Out of range', blackhole: 'A black hole swallows the signal', far: 'Too far', same: 'Same star', 'relay exists': 'Relay already built', 'not enough resources': 'Not enough resources', 'not connected to your network': 'Not connected to your Network', 'system held by another colony': 'System held by another Colony' } as Record<string, string>,
     lightBeacon: 'Light the Beacon', lit: 'Lit', by: 'by',
+    briefing: 'Briefing', dismiss: 'Got it', compiling: 'Your General is reading your doctrine…', compiled: 'Doctrine applied', viaModel: 'interpreted by your General', viaRules: 'interpreted by the base rules (model unavailable)',
   },
 } as const;
 

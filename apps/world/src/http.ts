@@ -52,6 +52,12 @@ export function createHttpServer(engine: Engine): Server {
       const colony = token ? await engine.authenticate(token) : null;
       if (!colony) return json(res, 401, { error: 'unauthorized' });
       if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, engine.view(colony.id));
+      if (req.method === 'GET' && url.pathname === '/api/briefing') return json(res, 200, await engine.briefing(colony.id, url.searchParams.get('lang') === 'en' ? 'en' : 'fr'));
+      if (req.method === 'POST' && url.pathname === '/api/doctrine') {
+        const parsed = z.object({ text: z.string().max(2000), lang: z.enum(['fr', 'en']).default('fr') }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid doctrine' });
+        return json(res, 200, await engine.doctrine(colony.id, parsed.data.text, parsed.data.lang));
+      }
       if (req.method === 'POST' && url.pathname === '/api/cmd') {
         const parsed = CommandSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid command', issues: parsed.error.issues });

@@ -8,6 +8,9 @@
       "path": "packages/sim"
     },
     {
+      "path": "packages/general"
+    },
+    {
       "path": "tools/season-sim"
     },
     {

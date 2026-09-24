@@ -63,3 +63,15 @@ export async function act(command: Command, okText?: string): Promise<boolean> {
   setTimeout(() => { toast.value = null; }, 2500);
   return r.ok;
 }
+
+const authHeaders = (): Record<string, string> => ({ authorization: `Bearer ${getToken() ?? ''}`, 'content-type': 'application/json' });
+
+export async function fetchBriefing(lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {
+  const res = await fetch(`/api/briefing?lang=${lang}`, { headers: authHeaders() });
+  return res.ok ? (await res.json() as { text: string; source: string; awaySeconds: number }) : null;
+}
+
+export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{ summary: string; source: string; warnings: string[] } | null> {
+  const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
+  return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[] }) : null;
+}

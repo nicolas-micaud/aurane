@@ -6,6 +6,7 @@ import {
   apply, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, tick, viewFor,
   type ApplyResult, type Colony, type PlayerView, type World,
 } from '@aurane/sim';
+import { clientFromEnv, compilePolicy, writeBriefing, Quota, type LlmClient } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -24,6 +25,10 @@ export class Engine {
   private decisionTick = 0;
   private dirtyColonies = new Set<string>();
   private lastDrawSeen = -1;
+  private llm: LlmClient | null = clientFromEnv();
+  private quota = new Quota();
+  /** Sim time of the last briefing per colony, so the next one covers only what is new. */
+  private lastBriefedAt = new Map<string, number>();
 
   constructor(private readonly cfg: Config, private readonly store: Store) {}
 
@@ -147,6 +152,40 @@ export class Engine {
       for (const fn of set) fn(v);
     }
     this.dirtyColonies.clear();
+  }
+
+  // --- the General -----------------------------------------------------------
+
+  async doctrine(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ policy: unknown; summary: string; source: string; warnings: string[] } | null> {
+    const c = this.world.colonies[colonyId];
+    if (!c) return null;
+    const systems: Record<string, string> = {};
+    for (const [id, st] of Object.entries(this.world.systems)) if (st.owner === c.id) systems[id] = this.world.galaxy.systems[id]!.name;
+    const colonies: Record<string, string> = {};
+    for (const o of Object.values(this.world.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
+    const alliances: Record<string, string> = {};
+    for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
+    const client = this.quota.take(c.id, 'writes') ? this.llm : null;
+    const compiled = await compilePolicy(text, { lang, current: c.policy, systems, colonies, alliances }, client);
+    // "__capital__" from the heuristic resolves to the real capital id.
+    compiled.policy.defendFirst = compiled.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
+    apply(this.world, c.id, { type: 'set_policy', policy: compiled.policy });
+    this.dirtyColonies.add(c.id);
+    return { policy: compiled.policy, summary: compiled.summary, source: compiled.source, warnings: compiled.warnings };
+  }
+
+  async briefing(colonyId: string, lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {
+    const c = this.world.colonies[colonyId];
+    if (!c) return null;
+    const since = this.lastBriefedAt.get(c.id) ?? c.createdAt;
+    const awaySeconds = Math.max(0, this.world.time - since);
+    const events = this.world.events.filter((e) => e.at > since && (e.actors.includes(c.id) || e.kind === 'draw'));
+    const names: Record<string, string> = {};
+    for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
+    const client = awaySeconds >= ABSENT_AFTER_S && this.quota.take(c.id, 'writes') ? this.llm : null;
+    const res = await writeBriefing({ view: viewFor(this.world, c), events, awaySeconds, persona: c.persona, lang, names }, client);
+    this.lastBriefedAt.set(c.id, this.world.time);
+    return { ...res, awaySeconds };
   }
 
   publicSummary(): { time: number; drawIndex: number; colonies: { id: string; name: string; faction: string; score: number; alliance: string | null }[]; titles: World['titles']; ended: World['ended'] } {

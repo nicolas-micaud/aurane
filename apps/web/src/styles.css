@@ -72,3 +72,7 @@ textarea { resize: vertical; }
   .hud { right: 400px; }
   .toast { bottom: 24px; left: calc(50% - 200px); }
 }
+
+.briefing { position: absolute; top: 96px; left: 12px; right: 12px; max-width: 520px; margin: 0 auto; background: var(--panel); border: 1px solid var(--accent); border-radius: 14px; padding: 14px; z-index: 6; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.briefing h3 { margin: 0 0 8px; } .briefing pre { white-space: pre-wrap; font: inherit; margin: 0 0 10px; line-height: 1.5; }
+@media (min-width: 900px) { .briefing { left: 24px; right: auto; width: 460px; } }
