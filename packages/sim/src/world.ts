@@ -12,7 +12,7 @@ import { atPeace, isAlly, transitSet } from './diplomacy.js';
 import { createRng, subSeed } from './rng.js';
 import {
   emptyFleet, fleetSize, newId,
-  type Colony, type FleetState, type SystemState, type World, type WorldEvent, type TreatyKind,
+  type Colony, type FleetOrder, type FleetState, type SystemState, type World, type WorldEvent, type TreatyKind,
 } from './state.js';
 
 export type ApplyResult = { ok: true; id?: string } | { ok: false; reason: string };
@@ -248,7 +248,7 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
     id, name: opts.name, faction: opts.faction, persona: opts.persona, npc: opts.npc ?? false,
     capital: best.id, stock: { ...B.STARTING_STOCK }, credits: 300, influence: B.STARTING_INFLUENCE,
     createdAt: w.time, watchStartHour: 0, policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...PERSONA_DEFAULTS[opts.persona] }),
-    alliance: null, scoreWindow: [], marketVolume7d: [], lastSeenAt: w.time,
+    alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastSeenAt: w.time,
   };
   w.colonies[id] = colony;
   const st = w.systems[best.id]!;
@@ -484,21 +484,22 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
   if (fleet.at === null) return { ok: false, reason: 'fleet in transit' };
   if (fleetSize(fleet.units) === 0) return { ok: false, reason: 'empty fleet' };
   let destination: string;
+  let newOrder: FleetOrder;
   if (order === 'raid') {
     const relay = w.relays[target];
     if (!relay) return { ok: false, reason: 'no such relay' };
     if (relay.owner === colony.id) return { ok: false, reason: 'your own relay' };
     destination = planRoute(w, colony, fleet.at, relay.a).seconds <= planRoute(w, colony, fleet.at, relay.b).seconds ? relay.a : relay.b;
-    fleet.order = { kind: 'raid', relay: target, via: destination };
+    newOrder = { kind: 'raid', relay: target, via: destination };
   } else if (order === 'return') {
     destination = colony.capital;
-    fleet.order = { kind: 'return' };
+    newOrder = { kind: 'return' };
   } else {
     if (!w.galaxy.systems[target]) return { ok: false, reason: 'no such system' };
     destination = target;
-    fleet.order = order === 'move' ? { kind: 'move', to: target } : order === 'blockade' ? { kind: 'blockade', system: target } : { kind: 'defend', system: target };
+    newOrder = order === 'move' ? { kind: 'move', to: target } : order === 'blockade' ? { kind: 'blockade', system: target } : { kind: 'defend', system: target };
   }
-  if (destination === fleet.at) { arrive(w, fleet); return { ok: true }; }
+  if (destination === fleet.at) { fleet.order = newOrder; arrive(w, fleet); return { ok: true }; }
   const route = planRoute(w, colony, fleet.at, destination);
   if (!route.onNet) {
     const energy = Math.ceil(route.length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(fleet.units));
@@ -506,6 +507,7 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
     colony.stock.energy -= energy;
   }
   clearBlockadeBy(w, fleet);
+  fleet.order = newOrder;
   fleet.from = fleet.at;
   fleet.at = null;
   fleet.destination = destination;
@@ -792,6 +794,8 @@ function runDraw(w: World): void {
       foodNeed += st.population * B.POP_FOOD_PER_UNIT * 20;
     }
     stockAdd(colony.stock, produced);
+    colony.lastProduced = produced;
+    for (const r of B.RESOURCE_LIST) colony.avgProduced[r] = w.drawIndex === 0 ? produced[r] : colony.avgProduced[r] * 0.8 + produced[r] * 0.2;
     // Population: fed systems grow, starving ones shrink.
     const fed = colony.stock.food >= foodNeed;
     colony.stock.food = Math.max(0, colony.stock.food - foodNeed);

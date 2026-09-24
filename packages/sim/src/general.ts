@@ -113,8 +113,13 @@ function decideExpansion(ctx: Ctx): void {
   const pending = colonyRelays(w, c.id).filter((r) => r.readyAt > w.time).length;
   if (pending >= 2) return;
   const cands = expansionCandidates(ctx);
+  // Budget: the network after this relay must still be paid for by last hour's energy income.
+  const active = colonyRelays(w, c.id).filter((r) => relayActive(r, w.time));
+  const income = c.avgProduced.energy;
   for (const cand of cands.slice(0, 5)) {
     if (!canAfford(ctx, cand.cost)) continue;
+    const projected = networkUpkeep([...active, { id: '', a: '', b: '', owner: c.id, length: 0, upkeep: cand.upkeep, readyAt: 0, cutUntil: 0 }]);
+    if (w.drawIndex >= 0 && projected > income * 0.8) { ctx.notes.push('expansion capped by energy income'); break; }
     ctx.out.push({ type: 'build_relay', a: cand.a, b: cand.b });
     ctx.notes.push(`expand to ${w.galaxy.systems[cand.b]!.name}`);
     return;
@@ -205,7 +210,7 @@ function decideMilitary(ctx: Ctx, threatened: boolean): void {
       if (!p.defendFirst.includes(f.at)) ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'return', target: capital });
       continue;
     }
-    if (isShielded(w, c) || p.aggression <= 0 || ctx.rng.next() > p.aggression * 0.5) continue;
+    if (isShielded(w, c) || p.aggression <= 0 || ctx.rng.next() > p.aggression * 0.15) continue;
     if (fleetSize(f.units) < 6) continue;
     const targets = hostileNeighbours(ctx).filter((o) => fleetStrength(w, o.id) < fleetSize(f.units) && colonyScore(w, c) <= B.BULLY_SCORE_RATIO * Math.max(1, colonyScore(w, o)));
     if (!targets.length) continue;

@@ -20,6 +20,10 @@ export interface Colony {
   /** Rolling connected-system counts, one per draw, newest last. */
   scoreWindow: number[];
   marketVolume7d: number[];
+  /** What the last Draw produced, so Generals can budget upkeep against income. */
+  lastProduced: Stock;
+  /** Exponential moving average of production over the last few Draws. */
+  avgProduced: Stock;
   lastSeenAt: number;
 }
 
