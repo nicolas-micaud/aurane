@@ -12,6 +12,12 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
 		<link rel="stylesheet" href="assets/css/main.css" />
 		<noscript><link rel="stylesheet" href="assets/css/noscript.css" /></noscript>
+		<style>
+			/* Aurane : quatre entrées de menu de largeur égale, pour que le trait central tombe sur une bordure */
+			#header nav ul li { flex: 1 1 0; }
+			#header nav ul li a { min-width: 0; width: 100%; box-sizing: border-box; text-align: center; padding: 0 1rem; white-space: nowrap; }
+			@media screen and (max-width: 736px) { #header nav ul li { flex: none; } }
+		</style>
 	</head>
 	<body class="is-preload">
 
@@ -50,7 +56,7 @@
 						<!-- Intro : le jeu -->
 							<article id="intro">
 								<h2 class="major">Le jeu · The game</h2>
-								<span class="image main"><img src="images/pic01.jpg" alt="Le Réseau : des étoiles reliées à une capitale — The Network: stars linked to a capital" /></span>
+								<span class="image main"><img src="images/pic01.jpg" alt="" /></span>
 								<p lang="fr">Aurane est un jeu de stratégie web, gratuit, persistant et massivement multijoueur : cinq minutes sur mobile, cinq heures sur grand écran. Tu incarnes une <strong>Colonie</strong> qui étend un réseau de relais à travers une galaxie partagée. Un seul verbe : <strong>relier</strong>. Deux étoiles reliées forment un relais, et seul ce qui est relié à ta capitale existe vraiment.</p>
 								<p lang="fr">Le temps est celui des ordres, pas du réflexe : chaque décision aboutit dans un délai connu, que tu sois là ou non. Chaque heure, la galaxie bat au rythme du <strong>Tirage</strong> : ressources tirées, échanges réglés, nouvelles publiées. Un vétéran de six semaines ne t'écrase pas par ses statistiques, seulement par son réseau, ses alliés et son intelligence. Pas de pay-to-win : aucun achat n'influence la simulation.</p>
 								<hr />
