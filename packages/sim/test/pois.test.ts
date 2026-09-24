@@ -67,7 +67,7 @@ describe('salvage', () => {
     const c = spawnColony(w, { name: 'S', faction: 'oracles', persona: 'solen' });
     const wreckSys = Object.keys(w.galaxy.systems).find((id) => layoutOf(w.galaxy, id).pois.some((p) => p.kind === 'wreck'))!;
     const wreck = layoutOf(w.galaxy, wreckSys).pois.find((p) => p.kind === 'wreck')!;
-    w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 0 };
+    w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 0, rium: 1e6 };
     expect(apply(w, c.id, { type: 'train', system: c.capital, unit: 'corvette', count: 2 }).ok).toBe(true);
     tick(w, 700);
     const f = fleetsAt(w, c.capital).find((x) => x.units.corvette === 2)!;
@@ -90,7 +90,7 @@ describe('fleets between points of interest', () => {
   it('crosses the lanes to a chosen point of interest and back to the station', () => {
     const w = createWorld('hop1', { radius: 4 });
     const c = spawnColony(w, { name: 'C', faction: 'guild', persona: 'oriel' });
-    w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6 };
+    w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6, rium: 1e6 };
     expect(apply(w, c.id, { type: 'train', system: c.capital, unit: 'corvette', count: 2 }).ok).toBe(true);
     tick(w, 700);
     const f = fleetsAt(w, c.capital).find((x) => x.units.corvette === 2)!;
@@ -121,7 +121,7 @@ describe('fleets between points of interest', () => {
     expect(apply(w, c.id, { type: 'build_relay', a, b }).ok).toBe(true);
     tick(w, 1800);
     const st = w.systems[b]!;
-    st.stock = { metal: 1e5, energy: 1e5, food: 1e5, crystal: 1e5 };
+    st.stock = { metal: 1e5, energy: 1e5, food: 1e5, crystal: 1e5, rium: 1e5 };
     const layout = layoutOf(w.galaxy, b);
     const spot = layout.pois.find((p) => p.id !== st.mainPoi && RELAY_KINDS.has(p.kind) && p.orbitSlots[3] > 0);
     if (!spot) return; // this outpost has a single body: nothing to test here

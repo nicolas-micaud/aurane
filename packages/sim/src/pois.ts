@@ -40,7 +40,7 @@ export const LANE_SECONDS_PER_UNIT = 28;
 export const MAX_POIS = 7;
 
 const SLOT_SHAPES: Record<PoiKind, [number, number, number]> = {
-  rocky: [2, 1, 0], gas: [0, 2, 1], moon: [0, 1, 2], belt: [1, 1, 0], ice: [1, 0, 0], nebula: [0, 0, 0], wreck: [0, 0, 1], derelict: [1, 1, 1], jump: [0, 0, 0],
+  rocky: [2, 1, 0], gas: [1, 2, 1], moon: [0, 1, 2], belt: [1, 1, 0], ice: [1, 0, 0], nebula: [0, 0, 0], wreck: [0, 0, 1], derelict: [1, 1, 1], jump: [0, 0, 0],
 };
 const COVER: Record<PoiKind, 0 | 1 | 2 | 3> = { rocky: 0, gas: 1, moon: 0, belt: 2, ice: 1, nebula: 3, wreck: 1, derelict: 0, jump: 0 };
 /** Kinds that may host a relay (a station) and therefore be a main POI. */
@@ -126,6 +126,7 @@ function generateLayout(g: Galaxy, sys: StarSystem): SystemLayout {
     const size = (kind === 'gas' ? 3 : kind === 'rocky' || kind === 'derelict' ? (rng.next() < 0.4 ? 3 : 2) : kind === 'moon' || kind === 'wreck' ? 1 : 2) as 1 | 2 | 3;
     const slots: Record<Orbit, number> = { 1: Math.round(shape[0] * scale), 2: Math.round(shape[1] * scale), 3: Math.round(shape[2] * scale) };
     if (kind !== 'nebula' && kind !== 'jump' && slots[1] + slots[2] + slots[3] === 0) slots[shape[0] ? 1 : shape[1] ? 2 : 3] = 1;
+    if (kind === 'gas' && slots[1] < 1) slots[1] = 1; // room for a Rium refinery (decision 0004)
     let designation: string, parent: string | undefined, x: number, y: number;
     if (kind === 'moon' && moonOf) {
       const p = pois.find((q) => q.id === moonOf)!;

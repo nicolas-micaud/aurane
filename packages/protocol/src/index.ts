@@ -5,13 +5,13 @@ import { z } from 'zod';
 export const FACTIONS = ['concordat', 'guild', 'oracles', 'corsairs'] as const;
 export type Faction = (typeof FACTIONS)[number];
 
-export const RESOURCES = ['metal', 'energy', 'food', 'crystal'] as const;
+export const RESOURCES = ['metal', 'energy', 'food', 'crystal', 'rium'] as const;
 export type Resource = (typeof RESOURCES)[number];
 export type Stock = Record<Resource, number>;
 /** A partial stock as produced by zod's .partial() (keys may be present with undefined). */
 export type StockDelta = { [K in Resource]?: number | undefined };
 
-export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna', 'warehouse', 'turret_light', 'turret_heavy', 'launcher', 'relay'] as const;
+export const BUILDINGS = ['extractor', 'refinery', 'synthesizer', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna', 'warehouse', 'turret_light', 'turret_heavy', 'launcher', 'relay'] as const;
 export type Building = (typeof BUILDINGS)[number];
 
 export const UNITS = ['corvette', 'frigate', 'cruiser', 'cargo'] as const;
@@ -29,7 +29,7 @@ export const BANDS_PER_DRAW = 3;
 /** Hex sector address (axial coordinates). */
 export interface Hex { q: number; r: number }
 
-export const StockSchema = z.object({ metal: z.number(), energy: z.number(), food: z.number(), crystal: z.number() });
+export const StockSchema = z.object({ metal: z.number(), energy: z.number(), food: z.number(), crystal: z.number(), rium: z.number() });
 
 /**
  * A Policy is what the General compiles a player's natural-language doctrine

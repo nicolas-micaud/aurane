@@ -21,6 +21,7 @@ const RESOURCE_WORDS: Record<Resource, string[]> = {
   energy: ['énergie', 'energie', 'energy'],
   food: ['vivres', 'nourriture', 'food'],
   crystal: ['cristal', 'crystal'],
+  rium: ['rium'],
 };
 
 function findNamed(text: string, dict: Record<string, string>): string[] {
@@ -86,7 +87,7 @@ export function summarize(p: Policy, lang: 'fr' | 'en'): string {
 
 const SCHEMA_DOC = `{
   "version": 1,
-  "reserves": { "metal"?: number, "energy"?: number, "food"?: number, "crystal"?: number },   // keep at least this much
+  "reserves": { "metal"?: number, "energy"?: number, "food"?: number, "crystal"?: number, "rium"?: number },   // keep at least this much
   "sellAbove": { "<resource>": minPrice },   // sell surplus when the regional price is at least this
   "buyBelow": { "<resource>": maxPrice },    // buy up to the reserve when the price is at most this
   "defendFirst": ["<system id>"],            // only ids from the SYSTEMS list
@@ -104,7 +105,7 @@ export async function compilePolicy(text: string, ctx: DoctrineContext, client: 
   const colonies = Object.entries(ctx.colonies).slice(0, 60).map(([id, n]) => `${id} = ${n}`).join('; ');
   const alliances = Object.entries(ctx.alliances).map(([id, n]) => `${id} = ${n}`).join('; ');
   const messages = [
-    { role: 'system' as const, content: `You compile a player's doctrine for a space strategy game into a strict JSON policy. Output ONLY a JSON object matching this shape, no prose, no code fences:\n${SCHEMA_DOC}\nRules: keep the CURRENT policy's values for anything the doctrine does not mention. Use only ids that appear in the lists. Resources are metal, energy, food, crystal. Prices are in credits (typical: metal 1, food 1, energy 2, crystal 6). If the doctrine forbids attacking, aggression must be 0.` },
+    { role: 'system' as const, content: `You compile a player's doctrine for a space strategy game into a strict JSON policy. Output ONLY a JSON object matching this shape, no prose, no code fences:\n${SCHEMA_DOC}\nRules: keep the CURRENT policy's values for anything the doctrine does not mention. Use only ids that appear in the lists. Resources are metal, energy, food, crystal, rium (fleet fuel). Prices are in credits (typical: metal 1, food 1, energy 2, crystal 6, rium 3). If the doctrine forbids attacking, aggression must be 0.` },
     { role: 'user' as const, content: `CURRENT: ${JSON.stringify(ctx.current)}\nSYSTEMS: ${systems || '(none)'}\nCOLONIES: ${colonies || '(none)'}\nALLIANCES: ${alliances || '(none)'}\nDOCTRINE (${ctx.lang}): ${text.slice(0, 2000)}` },
   ];
   try {

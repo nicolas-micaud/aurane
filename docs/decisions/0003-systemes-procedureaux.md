@@ -184,3 +184,24 @@ se reconnaître à 24 pixels de haut sur un téléphone.
   partent vers ce corps précis (défendre, blocus, embuscade, fouiller).
 - **Sprites dédiés** pour l'épave (coque cisaillée, membrures, débris en dérive) et la station
   abandonnée (moyeu éteint, anneau rompu, panneaux pendants).
+
+## Saison de 56 jours après réglage du Général (24.09.2026)
+
+Première saison de 56 jours (40 colonies) : 14 batailles, 4 relais coupés, aucune capture, 26 minutes de
+calcul. Deux causes : le carburant hors Réseau rendait 96 % des ordres d'attaque irrecevables (voir la
+note de calibrage dans 0002), et la boucle de plateaux rebalayait toutes les flottes à chaque tick.
+Après correctif (carburant recalibré, siège dès 8 vaisseaux sur le système le moins défendu, Kestrel 0,7
+et Oriel-Neuf 0,25 d'agressivité, index des flottes par pas) :
+
+| | Avant | Après |
+|---|---|---|
+| Batailles | 14 | 72 |
+| Blocus menés à la capture | 0 | 15 |
+| Relais coupés | 4 | 18 |
+| Médiane de systèmes connectés | 8 | 7 |
+| Colonies affamées / coincées | 0 / 4 | 0 / 5 |
+| Calcul | 26 min | 3,6 min |
+
+Aucune anomalie. Les défenseurs réagissent (47 systèmes équipés de tourelles à 14 jours contre 5) et
+une bonne part des sièges est levée avant les douze heures. Réglages disponibles : probabilité de sortie
+par décision (0,25 × agressivité) et taille minimale d'une flotte de siège (8).

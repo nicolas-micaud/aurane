@@ -65,7 +65,7 @@ export function capacityOf(w: World, systemId: string): number {
 export function depositClamped(w: World, systemId: string, add: StockDelta): Stock {
   const st = w.systems[systemId]!;
   const cap = capacityOf(w, systemId);
-  const lost: Stock = { metal: 0, energy: 0, food: 0, crystal: 0 };
+  const lost: Stock = B.emptyStock();
   for (const r of B.RESOURCE_LIST) {
     const amount = add[r] ?? 0;
     if (amount <= 0) continue;

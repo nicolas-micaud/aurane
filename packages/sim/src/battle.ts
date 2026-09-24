@@ -89,7 +89,7 @@ export function damageFleet(f: FleetState, amount: number, prefer: UnitType | nu
     // An unescorted convoy is lost at the first salvo.
     kills.cargo = (kills.cargo ?? 0) + f.units.cargo;
     f.units.cargo = 0;
-    f.cargo = { metal: 0, energy: 0, food: 0, crystal: 0 };
+    f.cargo = B.emptyStock();
   }
   return kills;
 }
@@ -195,7 +195,7 @@ export function battleTick(w: World, systemId: string, poi: string, dt = 1, plat
       if (!target) continue;
       const defenderOwner = target.kind === 'fleet' ? target.fleet.owner : st.owner;
       const shield = shieldAt(w, st, poi, defenderOwner, target.pos);
-      let dmg = f.units[t] * stats.dps * dt * variance() * (1 - shield);
+      let dmg = f.units[t] * stats.dps * dt * variance() * (1 - shield) * (f.dry ? B.DRY_DPS_MULT : 1);
       if (target.kind === 'fleet') {
         const prefer = B.COUNTERS[t];
         dmg *= counterMult(t, prefer && target.fleet.units[prefer] > 0 ? prefer : null);

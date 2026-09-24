@@ -6,7 +6,7 @@ import { hexDisk, hexToPixel, SECTOR_SIZE, type PlayerView, type RelayView, type
 import { cargoTexture, coreTexture, dotTexture, glowTexture, glyphTexture, nebulaTexture, pulseTexture, ringTexture, shipTexture } from './textures.js';
 
 export const FACTION_COLOR: Record<string, number> = { concordat: 0xe8c872, guild: 0xe07a3f, oracles: 0x9b7bff, corsairs: 0xd9534f };
-export const RESOURCE_COLOR: Record<string, number> = { metal: 0xb8c4d0, energy: 0xffd166, food: 0x7ee2a8, crystal: 0x8be9ff };
+export const RESOURCE_COLOR: Record<string, number> = { metal: 0xb8c4d0, energy: 0xffd166, food: 0x7ee2a8, crystal: 0x8be9ff, rium: 0xc58cff };
 const STAR_TINT: Record<string, number> = { metal: 0xdfe7f0, energy: 0xffe9a8, food: 0xd8ffe8, crystal: 0xd6f7ff };
 const HEX_SIZE = SECTOR_SIZE * 0.62;
 const SIGNAL = 0x7dd3fc;

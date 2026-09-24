@@ -86,11 +86,12 @@ function resourceWeights(ring: number, radius: number): Record<Resource, number>
     energy: 0.4 + 1.0 * (1 - t),
     food: 0.4 + 1.0 * t,
     crystal: 0.15 + 0.6 * (1 - t) ** 2,
+    rium: 0, // never a natural yield: refineries and synthesizers only (decision 0004)
   };
 }
 
 function weightedPick(rng: Rng, weights: Record<Resource, number>): Resource {
-  const entries = Object.entries(weights) as [Resource, number][];
+  const entries = (Object.entries(weights) as [Resource, number][]).filter(([, w]) => w > 0);
   const total = entries.reduce((s, [, w]) => s + w, 0);
   let x = rng.next() * total;
   for (const [k, w] of entries) { x -= w; if (x <= 0) return k; }

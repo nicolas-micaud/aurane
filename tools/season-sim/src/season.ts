@@ -95,7 +95,7 @@ export function summarize(w: World, opts: SeasonOptions): Report {
   const starving = colonies.filter((c) => colonyStockTotal(w, c.id).food <= 0).length;
   const stuck = colonies.filter((c) => productiveSystems(w, c).length <= 1).length;
   const anomalies: string[] = [];
-  for (const c of colonies) { const stock = colonyStockTotal(w, c.id); for (const r of ['metal', 'energy', 'food', 'crystal'] as const) {
+  for (const c of colonies) { const stock = colonyStockTotal(w, c.id); for (const r of ['metal', 'energy', 'food', 'crystal', 'rium'] as const) {
     if (!Number.isFinite(stock[r]) || stock[r] < -1e-6) anomalies.push(`${c.name} ${r}=${stock[r]}`);
   } }
   if (!Number.isFinite(colonies.reduce((s, c) => s + c.credits, 0))) anomalies.push('credits not finite');

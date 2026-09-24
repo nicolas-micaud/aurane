@@ -92,13 +92,14 @@ export const pulseTexture = (): Texture => canvasTexture('pulse', 64, (ctx, s) =
 });
 
 /** Resource glyphs, one per resource, drawn white for tinting. */
-export const glyphTexture = (kind: 'metal' | 'energy' | 'food' | 'crystal'): Texture => canvasTexture(`glyph-${kind}`, 64, (ctx, s) => {
+export const glyphTexture = (kind: 'metal' | 'energy' | 'food' | 'crystal' | 'rium'): Texture => canvasTexture(`glyph-${kind}`, 64, (ctx, s) => {
   const c = s / 2;
   ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; ctx.lineJoin = 'round';
   ctx.beginPath();
   if (kind === 'metal') { for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i - Math.PI / 6; const x = c + 22 * Math.cos(a), y = c + 22 * Math.sin(a); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.closePath(); ctx.fill(); }
   else if (kind === 'energy') { ctx.moveTo(c + 6, c - 26); ctx.lineTo(c - 14, c + 4); ctx.lineTo(c - 1, c + 4); ctx.lineTo(c - 6, c + 26); ctx.lineTo(c + 14, c - 4); ctx.lineTo(c + 1, c - 4); ctx.closePath(); ctx.fill(); }
   else if (kind === 'food') { ctx.ellipse(c, c, 12, 24, Math.PI / 5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(c - 10, c + 16); ctx.lineTo(c + 10, c - 16); ctx.stroke(); }
+  else if (kind === 'rium') { ctx.moveTo(c, c - 26); ctx.bezierCurveTo(c - 20, c + 2, c - 16, c + 24, c, c + 24); ctx.bezierCurveTo(c + 16, c + 24, c + 20, c + 2, c, c - 26); ctx.fill(); }
   else { ctx.moveTo(c, c - 26); ctx.lineTo(c + 18, c); ctx.lineTo(c, c + 26); ctx.lineTo(c - 18, c); ctx.closePath(); ctx.fill(); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.moveTo(c, c - 26); ctx.lineTo(c + 18, c); ctx.lineTo(c, c); ctx.closePath(); ctx.fill(); }
 });
 

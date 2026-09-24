@@ -33,7 +33,7 @@ function withOutpost(seed: string, faction: 'concordat' | 'guild' | 'oracles' | 
 
 function warFleet(w: World, c: Colony, unit: 'corvette' | 'frigate' | 'cruiser', count: number) {
   const cap = w.systems[c.capital]!;
-  cap.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6 };
+  cap.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6, rium: 1e6 };
   expect(apply(w, c.id, { type: 'train', system: c.capital, unit, count }).ok).toBe(true);
   tick(w, B.UNIT_SECONDS[unit] * count + 60);
   const f = fleetsAt(w, c.capital).find((x) => x.units[unit] === count)!;
@@ -166,7 +166,7 @@ describe('continuous combat', () => {
     const { w, c, outpost } = withOutpost('cb2');
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     atk.createdAt = -1e9;
-    w.systems[outpost]!.stock = { metal: 1e5, energy: 1e5, food: 1e5, crystal: 1e5 };
+    w.systems[outpost]!.stock = { metal: 1e5, energy: 1e5, food: 1e5, crystal: 1e5, rium: 1e5 };
     expect(apply(w, c.id, { type: 'build', system: outpost, building: 'turret_light' }).ok).toBe(true);
     tick(w, B.BUILDING_SECONDS.turret_light + 60);
     expect(w.systems[outpost]!.structures.filter((s) => s.kind === 'turret_light')).toHaveLength(1);
@@ -236,10 +236,10 @@ describe('continuous combat', () => {
     tick(w, fleet.arriveAt - w.time + 60);
     expect([fleet.at, fleet.order.kind]).toEqual([outpost, 'raid']);
     // The raider stands in enemy space, which holds no fuel for it: the capital pays for the trip home.
-    const before = w.systems[atk.capital]!.stock.energy;
-    w.systems[outpost]!.stock.energy = 0;
+    w.systems[atk.capital]!.stock.rium = 500;
+    w.systems[outpost]!.stock.rium = 0;
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: fleet.id, order: 'return', target: '' })).toEqual({ ok: true });
-    expect(w.systems[atk.capital]!.stock.energy).toBeLessThan(before);
+    expect(w.systems[atk.capital]!.stock.rium).toBeLessThan(500);
     expect(fleet.at).toBeNull();
     expect(productiveSystems(w, c).length).toBeGreaterThan(0);
   });
@@ -271,7 +271,7 @@ describe('snapshots', () => {
     for (const f of Object.values(v1.state.fleets) as any[]) { delete f.damage; delete f.cargo; delete f.path; delete f.pos; delete f.focus; delete f.units.cargo; }
     const w2 = restoreWorld(v1 as never);
     const cap = w2.systems[c.capital]!;
-    expect(cap.stock).toEqual({ metal: 10, energy: 20, food: 30, crystal: 40 });
+    expect(cap.stock).toEqual({ metal: 10, energy: 20, food: 30, crystal: 40, rium: B.STARTING_STOCK.rium });
     expect(cap.structures.map((s) => s.kind)).toEqual(['extractor', 'shipyard']);
     expect(cap.stationHp).toBe(B.STATION_HP);
     expect(w2.colonies[c.id]!.marketSystem).toBe(c.capital);

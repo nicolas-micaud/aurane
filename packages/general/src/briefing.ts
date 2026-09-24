@@ -72,11 +72,11 @@ export function templateBriefing(input: BriefingInput): string {
   if (L === 'fr') {
     lines.push(`Absence : ${hours(input.awaySeconds, L)}, ${d.draws} Tirage${d.draws > 1 ? 's' : ''}.`);
     lines.push(`Réseau : ${v.me.connectedCount} système${v.me.connectedCount > 1 ? 's' : ''} connecté${v.me.connectedCount > 1 ? 's' : ''}${d.claimed ? `, ${d.claimed} nouveau${d.claimed > 1 ? 'x' : ''}` : ''}${d.unpowered ? `, ${d.unpowered} heure${d.unpowered > 1 ? 's' : ''} sous-alimentée${d.unpowered > 1 ? 's' : ''} (Énergie !)` : ''}.`);
-    lines.push(`Stocks : Métal ${Math.round(v.me.stock.metal)}, Énergie ${Math.round(v.me.stock.energy)}, Vivres ${Math.round(v.me.stock.food)}, Cristal ${Math.round(v.me.stock.crystal)}, ${Math.round(v.me.credits)} Crédits.`);
+    lines.push(`Stocks : Métal ${Math.round(v.me.stock.metal)}, Énergie ${Math.round(v.me.stock.energy)}, Vivres ${Math.round(v.me.stock.food)}, Cristal ${Math.round(v.me.stock.crystal)}, Rium ${Math.round(v.me.stock.rium)}, ${Math.round(v.me.credits)} Crédits.`);
     if (d.raidsSuffered || d.lost || d.battlesLost) lines.push(`Alerte : ${d.relaysCut} relais coupé${d.relaysCut > 1 ? 's' : ''}, ${d.lost} système${d.lost > 1 ? 's' : ''} perdu${d.lost > 1 ? 's' : ''}${d.attackers.length ? ` ; responsables : ${d.attackers.join(', ')}` : ''}.`);
     if (d.raidsDone || d.captured || d.battlesWon) lines.push(`Opérations : ${d.battlesWon} victoire${d.battlesWon > 1 ? 's' : ''}, ${d.raidsDone} raid${d.raidsDone > 1 ? 's' : ''}, ${d.captured} capture${d.captured > 1 ? 's' : ''}.`);
     if (d.convoysLost) lines.push(`Logistique : ${d.convoysLost} convoi${d.convoysLost > 1 ? 's' : ''} perdu${d.convoysLost > 1 ? 's' : ''} ; escorte-les ou change de route.`);
-    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal); if (lost > 0) lines.push(`Entrepôts pleins : ${lost} ressources perdues au dernier Tirage. Construis un Entrepôt ou une route vers la capitale.`); }
+    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal + o.rium); if (lost > 0) lines.push(`Entrepôts pleins : ${lost} ressources perdues au dernier Tirage. Construis un Entrepôt ou une route vers la capitale.`); }
     if (d.trades) lines.push(`Marché : ${d.trades} troc${d.trades > 1 ? 's' : ''} réglé${d.trades > 1 ? 's' : ''}.`);
     if (d.treaties) lines.push(`Diplomatie : ${d.treaties} traité${d.treaties > 1 ? 's' : ''} signé${d.treaties > 1 ? 's' : ''}.`);
     if (d.beacons) lines.push(`Un Phare rallumé. Le Signal se souvient.`);
@@ -86,11 +86,11 @@ export function templateBriefing(input: BriefingInput): string {
   } else {
     lines.push(`Away: ${hours(input.awaySeconds, L)}, ${d.draws} Draw${d.draws > 1 ? 's' : ''}.`);
     lines.push(`Network: ${v.me.connectedCount} connected system${v.me.connectedCount > 1 ? 's' : ''}${d.claimed ? `, ${d.claimed} new` : ''}${d.unpowered ? `, ${d.unpowered} unpowered hour${d.unpowered > 1 ? 's' : ''} (Energy!)` : ''}.`);
-    lines.push(`Stocks: Metal ${Math.round(v.me.stock.metal)}, Energy ${Math.round(v.me.stock.energy)}, Food ${Math.round(v.me.stock.food)}, Crystal ${Math.round(v.me.stock.crystal)}, ${Math.round(v.me.credits)} Credits.`);
+    lines.push(`Stocks: Metal ${Math.round(v.me.stock.metal)}, Energy ${Math.round(v.me.stock.energy)}, Food ${Math.round(v.me.stock.food)}, Crystal ${Math.round(v.me.stock.crystal)}, Rium ${Math.round(v.me.stock.rium)}, ${Math.round(v.me.credits)} Credits.`);
     if (d.raidsSuffered || d.lost || d.battlesLost) lines.push(`Alert: ${d.relaysCut} relay${d.relaysCut > 1 ? 's' : ''} cut, ${d.lost} system${d.lost > 1 ? 's' : ''} lost${d.attackers.length ? `; by ${d.attackers.join(', ')}` : ''}.`);
     if (d.raidsDone || d.captured || d.battlesWon) lines.push(`Operations: ${d.battlesWon} win${d.battlesWon > 1 ? 's' : ''}, ${d.raidsDone} raid${d.raidsDone > 1 ? 's' : ''}, ${d.captured} capture${d.captured > 1 ? 's' : ''}.`);
     if (d.convoysLost) lines.push(`Logistics: ${d.convoysLost} convoy${d.convoysLost > 1 ? 's' : ''} lost; escort them or change the route.`);
-    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal); if (lost > 0) lines.push(`Warehouses full: ${lost} resources lost at the last Draw. Build a Warehouse or a route to the capital.`); }
+    { const o = v.me.lastOverflow; const lost = Math.round(o.metal + o.energy + o.food + o.crystal + o.rium); if (lost > 0) lines.push(`Warehouses full: ${lost} resources lost at the last Draw. Build a Warehouse or a route to the capital.`); }
     if (d.trades) lines.push(`Market: ${d.trades} barter${d.trades > 1 ? 's' : ''} settled.`);
     if (d.treaties) lines.push(`Diplomacy: ${d.treaties} treat${d.treaties > 1 ? 'ies' : 'y'} signed.`);
     if (d.beacons) lines.push(`A Beacon lit. The Signal remembers.`);

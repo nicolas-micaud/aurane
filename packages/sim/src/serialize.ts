@@ -1,24 +1,26 @@
 import { generateGalaxy, type GalaxyOptions } from './galaxy.js';
+import type { Stock } from '@aurane/protocol';
 import * as B from './balance.js';
 import { layoutOf } from './pois.js';
 import type { Colony, Structure, SystemState, World } from './state.js';
 import { emptyDamage, emptyFleet } from './state.js';
 
-export interface WorldSnapshot { version: 3; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
+export interface WorldSnapshot { version: 4; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
 /** v2: one plateau per system (0002). v1: one stock per colony, buildings as a list of kinds. */
-interface WorldSnapshotOld { version: 1 | 2; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
+interface WorldSnapshotOld { version: 1 | 2 | 3; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
 
 /** The galaxy is deterministic from the seed, so a snapshot stores only the mutable state. */
 export function snapshotWorld(w: World, galaxyOptions: GalaxyOptions): WorldSnapshot {
   const state: Partial<World> = { ...w };
   delete state.galaxy;
-  return { version: 3, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
+  return { version: 4, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
 }
 
 export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
   const galaxy = generateGalaxy((snap.state as { seed: number }).seed, snap.galaxyOptions);
   let state = snap.version === 1 ? migrateV1(snap.state) : (snap.state as Omit<World, 'galaxy'>);
   if (snap.version < 3) state = migrateV2(state, galaxy);
+  if (snap.version < 4) state = migrateV3(state);
   return { ...state, galaxy };
 }
 
@@ -81,5 +83,18 @@ function migrateV2(s: Omit<World, 'galaxy'>, galaxy: ReturnType<typeof generateG
   for (const b of Object.values(s.battles)) b.poi ||= s.systems[b.system]?.mainPoi ?? '';
   s.known ??= {};
   s.salvage ??= {};
+  return s;
+}
+
+/** v3 → v4: the fifth resource (Rium) appears in every stock; capitals start with their fuel allowance. */
+function migrateV3(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
+  const fill = (st: Partial<Stock> | undefined): void => { if (st) st.rium ??= 0; };
+  for (const st of Object.values(s.systems)) fill(st.stock);
+  for (const f of Object.values(s.fleets)) fill(f.cargo);
+  for (const c of Object.values(s.colonies)) {
+    fill(c.lastProduced); fill(c.avgProduced); fill(c.lastOverflow);
+    const cap = s.systems[c.capital];
+    if (cap && cap.stock.rium === 0) cap.stock.rium = B.STARTING_STOCK.rium;
+  }
   return s;
 }

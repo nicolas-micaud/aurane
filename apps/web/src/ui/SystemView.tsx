@@ -36,7 +36,7 @@ function pathOnMap(sv: SystemDetailView, from: string, to: string): string[] {
   const out = [to]; for (let v = to; v !== from; v = prev.get(v)!) out.unshift(prev.get(v)!);
   return out;
 }
-const RES: Resource[] = ['metal', 'energy', 'food', 'crystal'];
+const RES: Resource[] = ['metal', 'energy', 'food', 'crystal', 'rium'];
 
 const POI_LABEL: Record<PoiView['kind'], 'poiRocky' | 'poiGas' | 'poiMoon' | 'poiBelt' | 'poiIce' | 'poiNebula' | 'poiWreck' | 'poiDerelict' | 'poiJump'> = {
   rocky: 'poiRocky', gas: 'poiGas', moon: 'poiMoon', belt: 'poiBelt', ice: 'poiIce', nebula: 'poiNebula', wreck: 'poiWreck', derelict: 'poiDerelict', jump: 'poiJump',
@@ -249,7 +249,7 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
       {sel?.kind === 'slot' && <p class="tag">{t('freeSlot')} · {t(`orbit${sel.orbit}` as 'orbit1')}</p>}
       {mine && ([1, 2, 3] as const).filter((o) => poi.orbitSlots[o - 1]! > 0 && (!orbitFilter || orbitFilter === o)).map((o) => {
         const free = freeOn(o);
-        const kinds = BUILDINGS.filter((b) => BUILDING_ORBIT[b] === o && (b !== 'relay' || !poi.main));
+        const kinds = BUILDINGS.filter((b) => BUILDING_ORBIT[b] === o && (b !== 'relay' || !poi.main) && (b !== 'refinery' || poi.kind === 'gas'));
         return (
           <div key={o}>
             <h3>{t(`orbit${o}` as 'orbit1')} <small>{free > 0 ? `${free}/${poi.orbitSlots[o - 1]}` : t('noSlot')}</small></h3>
@@ -357,7 +357,7 @@ function LogisticsHere({ v, sv }: { v: PlayerView; sv: SystemDetailView }) {
   const sysName = (id: string): string => v.systems.find((s) => s.id === id)?.name ?? id;
   const idleCargos = sv.fleets.filter((f) => f.owner === v.me.id && f.order === 'idle' && f.units && f.units.cargo > 0).reduce((s, f) => s + (f.units?.cargo ?? 0), 0);
   const [to, setTo] = useState(v.me.capital === sv.id ? (v.systems.find((s) => s.owner === v.me.id && s.id !== sv.id)?.id ?? '') : v.me.capital);
-  const [qty, setQty] = useState<Record<Resource, number>>({ metal: 0, energy: 0, food: 0, crystal: 0 });
+  const [qty, setQty] = useState<Record<Resource, number>>({ metal: 0, energy: 0, food: 0, crystal: 0, rium: 0 });
   const [escort, setEscort] = useState('');
   const escorts = sv.fleets.filter((f) => f.owner === v.me.id && f.order === 'idle' && f.combat > 0);
   const total = RES.reduce((s, r) => s + qty[r], 0);
@@ -379,7 +379,7 @@ function LogisticsHere({ v, sv }: { v: PlayerView; sv: SystemDetailView }) {
       <div class="row qty">
         {RES.map((r) => <label key={r} class={`r-${r}`}><span><Icon name={r} size={12} /> {t(r)} <small>({Math.floor(sv.stock?.[r] ?? 0)})</small></span><input type="number" min={0} max={Math.floor(sv.stock?.[r] ?? 0)} value={qty[r]} onInput={(e) => setQty({ ...qty, [r]: Math.max(0, Number((e.target as HTMLInputElement).value)) })} /></label>)}
       </div>
-      <button class="primary" disabled={!to || total <= 0 || idleCargos === 0} onClick={() => { const cargo: Partial<Record<Resource, number>> = {}; for (const r of RES) if (qty[r] > 0) cargo[r] = qty[r]; void act({ type: 'convoy_send', from: sv.id, to, cargo, ...(escort ? { escort } : {}) }).then((ok) => { if (ok) setQty({ metal: 0, energy: 0, food: 0, crystal: 0 }); }); }}>{t('send')}</button>
+      <button class="primary" disabled={!to || total <= 0 || idleCargos === 0} onClick={() => { const cargo: Partial<Record<Resource, number>> = {}; for (const r of RES) if (qty[r] > 0) cargo[r] = qty[r]; void act({ type: 'convoy_send', from: sv.id, to, cargo, ...(escort ? { escort } : {}) }).then((ok) => { if (ok) setQty({ metal: 0, energy: 0, food: 0, crystal: 0, rium: 0 }); }); }}>{t('send')}</button>
     </div>
   );
 }

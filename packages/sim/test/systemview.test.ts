@@ -33,8 +33,8 @@ describe('system view', () => {
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     const def = spawnColony(w, { name: 'Def', faction: 'concordat', persona: 'vane' });
     atk.createdAt = -1e9; def.createdAt = -1e9;
-    w.systems[atk.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6 };
-    w.systems[def.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6 };
+    w.systems[atk.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6, rium: 1e6 };
+    w.systems[def.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6, rium: 1e6 };
     expect(apply(w, atk.id, { type: 'train', system: atk.capital, unit: 'corvette', count: 6 }).ok).toBe(true);
     expect(apply(w, def.id, { type: 'train', system: def.capital, unit: 'frigate', count: 2 }).ok).toBe(true);
     tick(w, 6 * B.UNIT_SECONDS.corvette + 60);

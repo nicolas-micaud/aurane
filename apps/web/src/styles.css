@@ -1,7 +1,7 @@
 :root {
   --bg: #05070f; --panel: #0e1730; --panel-2: #131e3d; --line: #2a3760; --text: #d7dfee; --muted: #8391b3;
   --accent: #7dd3fc; --ok: #6fcf97; --err: #ff5252;
-  --metal: #9aa5b1; --energy: #ffd166; --food: #6fcf97; --crystal: #7dd3fc;
+  --metal: #9aa5b1; --energy: #ffd166; --food: #6fcf97; --crystal: #7dd3fc; --rium: #c58cff;
   --concordat: #e8c872; --guild: #e07a3f; --oracles: #9b7bff; --corsairs: #d9534f;
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
@@ -20,7 +20,7 @@ h2 { font-size: 18px; margin: 0 0 6px; } h3 { font-size: 14px; margin: 14px 0 6p
 .muted { color: var(--muted); } .error { color: var(--err); }
 .f-concordat { color: var(--concordat); } .f-guild { color: var(--guild); } .f-oracles { color: var(--oracles); } .f-corsairs { color: var(--corsairs); }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-.r-metal .dot, .dot.r-metal, .chip.r-metal i { background: var(--metal); } .dot.r-energy, .chip.r-energy i { background: var(--energy); } .dot.r-food, .chip.r-food i { background: var(--food); } .dot.r-crystal, .chip.r-crystal i { background: var(--crystal); }
+.r-metal .dot, .dot.r-metal, .chip.r-metal i { background: var(--metal); } .dot.r-energy, .chip.r-energy i { background: var(--energy); } .dot.r-food, .chip.r-food i { background: var(--food); } .dot.r-crystal, .chip.r-crystal i { background: var(--crystal); } .dot.r-rium, .chip.r-rium i { background: var(--rium); }
 
 /* landing */
 .landing { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 32px 16px calc(32px + var(--safe-b)); text-align: center; background: radial-gradient(ellipse at 50% 20%, #17224a 0%, var(--bg) 60%); }
@@ -47,8 +47,8 @@ fieldset { border: none; padding: 0; margin: 0; } legend { color: var(--muted); 
 .chip em { font-style: normal; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-left: 2px; }
 .chip.help { padding: 4px 7px; cursor: pointer; }
 .icon { flex: none; }
-.r-metal { color: var(--metal); } .r-energy { color: var(--energy); } .r-food { color: var(--food); } .r-crystal { color: var(--crystal); } .r-credits { color: #f4f6fb; } .r-influence { color: var(--oracles); }
-.chip.r-metal b, .chip.r-energy b, .chip.r-food b, .chip.r-crystal b, .chip.r-credits b, .chip.r-influence b { color: var(--text); }
+.r-metal { color: var(--metal); } .r-energy { color: var(--energy); } .r-food { color: var(--food); } .r-crystal { color: var(--crystal); } .r-rium { color: var(--rium); } .r-credits { color: #f4f6fb; } .r-influence { color: var(--oracles); }
+.chip.r-metal b, .chip.r-energy b, .chip.r-food b, .chip.r-crystal b, .chip.r-rium b, .chip.r-credits b, .chip.r-influence b { color: var(--text); }
 .status .draw { display: inline-flex; align-items: center; gap: 6px; }
 .ev-none { color: var(--muted); } .ev-eruption { color: var(--energy); } .ev-storm { color: var(--err); } .ev-echo { color: var(--crystal); }
 .legend { pointer-events: auto; margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; max-width: 520px; font-size: 13px; }

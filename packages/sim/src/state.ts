@@ -80,6 +80,8 @@ export interface FleetState {
   id: string;
   owner: string;
   units: Fleet;
+  /** Operations unpaid at the last draw (no Rium): guns at half strength. */
+  dry?: boolean;
   /** Accumulated damage per unit type; a unit is lost when damage ≥ its HP. */
   damage: Record<UnitType, number>;
   /** Cargo carried by the cargos of this fleet. */

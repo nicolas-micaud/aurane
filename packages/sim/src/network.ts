@@ -1,3 +1,4 @@
+import * as B from './balance.js';
 import type { Faction, Stock } from '@aurane/protocol';
 import {
   AMPLIFIER_RANGE_MULT, BASE_RANGE, BEACON_RANGE_MULT, CONCORDAT_RANGE_MULT, NEBULA_COST_MULT,
@@ -54,7 +55,7 @@ export type LinkVerdict =
 function verdictFromGeometry(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: RangeContext, length: number, extra: number): LinkVerdict {
   if (length > relayRange(galaxy, a, b, ctx)) return { ok: false, reason: 'range', length };
   const effective = length + extra * (NEBULA_COST_MULT - 1);
-  const cost = { metal: 0, energy: 0, food: 0, crystal: 0 } as Stock;
+  const cost = B.emptyStock();
   for (const r of RESOURCE_LIST) cost[r] = Math.ceil(RELAY_COST_PER_UNIT[r] * effective);
   return { ok: true, length, cost, upkeep: RELAY_UPKEEP_PER_UNIT * effective, buildSeconds: Math.round(RELAY_BUILD_SECONDS_PER_UNIT * length) };
 }

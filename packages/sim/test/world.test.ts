@@ -130,6 +130,7 @@ describe('world', () => {
     const fleet = fleetsAt(w, atk.capital).find((f) => f.units.corvette > 0)!;
     expect(fleet.units.corvette).toBe(8);
     w.systems[atk.capital]!.stock.energy = 100000;
+    w.systems[atk.capital]!.stock.rium = 100000;
     const outpost = link.b;
     const route = planRoute(w, atk, atk.capital, outpost);
     expect(route.onNet).toBe(false);

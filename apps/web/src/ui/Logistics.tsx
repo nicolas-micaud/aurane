@@ -6,7 +6,7 @@ import type { PlayerView } from '@aurane/sim';
 import { act } from '../net.js';
 import { t } from '../i18n/index.js';
 import { Icon } from './Icon.js';
-import { RES, hms } from './bits.js';
+import { RES, hms, zeroStock } from './bits.js';
 
 export function LogisticsPanel({ v, onCenter }: { v: PlayerView; onCenter: (systemId: string) => void }) {
   const owned = v.systems.filter((s) => s.owner === v.me.id);
@@ -19,7 +19,7 @@ export function LogisticsPanel({ v, onCenter }: { v: PlayerView; onCenter: (syst
   const [res, setRes] = useState<Resource | 'all'>('all');
   const [perTrip, setPerTrip] = useState(240);
   const [below, setBelow] = useState(300);
-  const [qty, setQty] = useState<Record<Resource, number>>({ metal: 0, energy: 0, food: 0, crystal: 0 });
+  const [qty, setQty] = useState<Record<Resource, number>>(zeroStock());
   const total = RES.reduce((s, r) => s + qty[r], 0);
   const fromSys = v.systems.find((s) => s.id === from);
   return (
@@ -50,7 +50,7 @@ export function LogisticsPanel({ v, onCenter }: { v: PlayerView; onCenter: (syst
       <div class="row qty">
         {RES.map((r) => <label key={r} class={`r-${r}`}><span><Icon name={r} size={12} /> {t(r)} <small>({Math.floor(fromSys?.stock?.[r] ?? 0)})</small></span><input type="number" min={0} max={Math.floor(fromSys?.stock?.[r] ?? 0)} value={qty[r]} onInput={(e) => setQty({ ...qty, [r]: Math.max(0, Number((e.target as HTMLInputElement).value)) })} /></label>)}
       </div>
-      <button class="primary" disabled={!from || !to || total <= 0 || cargosAt(from) === 0} onClick={() => { const cargo: Partial<Record<Resource, number>> = {}; for (const r of RES) if (qty[r] > 0) cargo[r] = qty[r]; void act({ type: 'convoy_send', from, to, cargo }).then((ok) => { if (ok) setQty({ metal: 0, energy: 0, food: 0, crystal: 0 }); }); }}>{t('send')}</button>
+      <button class="primary" disabled={!from || !to || total <= 0 || cargosAt(from) === 0} onClick={() => { const cargo: Partial<Record<Resource, number>> = {}; for (const r of RES) if (qty[r] > 0) cargo[r] = qty[r]; void act({ type: 'convoy_send', from, to, cargo }).then((ok) => { if (ok) setQty(zeroStock()); }); }}>{t('send')}</button>
       {cargosAt(from) === 0 && <p class="muted">{t('needCargos')}</p>}
       <h3>{t('convoysInTransit')} <small>{convoys.length}</small></h3>
       {convoys.length === 0 && <p class="muted">—</p>}

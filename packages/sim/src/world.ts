@@ -548,6 +548,7 @@ function build(w: World, colony: Colony, systemId: string, building: Building, o
   if (freeSlotsOnOrbit(w, sys, o, poi.id) <= 0) return { ok: false, reason: 'no free slot on this orbit' };
   const unique: Building[] = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'];
   if (unique.includes(building) && (hasStructure(st, building) || st.buildQueue.some((j) => j.building === building))) return { ok: false, reason: 'already built' };
+  if (building === 'refinery' && poi.kind !== 'gas') return { ok: false, reason: 'a refinery needs a gas giant' };
   if (building === 'relay') {
     if (poi.id === st.mainPoi) return { ok: false, reason: 'the station already relays here' };
     if (!RELAY_KINDS.has(poi.kind)) return { ok: false, reason: 'a relay needs a body to anchor to' };
@@ -591,9 +592,9 @@ function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetSta
   return newFleet(w, owner, at, units);
 }
 
-/** Energy a fleet burns to cross `length` world units off the Network. */
-export function offNetEnergy(length: number, units: Fleet): number {
-  return Math.ceil(length * B.OFF_NET_ENERGY_PER_UNIT * fleetSize(units));
+/** Rium a fleet burns to cross `length` world units off the Network. */
+export function offNetRium(length: number, units: Fleet): number {
+  return Math.ceil(length * B.OFF_NET_RIUM_PER_UNIT * fleetSize(units));
 }
 
 /** Starts a journey along waypoints; convoys hop, warships jump to the end (they are not intercepted en route). */
@@ -601,13 +602,13 @@ function depart(w: World, colony: Colony, f: FleetState, to: string, order: Flee
   if (f.at === null) return { ok: false, reason: 'fleet in transit' };
   const plan = planPath(w, colony, f.at, to);
   if (!plan.onNet) {
-    const energy = offNetEnergy(plan.length, f.units);
+    const rium = offNetRium(plan.length, f.units);
     // Fuel comes from the departure system when it is ours, otherwise the capital fuels the fleet remotely
     // (so a raider deep in enemy space can always be called home).
     const st = w.systems[f.at]!;
-    const fuel = st.owner === colony.id && st.stock.energy >= energy ? st : w.systems[colony.capital]!;
-    if (fuel.stock.energy < energy) return { ok: false, reason: 'not enough energy here for off-network travel' };
-    fuel.stock.energy -= energy;
+    const fuel = st.owner === colony.id && st.stock.rium >= rium ? st : w.systems[colony.capital]!;
+    if (fuel.stock.rium < rium) return { ok: false, reason: 'not enough Rium for off-network travel' };
+    fuel.stock.rium -= rium;
   }
   const hop = f.units.cargo > 0;
   const speed = fleetSpeed(colony, f.units, plan.onNet);
@@ -1274,7 +1275,15 @@ function runDraw(w: World): void {
       const local = B.emptyStock();
       local[sys.resource] += B.BASE_YIELD * sys.baseYield * mult;
       const generic = (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
-      for (const r of B.RESOURCE_LIST) local[r] += generic;
+      for (const r of B.RESOURCE_LIST) if (r !== 'rium') local[r] += generic;
+      // Rium is never a natural yield: refineries mine it at gas giants, synthesizers make it from stock.
+      const refineries = st.structures.filter((s) => s.kind === 'refinery' && s.hp > 0).length;
+      local.rium += refineries * B.RIUM_REFINERY_YIELD * (1 + B.POP_YIELD_BONUS * st.population);
+      for (const s of st.structures) {
+        if (s.kind !== 'synthesizer' || s.hp <= 0) continue;
+        if (st.stock.energy < B.RIUM_SYNTH_INPUT.energy || st.stock.food < B.RIUM_SYNTH_INPUT.food) continue;
+        st.stock.energy -= B.RIUM_SYNTH_INPUT.energy; st.stock.food -= B.RIUM_SYNTH_INPUT.food; local.rium += B.RIUM_SYNTH_OUTPUT;
+      }
       // Population eats locally; fed systems grow.
       const foodNeed = st.population * B.POP_FOOD_PER_UNIT * 20;
       const fed = st.stock.food + local.food >= foodNeed;
@@ -1287,6 +1296,7 @@ function runDraw(w: World): void {
     }
     colony.lastProduced = produced;
     colony.lastOverflow = overflow;
+    payOperations(w, colony);
     for (const r of B.RESOURCE_LIST) colony.avgProduced[r] = w.drawIndex === 0 ? produced[r] : colony.avgProduced[r] * 0.8 + produced[r] * 0.2;
     colony.influence += produced.crystal * B.INFLUENCE_PER_CRYSTAL;
     colony.credits += productive.length * B.CREDITS_PER_SYSTEM_PER_DRAW;
@@ -1301,6 +1311,21 @@ function runDraw(w: World): void {
   updateTitles(w);
   checkRenaissance(w);
   logEvent(w, 'draw', [], { index: draw.index, bands: draw.bands, event: draw.event });
+}
+
+/** Armed fleets deployed outside friendly systems burn Rium from the capital; unpaid, they run dry. */
+function payOperations(w: World, colony: Colony): void {
+  const home = w.systems[colony.capital]!;
+  let dry = 0;
+  for (const f of Object.values(w.fleets)) {
+    if (f.owner !== colony.id || combatSize(f.units) === 0) continue;
+    const here = f.at ? w.systems[f.at]!.owner : null;
+    const friendly = f.at !== null && here !== null && (here === colony.id || isAlly(w, here, colony.id));
+    if (friendly) { f.dry = false; continue; }
+    const cost = combatSize(f.units) * B.RIUM_OPS_PER_SHIP_PER_DRAW;
+    if (home.stock.rium >= cost) { home.stock.rium -= cost; f.dry = false; } else { f.dry = true; dry++; }
+  }
+  if (dry) logEvent(w, 'fleets.dry', [colony.id], { count: dry });
 }
 
 function settleMarkets(w: World): void {

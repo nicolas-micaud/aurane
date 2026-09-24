@@ -128,7 +128,7 @@ La topologie est la vraie compétence du jeu : goulets, redondance, nœuds criti
 
 ### 5.1 Les ressources
 
-Quatre ressources échangeables, dans l'esprit de Catan, plus une monnaie politique.
+Cinq ressources échangeables, dans l'esprit de Catan, plus une monnaie politique.
 
 | Ressource | Sert à | Rareté |
 |---|---|---|
@@ -136,6 +136,7 @@ Quatre ressources échangeables, dans l'esprit de Catan, plus une monnaie politi
 | **Énergie** | relais (construction et entretien), déplacement des flottes | commune au cœur, rare en bordure |
 | **Vivres** | population, équipages, croissance | commune en bordure, rare au cœur |
 | **Cristal** | technologie, Phares, unités lourdes, Influence | rare, concentrée près du centre et des pulsars |
+| **Rium** | carburant : départs hors Réseau, opérations des flottes en territoire étranger | aucune bande au Tirage ; miné sur les géantes gazeuses (Raffinerie) ou synthétisé contre Énergie et Vivres (voir `docs/decisions/0004-rium.md`) |
 | **Influence** | traités, décrets, missions d'agents | non échangeable, produite par le Cristal et la diplomatie |
 
 Le déséquilibre géographique (Énergie au centre, Vivres en bordure) est volontaire : personne n'est autosuffisant, tout le monde doit échanger.
@@ -182,6 +183,8 @@ Chaque système offre 1 à 3 emplacements. Six bâtiments en Saison 0, tous comp
 | **Comptoir** | +1 région commerciale, frais réduits | Vivres, Métal |
 | **Amplificateur** | portée des relais partant d'ici +25 % | Énergie, Cristal |
 | **Antenne** | révèle les secteurs adjacents | Énergie |
+| **Raffinerie** | 6 Rium par Tirage, seulement en orbite d'une géante gazeuse | Métal, Énergie |
+| **Synthétiseur** | 8 Énergie + 4 Vivres → 4 Rium par Tirage | Métal, Cristal |
 
 La capitale dispose de trois emplacements supplémentaires et d'un bâtiment unique, **l'Académie**, qui débloque les niveaux du Général (voir §9).
 
@@ -207,7 +210,7 @@ Multiplicateur d'avantage : ×1,5. Pas d'amiraux, pas de niveaux d'unités, pas 
 
 ### 7.2 Mouvement
 
-Une flotte se déplace le long des relais (les siens, ceux des alliés selon traité) à vitesse pleine, et **hors Réseau** à demi-vitesse en consommant de l'Énergie. Attaquer un voisin non relié coûte donc du temps et de l'énergie, ce qui donne un temps de préavis au défenseur et favorise les positions bien reliées.
+Une flotte se déplace le long des relais (les siens, ceux des alliés selon traité) à vitesse pleine, et **hors Réseau** à demi-vitesse en consommant du Rium. Attaquer un voisin non relié coûte donc du temps et de l'énergie, ce qui donne un temps de préavis au défenseur et favorise les positions bien reliées.
 
 Les ordres sont : *Se rendre à*, *Raider (un relais)*, *Bloquer (un système)*, *Défendre (un système ou un relais)*, *Rentrer*. Chaque ordre affiche son heure d'arrivée. Le défenseur voit venir une flotte hostile dès qu'elle entre dans un secteur qu'il observe.
 

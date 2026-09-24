@@ -7,7 +7,7 @@ export const PULSAR_RANGE_MULT = 1.5;
 export const AMPLIFIER_RANGE_MULT = 1.25;
 export const CONCORDAT_RANGE_MULT = 1.1;
 export const NEBULA_COST_MULT = 2;
-export const RELAY_COST_PER_UNIT: Stock = { metal: 0.08, energy: 0.04, food: 0, crystal: 0 };
+export const RELAY_COST_PER_UNIT: Stock = { metal: 0.08, energy: 0.04, food: 0, crystal: 0, rium: 0 };
 export const RELAY_UPKEEP_PER_UNIT = 0.006;// energy per draw per world unit of relay
 export const UPKEEP_SCALE_PER_RELAY = 0.03; // total upkeep × (1 + 0.03 × active relays): big networks pay superlinearly
 export const RELAY_BUILD_SECONDS_PER_UNIT = 4; // 190 units ≈ 13 min
@@ -37,6 +37,8 @@ export const ALLY_TRANSFER_CAP_PER_DRAW = 200;
 
 export const BUILDING_COST: Record<Building, Partial<Stock>> = {
   extractor: { metal: 60 },
+  refinery: { metal: 70, energy: 20 },
+  synthesizer: { metal: 60, crystal: 20 },
   shipyard: { metal: 80, crystal: 20 },
   bastion: { metal: 90, energy: 30 },
   tradepost: { food: 50, metal: 40 },
@@ -49,17 +51,17 @@ export const BUILDING_COST: Record<Building, Partial<Stock>> = {
   relay: { metal: 50, energy: 30 },
 };
 export const BUILDING_SECONDS: Record<Building, number> = {
-  extractor: 900, shipyard: 1800, bastion: 1800, tradepost: 1200, amplifier: 1500, antenna: 600,
+  extractor: 900, refinery: 1200, synthesizer: 900, shipyard: 1800, bastion: 1800, tradepost: 1200, amplifier: 1500, antenna: 600,
   warehouse: 900, turret_light: 600, turret_heavy: 1200, launcher: 900, relay: 1200,
 };
 /** Which orbit each structure lives on: 1 industry, 2 military, 3 Signal. */
 export const BUILDING_ORBIT: Record<Building, 1 | 2 | 3> = {
-  extractor: 1, warehouse: 1, tradepost: 1,
+  extractor: 1, refinery: 1, synthesizer: 1, warehouse: 1, tradepost: 1,
   shipyard: 2, bastion: 2, turret_light: 2, turret_heavy: 2, launcher: 2,
   amplifier: 3, antenna: 3, relay: 3,
 };
 export const STRUCTURE_HP: Record<Building, number> = {
-  extractor: 250, shipyard: 350, bastion: 600, tradepost: 250, amplifier: 250, antenna: 250,
+  extractor: 250, refinery: 300, synthesizer: 250, shipyard: 350, bastion: 600, tradepost: 250, amplifier: 250, antenna: 250,
   warehouse: 400, turret_light: 150, turret_heavy: 300, launcher: 200, relay: 300,
 };
 /** Armed structures: damage per second, range in orbit units (crans), what they counter. */
@@ -116,9 +118,17 @@ export const COUNTER_MULT = 1.5;
 export const COMBAT_VARIANCE = 0.15;
 export const FLEET_SPEED_ON_NET = 60;     // world units per minute
 export const OFF_NET_SPEED_MULT = 0.5;
-/** Energy per world unit of off-network travel, per ship. A raid on a neighbour three sectors away
- *  (~2200 units) with 24 ships costs ~105 energy: a real budget line, not a wall (0.02 made it 1000+). */
-export const OFF_NET_ENERGY_PER_UNIT = 0.002;
+/** Rium per world unit of off-network travel, per ship. A raid on a neighbour three sectors away
+ *  (~2200 units) with 24 ships costs ~105 Rium: a real budget line, not a wall (0.02 made it 1000+). */
+export const OFF_NET_RIUM_PER_UNIT = 0.002;
+/** Rium the capital pays per draw for each armed ship deployed outside friendly systems. */
+export const RIUM_OPS_PER_SHIP_PER_DRAW = 0.2;
+/** A fleet whose operations went unpaid at the last draw is dry: its guns fire at half strength. */
+export const DRY_DPS_MULT = 0.5;
+/** Refinery: Rium mined per draw in orbit of a gas giant. Synthesizer: converts local stock per draw. */
+export const RIUM_REFINERY_YIELD = 6;
+export const RIUM_SYNTH_INPUT = { energy: 8, food: 4 } as const;
+export const RIUM_SYNTH_OUTPUT = 4;
 export const CORSAIR_SHIP_COST_MULT = 0.85;
 export const CORSAIR_SPEED_MULT = 1.1;
 export const BASTION_DEFENSE_MULT = 2;
@@ -155,8 +165,8 @@ export const SCORE_WINDOW_DRAWS = 24;
 export const SEASON_DAYS = 56;
 export const RENAISSANCE_HOURS = 24;
 
-export const STARTING_STOCK: Stock = { metal: 300, energy: 200, food: 200, crystal: 40 };
+export const STARTING_STOCK: Stock = { metal: 300, energy: 200, food: 200, crystal: 40, rium: 60 };
 export const STARTING_INFLUENCE = 20;
 
-export const RESOURCE_LIST: readonly Resource[] = ['metal', 'energy', 'food', 'crystal'];
-export const emptyStock = (): Stock => ({ metal: 0, energy: 0, food: 0, crystal: 0 });
+export const RESOURCE_LIST: readonly Resource[] = ['metal', 'energy', 'food', 'crystal', 'rium'];
+export const emptyStock = (): Stock => ({ metal: 0, energy: 0, food: 0, crystal: 0, rium: 0 });
