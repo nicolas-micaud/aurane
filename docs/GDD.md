@@ -279,7 +279,8 @@ Le Général n'attaque jamais de sa propre initiative sans une règle d'engageme
 
 ### 9.3 Infrastructure LLM
 
-- **Primaire** : le cluster **rog1**, 4 × Intel Arc B60, exposé via une API compatible OpenAI (vLLM ou équivalent), modèle ≤ 80 B. Recommandation : un modèle MoE de la classe 80 B à ~3 B paramètres actifs, quantifié, pour le débit ; un modèle dense de 70 B tiendrait mais le débit serait juste pour des centaines de briefings à l'heure.
+- **Fournisseur** (décision Nick, 25.09.2026) : le moins cher et rapide entre Scaleway (Paris) et Alibaba Cloud (Qwen), choisi au banc `tools/llm-bench` ; Infomaniak en repli ; rog1 facultatif. Le reste de cette section décrit l'architecture d'origine.
+- **Primaire (origine)** : le cluster **rog1**, 4 × Intel Arc B60, exposé via une API compatible OpenAI (vLLM ou équivalent), modèle ≤ 80 B. Recommandation : un modèle MoE de la classe 80 B à ~3 B paramètres actifs, quantifié, pour le débit ; un modèle dense de 70 B tiendrait mais le débit serait juste pour des centaines de briefings à l'heure.
 - **Repli** : l'API Infomaniak (compatible OpenAI, hébergée en Suisse, modèles ≤ 80 B), déclenchée sur erreur, saturation ou latence > 20 s. Bascule automatique, retour au primaire par sondes de santé.
 - **Accès à rog1** : rog1 vit dans le tailnet ninabot. Les serveurs de jeu (Exoscale) rejoignent le même tailnet avec des clés éphémères par nœud et une ACL qui n'ouvre que le port de l'API LLM ; rien n'est exposé sur Internet. Les sessions de développement dans le cloud n'y accèdent pas directement : elles passent par un **Tailscale Funnel** ou un **Cloudflare Tunnel + Access** devant le point d'entrée LLM, protégé par jeton de service, ou travaillent contre le repli Infomaniak.
 - **Couche d'abstraction** : un package `general` unique, avec file de jobs, quotas par joueur, sorties structurées validées par schéma, relance, et journal de coûts. Rien dans le jeu ne parle directement à un modèle.

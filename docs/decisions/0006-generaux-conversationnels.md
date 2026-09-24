@@ -32,6 +32,13 @@ Un appel par message, environ 2 500 jetons en entrée (fiche + mémento + situat
 par le modèle, le repli répond au-delà. Sur rog1 (qwen3-next-80b) c'est quelques secondes ; le repli
 Infomaniak prend la suite en cas de panne.
 
+## Fournisseur
+
+Nick choisit le moins cher et rapide entre Scaleway et Alibaba Cloud ; la session locale fait le banc
+(`tools/llm-bench/bench.mjs` : latence p50/p90, JSON valide, jetons, une réponse par personnage à lire) et pose
+les variables. Le client accepte désormais `LLM_<ROLE>_TIMEOUT_MS`, `LLM_<ROLE>_JSON_MODE=1` et
+`LLM_<ROLE>_EXTRA_BODY` (JSON fusionné dans chaque requête, ex. `{"enable_thinking":false}` pour Qwen3).
+
 ## Client
 
 Le composeur est en haut du panneau et le fil en dessous : quand le clavier s'ouvre sur téléphone, la
