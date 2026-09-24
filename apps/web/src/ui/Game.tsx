@@ -290,7 +290,7 @@ function FleetsPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | nu
 }
 
 function MarketPanel({ v }: { v: PlayerView }) {
-  const [region, setRegion] = useState(v.me.regions[0] ?? '');
+  const [region, setRegion] = useState(v.me.regions[0]?.key ?? '');
   const [res, setRes] = useState<Resource>('food');
   const [side, setSide] = useState<'buy' | 'sell'>('sell');
   const [qty, setQty] = useState(20);
@@ -299,17 +299,20 @@ function MarketPanel({ v }: { v: PlayerView }) {
   const last = v.clearing.find((c) => c.region === region && c.resource === res);
   return (
     <div>
+      <h3>{t('lastPrice')}</h3>
+      <table class="prices"><thead><tr><th>{t('region')}</th>{RES.map((r) => <th key={r} class={`r-${r}`}><Icon name={r} size={12} /></th>)}</tr></thead>
+        <tbody>{v.me.regions.map((rg) => <tr key={rg.key} class={rg.key === region ? 'on' : ''} onClick={() => setRegion(rg.key)}><td>{rg.name}</td>{RES.map((r) => { const c = v.clearing.find((x) => x.region === rg.key && x.resource === r); return <td key={r}>{c ? c.price : '—'}</td>; })}</tr>)}</tbody></table>
       <div class="row">
-        <select value={region} onChange={(e) => setRegion((e.target as HTMLSelectElement).value)}>{v.me.regions.map((r) => <option key={r} value={r}>{r}</option>)}</select>
-        <select value={res} onChange={(e) => setRes((e.target as HTMLSelectElement).value as Resource)}>{RES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select>
-        <div class="seg"><button class={side === 'buy' ? 'on' : ''} onClick={() => setSide('buy')}>{t('buy')}</button><button class={side === 'sell' ? 'on' : ''} onClick={() => setSide('sell')}>{t('sell')}</button></div>
+        <label>{t('region')}<select value={region} onChange={(e) => setRegion((e.target as HTMLSelectElement).value)}>{v.me.regions.map((r) => <option key={r.key} value={r.key}>{r.name}</option>)}</select></label>
+        <label>{t(res)}<select value={res} onChange={(e) => setRes((e.target as HTMLSelectElement).value as Resource)}>{RES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></label>
       </div>
+      <div class="seg wide"><button class={side === 'buy' ? 'on' : ''} onClick={() => setSide('buy')}>{t('buy')}</button><button class={side === 'sell' ? 'on' : ''} onClick={() => setSide('sell')}>{t('sell')}</button></div>
       <div class="row">
         <label>{t('qty')}<input type="number" min={1} value={qty} onInput={(e) => setQty(Number((e.target as HTMLInputElement).value))} /></label>
         <label>{t('price')}<input type="number" min={0.1} step={0.1} value={price} onInput={(e) => setPrice(Number((e.target as HTMLInputElement).value))} /></label>
         <button class="primary" onClick={() => void act({ type: 'market_order', region, resource: res, side, qty, price })}>{t('place')}</button>
       </div>
-      <p class="muted">{t('lastPrice')}: {last ? `${last.price} (${last.qty})` : '—'}</p>
+      {last && <p class="muted">{t('lastPrice')}: {last.price} ({last.qty})</p>}
       <h3>{t('myOrders')}</h3>
       <ul class="list">{v.orders.map((o) => <li key={o.id}>{t(o.side)} {o.qty} {t(o.resource)} @ {o.price} <button onClick={() => void act({ type: 'cancel_order', order: o.id })}>{t('cancel')}</button></li>)}</ul>
       <Barter v={v} />

@@ -8,6 +8,7 @@ import { fleetSize } from './state.js';
 import { isAlly } from './diplomacy.js';
 import { colonyNetwork, colonyScore, findBridgesFor, isShielded, isWatching, ownedSystems, rangeContext, reachableRegions, visibleSectors } from './world.js';
 import { linkOptions } from './network.js';
+import { regionName } from './galaxy.js';
 
 export interface SystemView {
   id: string; name: string; x: number; y: number; sector: string; region: string;
@@ -33,7 +34,7 @@ export interface PlayerView {
   me: {
     id: string; name: string; faction: string; persona: string; capital: string; stock: Stock; credits: number; influence: number;
     watchStartHour: number; watching: boolean; shielded: boolean; score: number; connectedCount: number;
-    alliance: string | null; policy: Colony['policy']; regions: string[]; lastProduced: Stock;
+    alliance: string | null; policy: Colony['policy']; regions: { key: string; name: string }[]; lastProduced: Stock;
   };
   draw: Draw | null;
   /** For each connected system: ids it could link to right now, with the metal cost. */
@@ -112,7 +113,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       stock: colony.stock, credits: colony.credits, influence: colony.influence, watchStartHour: colony.watchStartHour,
       watching: isWatching(w, colony), shielded: isShielded(w, colony), score: colonyScore(w, colony),
       connectedCount: ownedSystems(w, colony.id).filter((id) => net.has(id)).length, alliance: colony.alliance,
-      policy: colony.policy, regions: [...reachableRegions(w, colony)], lastProduced: colony.lastProduced,
+      policy: colony.policy, regions: [...reachableRegions(w, colony)].map((key) => ({ key, name: regionName(key) })), lastProduced: colony.lastProduced,
     },
     draw: w.lastDraw, linkTargets, sectors, systems, relays, fleets, colonies,
     orders: Object.values(w.orders).filter((o) => o.colony === colony.id).map((o) => ({ id: o.id, region: o.region, resource: o.resource, side: o.side, qty: o.qty, price: o.price })),

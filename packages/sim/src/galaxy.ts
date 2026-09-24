@@ -1,5 +1,5 @@
 import type { Hex, Resource } from '@aurane/protocol';
-import { createRng, subSeed, type Rng } from './rng.js';
+import { createRng, hashString, subSeed, type Rng } from './rng.js';
 import { hexDisk, hexKey, hexRing, hexToPixel, regionKey } from './hex.js';
 import { SECTOR_SIZE } from './balance.js';
 import type { Point, Circle } from './geometry.js';
@@ -54,6 +54,19 @@ const SYLLABLES = ['ka', 'ra', 'vex', 'lo', 'mi', 'zen', 'tor', 'qua', 'nyx', 's
   'lum', 'is', 'ar', 'cy', 'ven', 'tha', 'or', 'phe', 'xi', 'ul', 'no', 'bel', 'am', 'ir'];
 
 export const BEACON_NAMES = ['Ancre', 'Méridien', 'Aube', 'Vigie', 'Clef', 'Serment', 'Dernier'] as const;
+
+const REGION_WORDS = ['Marche', 'Bordure', 'Confins', 'Détroit', 'Faille', 'Halo', 'Passe', 'Gouffre', 'Voile', 'Sillon', 'Écheveau', 'Arche'];
+
+/** Human name of a region, deterministic from its key (e.g. "R-1,5" → "Marche de Kavex"). */
+export function regionName(key: string): string {
+  const rng = createRng(hashString(`region:${key}`));
+  const word = rng.pick(REGION_WORDS);
+  const n = rng.int(2, 3);
+  let s = '';
+  for (let i = 0; i < n; i++) s += rng.pick(SYLLABLES);
+  const proper = s[0]!.toUpperCase() + s.slice(1);
+  return `${word} ${/^[AEIOUÉ]/.test(proper) ? "d'" : 'de '}${proper}`;
+}
 
 function makeName(rng: Rng): string {
   const n = rng.int(2, 3);
