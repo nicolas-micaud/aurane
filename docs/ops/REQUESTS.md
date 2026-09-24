@@ -192,3 +192,38 @@ Demandé :
    connaissance de cause et le GDD sera mis à jour.
 
 Réponse attendue : tableau du banc, fournisseur et modèle retenus, variables posées (noms).
+
+Réponse (session locale, 24.09.2026 22:13) — PR 5 et banc LLM :
+
+**PR 5 fusionnée (`d30c39a`) et redéployée**, avec le nouveau fournisseur des Généraux.
+
+**Banc** (`tools/llm-bench/bench.mjs 3`, depuis gmk1, 12 conversations par candidat, 4 personas ; « réponses
+modèle » = réponses venues du modèle et non du repli) :
+
+| Fournisseur · modèle | réponses modèle | p50 | p90 | prix in/out par M | JSON | ping brut |
+|---|---|---|---|---|---|---|
+| **Scaleway · mistral-small-3.2-24b-instruct-2506** | **12/12** | **0,96 s** | **1,16 s** | **0,15 / 0,35 €** | valide | 119 ms, 26/10 tok |
+| Scaleway · gpt-oss-120b (reasoning_effort low) | 12/12 | 1,81 s | 3,42 s | 0,15 / 0,60 € | valide | 193 ms, 95/20 tok |
+| Scaleway · gemma-4-26b-a4b-it | 0/12 | — | — | 0,25 / 0,50 € | `empty content (finish_reason=length)` | — |
+| Scaleway · qwen3.6-35b-a3b (enable_thinking:false ignoré) | 0/12 | — | — | 0,25 / 1,50 € | idem, raisonne quand même | — |
+| Alibaba Francfort · qwen-flash | 10/12 | 1,19 s | 1,33 s | 0,05 / 0,40 $ | valide | 359 ms |
+| Alibaba Francfort · qwen3.6-35b-a3b | 12/12 | 1,54 s | 2,52 s | 0,375 / 2,25 $ | valide | 306 ms |
+| Alibaba Francfort · qwen3.8-flash | 12/12 | 2,65 s | 3,05 s | 0,15 / 0,47 $ | valide | 847 ms |
+| rog1 · qwen3-next-80b (référence, 8 appels) | 8/8 | 9,0 s | 13,6 s | 0 | valide | 1 125 ms |
+| Infomaniak · Apertus-v1.5-70B (repli, 8 appels) | 8/8 | 2,4 s | 9,4 s | ~1,00 / 1,50 CHF | valide | 229 ms |
+
+Prix : page pricing Scaleway (€) et page Model Studio d'Alibaba (liste « International », $) le 25.09.2026.
+
+**Choix : Scaleway `mistral-small-3.2-24b-instruct-2506`** — le moins cher au jeton parmi les qualifiés (p90 < 6 s,
+≥ 95 % de réponses modèle), et aussi le plus rapide ; français natif. `qwen-flash` est moins cher en entrée mais
+tombe à 83 % de réponses modèle, hors critère. **Souveraineté** : Paris, donc UE — conforme au GDD § 9.3 sans
+changement. Note : notre clé Alibaba n'est valable que sur notre espace de travail de **Francfort**
+(`eu-central-1`), pas sur l'endpoint international de Singapour : si Alibaba revenait un jour, ce serait en UE aussi.
+
+**Variables posées sur la VM** (noms) : `LLM_PRIMARY_BASE_URL`, `LLM_PRIMARY_API_KEY`, `LLM_PRIMARY_MODEL`,
+`LLM_PRIMARY_CONCURRENCY=8`, `LLM_PRIMARY_TIMEOUT_MS=20000`, `LLM_PRIMARY_JSON_MODE=1` (Scaleway accepte
+`response_format json_object`, testé) ; `LLM_FALLBACK_*` inchangés (Infomaniak Apertus-70B). rog1 n'est plus
+appelé par le jeu. J'ai complété `deploy/docker-compose.yml` pour transmettre `TIMEOUT_MS`, `JSON_MODE`,
+`EXTRA_BODY` et `DISABLE_REASONING` au service `world` (ils manquaient). Vaultwarden, collection `aurane` :
+`llm-scaleway-api-key`, `llm-scaleway-base-url`, `llm-alibaba-api-key`, `llm-alibaba-base-url`, et les
+`llm-primary-*` repointés sur Scaleway.
