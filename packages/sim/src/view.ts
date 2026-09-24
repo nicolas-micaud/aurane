@@ -23,6 +23,7 @@ export interface ColonyView {
 }
 
 export interface PlayerView {
+  galaxyRadius: number;
   time: number;
   nextDrawAt: number;
   seasonEndsAt: number;
@@ -92,7 +93,7 @@ export function viewFor(w: World, colony: Colony): PlayerView {
   }));
   const nextDrawAt = (Math.floor(w.time / 3600) + 1) * 3600;
   return {
-    time: w.time, nextDrawAt, seasonEndsAt: w.seasonEndsAt,
+    galaxyRadius: w.galaxy.radius, time: w.time, nextDrawAt, seasonEndsAt: w.seasonEndsAt,
     me: {
       id: colony.id, name: colony.name, faction: colony.faction, persona: colony.persona, capital: colony.capital,
       stock: colony.stock, credits: colony.credits, influence: colony.influence, watchStartHour: colony.watchStartHour,

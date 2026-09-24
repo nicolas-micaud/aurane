@@ -12,6 +12,9 @@
     },
     {
       "path": "apps/world"
+    },
+    {
+      "path": "apps/web"
     }
   ]
 }
