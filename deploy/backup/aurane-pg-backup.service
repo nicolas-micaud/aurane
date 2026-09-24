@@ -1,0 +1,6 @@
+[Unit]
+Description=Aurane — dump Postgres quotidien vers Exoscale SOS
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/srv/aurane/backup/pg-backup.sh

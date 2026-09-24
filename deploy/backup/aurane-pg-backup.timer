@@ -1,0 +1,8 @@
+[Unit]
+Description=Aurane — backup Postgres 04:20 (Europe/Zurich)
+[Timer]
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target
