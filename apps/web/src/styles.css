@@ -6,7 +6,7 @@
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
 }
 * { box-sizing: border-box; }
-html, body, #app { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+html, body, #app { margin: 0; height: 100%; touch-action: manipulation; background: var(--bg); color: var(--text); font: 15px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
 #app { height: 100dvh; }
 canvas { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
 h1, h2, h3, .tabs button, .chip b, .status b, .coach .step { font-family: Rajdhani, Inter, system-ui, sans-serif; }
@@ -150,3 +150,24 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 /* Installable app: update banner and iOS hint. */
 .update { pointer-events: auto; margin-top: 8px; display: inline-flex; gap: 10px; align-items: center; background: #17325a; border: 1px solid var(--accent); border-radius: 12px; padding: 8px 12px; }
 .ios-hint { font-size: 12px; }
+
+/* The General as a conversation. */
+.talk { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.bubble { margin: 0; padding: 8px 10px; border-radius: 12px; font-size: 14px; line-height: 1.4; max-width: 92%; }
+.bubble.general { background: var(--panel-2); border: 1px solid var(--line); align-self: flex-start; }
+.bubble.me { background: #17325a; align-self: flex-end; }
+.say { display: flex; gap: 6px; align-items: flex-end; } .say textarea { flex: 1; }
+.linktargets .list li { justify-content: space-between; } .linktargets .list li b { flex: 1 1 auto; }
+.small { font-size: 12px; }
+
+/* Phone: the map first. One row of chips, the timer, a one-line coach; the panel folded until needed. */
+@media (max-width: 899px) {
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chip small { display: none; }
+  .status > span:not(.draw) { display: none; }
+  .hint { top: auto; bottom: calc(58% + 10px); z-index: 4; }
+  .coach { padding: 8px 10px; gap: 8px; } .coach small { display: none; } .coach p { font-size: 13px; }
+  .legend { max-height: 40vh; overflow: auto; }
+  .panel.open { max-height: 58%; }
+  .briefing { top: 72px; }
+}

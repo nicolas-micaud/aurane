@@ -184,6 +184,8 @@ export class GalaxyMap {
   private drawRelays(v: PlayerView): void {
     const glow = this.relayGlow, g = this.relayLayer;
     glow.clear(); g.clear();
+    // Widths are meant in screen pixels: divide by the world scale so relays stay readable on a phone.
+    const px = 1 / Math.max(0.2, this.world.scale.x);
     this.pulseLayer.removeChildren();
     this.pulses = [];
     for (const r of v.relays) {
@@ -191,15 +193,15 @@ export class GalaxyMap {
       if (!a || !b) continue;
       const mine = r.owner === v.me.id;
       const color = mine ? SIGNAL : FACTION_COLOR[this.factionOf.get(r.owner) ?? ''] ?? 0x8899aa;
-      if (r.cut) { dashed(g, a.x, a.y, b.x, b.y, 16, 12, { color: DANGER, width: 4, alpha: 0.9 }); continue; }
-      if (!r.ready) { dashed(g, a.x, a.y, b.x, b.y, 6, 10, { color, width: 3, alpha: 0.55 }); continue; }
-      glow.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: r.bridge && mine ? BRIDGE : color, width: mine ? 18 : 10, alpha: mine ? 0.10 : 0.06 });
-      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color, width: mine ? 3.5 : 2.5, alpha: mine ? 0.95 : 0.6 });
+      if (r.cut) { dashed(g, a.x, a.y, b.x, b.y, 16, 12, { color: DANGER, width: 2.5 * px, alpha: 0.9 }); continue; }
+      if (!r.ready) { dashed(g, a.x, a.y, b.x, b.y, 6, 10, { color, width: 2 * px, alpha: 0.7 }); continue; }
+      glow.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color: r.bridge && mine ? BRIDGE : color, width: (mine ? 9 : 5) * px, alpha: mine ? 0.14 : 0.08 });
+      g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ color, width: (mine ? 2.5 : 1.5) * px, alpha: mine ? 1 : 0.7 });
       if (mine || this.isAlly(v, r.owner)) this.addPulses(r, a, b, color);
     }
     if (this.linkFrom && this.selected && this.linkFrom !== this.selected) {
       const a = this.systemById.get(this.linkFrom), b = this.systemById.get(this.selected);
-      if (a && b) dashed(g, a.x, a.y, b.x, b.y, 12, 10, { color: 0xffffff, width: 3, alpha: 0.85 });
+      if (a && b) dashed(g, a.x, a.y, b.x, b.y, 12, 10, { color: 0xffffff, width: 2 * px, alpha: 0.85 });
     }
   }
 

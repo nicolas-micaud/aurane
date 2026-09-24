@@ -131,6 +131,8 @@ export const DRY_DPS_MULT = 0.5;
 export const RIUM_REFINERY_YIELD = 20;
 export const RIUM_SYNTH_INPUT = { energy: 8, food: 4 } as const;
 export const RIUM_SYNTH_OUTPUT = 4;
+/** A synthesizer idles when the local Energy is below this: it must never starve the relays. */
+export const RIUM_SYNTH_MIN_ENERGY = 60;
 /** Mined Rium waits in a depot at the gas giant until a cargo carries it to the station (unless the giant is the main body). */
 export const DEPOT_CAP = 600;
 /** A raid that breaks a refinery carries off this share of its depot (the refinery must then be rebuilt). */
@@ -169,6 +171,16 @@ export const BEACON_SCORE = 10;
 export const TITLE_SCORE = 5;
 export const SCORE_WINDOW_DRAWS = 24;
 export const SEASON_DAYS = 56;
+/** Short seasons run their economy faster so that a week feels like a season: ×1 at 56 days, ×2.8 at 7 days (decision 0005). */
+export const paceMultiplier = (seasonDays: number): number => Math.min(3, Math.max(1, Math.sqrt(SEASON_DAYS / Math.max(1, seasonDays))));
+/** The newcomer shield shrinks with the season: 72 h at 56 days, 21 h at 7 days. */
+export const shieldHours = (seasonDays: number): number => Math.min(NEWCOMER_SHIELD_HOURS, Math.max(12, seasonDays * 3));
+/** Reference prices in Credits; the NPC market maker quotes around them so no region is ever without a counterparty. */
+export const BASE_PRICE: Record<Resource, number> = { metal: 1, energy: 1.5, food: 1, crystal: 6, rium: 3 };
+export const MAKER_SELL_MULT = 2.0;   // the maker sells at 200 % of the reference: a ceiling, never a bargain
+export const MAKER_BUY_MULT = 0.4;    // and buys at 40 %: a floor for surplus
+export const MAKER_QTY = 40;          // per resource, per region, per draw
+export const MAKER_ID = 'MAKER';
 export const RENAISSANCE_HOURS = 24;
 
 export const STARTING_STOCK: Stock = { metal: 300, energy: 200, food: 200, crystal: 40, rium: 60 };

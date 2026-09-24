@@ -264,7 +264,7 @@ export class Engine {
 
   // --- the General -----------------------------------------------------------
 
-  async doctrine(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ policy: unknown; summary: string; source: string; warnings: string[] } | null> {
+  async doctrine(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ policy: unknown; summary: string; source: string; warnings: string[]; reply: string } | null> {
     const c = this.world.colonies[colonyId];
     if (!c) return null;
     const systems: Record<string, string> = {};
@@ -274,12 +274,12 @@ export class Engine {
     const alliances: Record<string, string> = {};
     for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
     const client = this.quota.take(c.id, 'writes') ? this.llm : null;
-    const compiled = await compilePolicy(text, { lang, current: c.policy, systems, colonies, alliances }, client);
+    const compiled = await compilePolicy(text, { lang, current: c.policy, systems, colonies, alliances, persona: c.persona }, client);
     // "__capital__" from the heuristic resolves to the real capital id.
     compiled.policy.defendFirst = compiled.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
     apply(this.world, c.id, { type: 'set_policy', policy: compiled.policy });
     this.dirtyColonies.add(c.id);
-    return { policy: compiled.policy, summary: compiled.summary, source: compiled.source, warnings: compiled.warnings };
+    return { policy: compiled.policy, summary: compiled.summary, source: compiled.source, warnings: compiled.warnings, reply: compiled.reply };
   }
 
   async briefing(colonyId: string, lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {

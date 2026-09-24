@@ -55,6 +55,10 @@ describe('world server', () => {
     const doc = await (await fetch(`${base}/api/doctrine`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ text: 'Défends la capitale, ne déclenche jamais la guerre sans moi.', lang: 'fr' }) })).json() as { source: string; policy: { aggression: number; defendFirst: string[] } };
     expect(doc.source).toBe('heuristic');
     expect(doc.policy.aggression).toBe(0);
+    expect((doc as { reply: string }).reply.length).toBeGreaterThan(10); // the General always answers, in its voice
+    // Small talk is not an order: the General says so instead of staying silent.
+    const chat = await (await fetch(`${base}/api/doctrine`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ text: 'Fais-moi rire.', lang: 'fr' }) })).json() as { reply: string };
+    expect(chat.reply).toMatch(/ordre|règles/);
     expect(doc.policy.defendFirst).toContain(engine.world.colonies[colonyId]!.capital);
     const brief = await (await fetch(`${base}/api/briefing?lang=en`, { headers: { authorization: `Bearer ${token}` } })).json() as { text: string; source: string };
     expect(brief.source).toBe('template');

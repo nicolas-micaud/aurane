@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as B from '../src/balance.js';
 import {
   apply, createWorld, spawnColony, tick, colonyNetwork, colonyStockTotal, productiveSystems, evaluateLink, rangeContext,
   clearAuction, resolveBattle, colonyScore, fleetsAt, planRoute, setOwner, type World, type Colony, type MarketOrder,
@@ -100,6 +101,24 @@ describe('world', () => {
     expect(w.lastClearing).toEqual([{ region, resource: 'food', price: 2.5, qty: 50 }]);
     expect(buyer.credits).toBeCloseTo(300 + 2 - 50 * 2.5 * (1 + 0.025), 5); // guild pays half fee; +2 credits per connected system
     expect(seller.credits).toBeCloseTo(300 + 2 + 50 * 2.5 * (1 - 0.025), 5);
+    expect(Object.keys(w.orders)).toHaveLength(0);
+  });
+
+  it('the market maker backstops a colony alone in its region: energy at a premium, surplus at a discount', () => {
+    const w = createWorld('w4m', { radius: 4 });
+    const c = spawnColony(w, { name: 'Alone', faction: 'concordat', persona: 'vane' });
+    const region = w.galaxy.systems[c.capital]!.region;
+    const cap = w.systems[c.capital]!;
+    cap.stock.energy = 0; c.credits = 500;
+    expect(apply(w, c.id, { type: 'market_order', region, resource: 'energy', side: 'buy', qty: 30, price: 4 }).ok).toBe(true);
+    expect(apply(w, c.id, { type: 'market_order', region, resource: 'metal', side: 'sell', qty: 100, price: 0.3 }).ok).toBe(true);
+    tick(w, 3600);
+    const energy = w.lastClearing.find((x) => x.resource === 'energy')!;
+    expect(energy.qty).toBe(30);
+    expect(energy.price).toBeCloseTo((4 + B.BASE_PRICE.energy * B.MAKER_SELL_MULT) / 2, 2);
+    expect(cap.stock.energy).toBeGreaterThanOrEqual(30);
+    const metal = w.lastClearing.find((x) => x.resource === 'metal')!;
+    expect(metal.qty).toBe(B.MAKER_QTY); // the floor takes at most 40 per draw; the rest comes back
     expect(Object.keys(w.orders)).toHaveLength(0);
   });
 

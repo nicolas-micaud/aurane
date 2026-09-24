@@ -200,7 +200,7 @@ export function visibleSectors(w: World, colony: Colony): Set<string> {
 }
 
 export function isShielded(w: World, colony: Colony): boolean {
-  return w.time - colony.createdAt < B.NEWCOMER_SHIELD_HOURS * 3600;
+  return w.time - colony.createdAt < B.shieldHours(w.seasonEndsAt / 86400) * 3600;
 }
 
 export function isWatching(w: World, colony: Colony): boolean {
@@ -507,9 +507,11 @@ function buildRelay(w: World, colony: Colony, aId: string, bId: string): ApplyRe
   }
   const verdict = evaluateLink(w.galaxy, a, b, rangeContext(w, colony));
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
-  // The anchored end pays, from its own warehouse.
-  const payers = [aId, bId].filter((id) => net.has(id) && w.systems[id]!.owner === colony.id && stockHas(w.systems[id]!.stock, verdict.cost));
-  if (!payers.length) return { ok: false, reason: 'not enough resources at the anchor system' };
+  // The anchored end pays from its own warehouse when it can; otherwise the Network pays from the
+  // capital (it is connected to the anchor by construction). Frontier outposts hold almost nothing, and
+  // making every relay wait for a metal convoy stalled expansion at three systems (decision 0005).
+  const payers = [aId, bId, colony.capital].filter((id) => net.has(id) && w.systems[id]!.owner === colony.id && stockHas(w.systems[id]!.stock, verdict.cost));
+  if (!payers.length) return { ok: false, reason: 'not enough resources' };
   stockSub(w.systems[payers[0]!]!.stock, verdict.cost);
   const id = relayId(aId, bId);
   addRelay(w, { id, a: id.split('|')[0]!, b: id.split('|')[1]!, owner: colony.id, length: verdict.length, upkeep: verdict.upkeep, readyAt: w.time + verdict.buildSeconds, cutUntil: 0 });
@@ -1303,6 +1305,7 @@ function runDraw(w: World): void {
     if (unpowered) logEvent(w, 'relays.unpowered', [colony.id], { count: unpowered });
 
     const net = colonyNetwork(w, colony);
+    const pace = B.paceMultiplier(w.seasonEndsAt / 86400);
     const produced = B.emptyStock();
     const overflow = B.emptyStock();
     const productive = ownedSystems(w, colony.id).filter((id) => net.has(id));
@@ -1310,13 +1313,13 @@ function runDraw(w: World): void {
       const sys = w.galaxy.systems[id]!;
       const st = w.systems[id]!;
       if (st.blockade) continue;
-      let mult = 1;
-      if (drawn.has(sys.band)) mult = draw.event.kind === 'eruption' && draw.event.band === sys.band ? B.DRAW_ERUPTION_MULT : B.DRAW_MATCH_MULT;
+      let mult = pace;
+      if (drawn.has(sys.band)) mult = pace * (draw.event.kind === 'eruption' && draw.event.band === sys.band ? B.DRAW_ERUPTION_MULT : B.DRAW_MATCH_MULT);
       if (hasStructure(st, 'extractor')) mult *= B.EXTRACTOR_MULT;
       mult *= 1 + B.POP_YIELD_BONUS * st.population;
       const local = B.emptyStock();
       local[sys.resource] += B.BASE_YIELD * sys.baseYield * mult;
-      const generic = (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
+      const generic = pace * (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
       for (const r of B.RESOURCE_LIST) if (r !== 'rium') local[r] += generic;
       // Rium is never a natural yield: refineries mine it at gas giants, synthesizers make it from stock.
       for (const s of st.structures) {
@@ -1327,7 +1330,7 @@ function runDraw(w: World): void {
       }
       for (const s of st.structures) {
         if (s.kind !== 'synthesizer' || s.hp <= 0) continue;
-        if (st.stock.energy < B.RIUM_SYNTH_INPUT.energy || st.stock.food < B.RIUM_SYNTH_INPUT.food) continue;
+        if (st.stock.energy < B.RIUM_SYNTH_MIN_ENERGY + B.RIUM_SYNTH_INPUT.energy || st.stock.food < B.RIUM_SYNTH_INPUT.food) continue;
         st.stock.energy -= B.RIUM_SYNTH_INPUT.energy; st.stock.food -= B.RIUM_SYNTH_INPUT.food; local.rium += B.RIUM_SYNTH_OUTPUT;
       }
       // Population eats locally; fed systems grow.
@@ -1374,7 +1377,25 @@ function payOperations(w: World, colony: Colony): void {
   if (dry) logEvent(w, 'fleets.dry', [colony.id], { count: dry });
 }
 
+/** NPC market maker: a floor and a ceiling in every region where someone trades, so that a stranded
+ *  colony can always buy Energy at a premium or dump Metal at a discount (decision 0005). */
+function seedMarketMaker(w: World): string[] {
+  const regions = new Set<string>();
+  for (const c of Object.values(w.colonies)) regions.add(w.galaxy.systems[c.marketSystem]!.region);
+  const ids: string[] = [];
+  for (const region of regions) for (const resource of B.RESOURCE_LIST) {
+    for (const side of ['buy', 'sell'] as const) {
+      const id = `${B.MAKER_ID}:${region}:${resource}:${side}`;
+      const price = Math.round(B.BASE_PRICE[resource] * (side === 'sell' ? B.MAKER_SELL_MULT : B.MAKER_BUY_MULT) * 100) / 100;
+      w.orders[id] = { id, colony: B.MAKER_ID, region, resource, side, qty: B.MAKER_QTY, price, placedAt: w.time };
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 function settleMarkets(w: World): void {
+  const makers = seedMarketMaker(w);
   const books = new Map<string, typeof w.orders[string][]>();
   for (const o of Object.values(w.orders)) {
     const k = marketKey(o.region, o.resource);
@@ -1390,6 +1411,7 @@ function settleMarkets(w: World): void {
     w.lastClearing.push({ region, resource, price: res.price, qty: res.qty });
     for (const f of res.fills) {
       const o = w.orders[f.order]!;
+      if (o.colony === B.MAKER_ID) { o.qty -= f.qty; continue; } // the maker's goods and credits come from nowhere
       const colony = w.colonies[o.colony]!;
       let fee = B.MARKET_FEE;
       if (ownedSystems(w, colony.id).some((s) => hasBuilding(w, s, 'tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
@@ -1406,6 +1428,7 @@ function settleMarkets(w: World): void {
       if (o.qty <= 0) delete w.orders[o.id];
     }
   }
+  for (const id of makers) delete w.orders[id];
   for (const o of Object.values(w.orders)) {
     const colony = w.colonies[o.colony]!;
     if (o.side === 'sell') depositClamped(w, colony.marketSystem, { [o.resource]: o.qty }); else colony.credits += o.qty * o.price;

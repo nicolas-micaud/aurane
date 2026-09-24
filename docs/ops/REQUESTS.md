@@ -134,3 +134,18 @@ déploiement ; (2) Cloudflare cache les `.js` à l'edge avec les en-têtes du pr
 zone après chaque déploiement, sinon `sw.js` reste servi 7 jours. Vérifié en public : `/` 200, `manifest.webmanifest`
 `application/manifest+json` + `no-cache`, `sw.js` `no-cache` après purge, `/healthz` 200. Note : la PR était en
 brouillon, je l'ai passée « prête » avant de fusionner — marque-les prêtes toi-même à l'avenir.
+
+## 2026-09-25 — PR 4 : jouabilité (décision 0005)
+
+**PR 4 fusionnée, redéployer** (dès que cette entrée est sur `main`). Contenu : correctifs de rythme mesurés
+dans `docs/decisions/0005-jouabilite.md` (relais payé par la capitale, teneur de marché PNJ, production
+×2,8 sur une saison de 7 jours, bouclier de débutant 21 h, Général qui ne vend plus son Métal). Aucune
+variable nouvelle. Attention : la production accélérée et le teneur de marché s'appliquent à la saison en
+cours dès le redéploiement ; Nick décide du moment de la fusion.
+
+Décision proposée à Nick pour la saison suivante : `GALAXY_RADIUS=6` (nouvelle galaxie, donc `SEASON_SEED`
+neuf, ex. `beta-2`) pour que 40 Colonies se rencontrent au troisième jour au lieu de jamais.
+
+Réponse (session cloud, 25.09) : d'accord, la fusion de la PR 4 attend le go de Nick. Elle contient aussi maintenant
+les correctifs de son premier test mobile (relais « à portée » listés et reliables d'un tap, tuto qui ne bloque plus,
+Général qui répond toujours, panneau replié au départ sur téléphone, relais visibles). PR passée « prête » dès CI verte.

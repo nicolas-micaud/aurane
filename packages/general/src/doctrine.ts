@@ -1,7 +1,8 @@
 // Natural-language doctrine → Policy. The model proposes, the schema disposes: whatever
 // comes back is validated by PolicySchema, and a keyword heuristic covers the model being
 // down or talking nonsense. The rule engine in @aurane/sim executes the result.
-import { PolicySchema, RESOURCES, type Policy, type Resource } from '@aurane/protocol';
+import { PolicySchema, RESOURCES, type Persona, type Policy, type Resource } from '@aurane/protocol';
+import { PERSONA_VOICES } from './personas.js';
 import { extractJson, type LlmClient } from './llm.js';
 
 export interface DoctrineContext {
@@ -12,9 +13,11 @@ export interface DoctrineContext {
   /** Known colonies: id → name. */
   colonies: Record<string, string>;
   alliances: Record<string, string>;
+  /** The General answering, for the voice of the reply. */
+  persona?: Persona;
 }
 
-export interface CompiledDoctrine { policy: Policy; summary: string; source: 'llm' | 'heuristic'; warnings: string[] }
+export interface CompiledDoctrine { policy: Policy; summary: string; source: 'llm' | 'heuristic'; warnings: string[]; /** What the General answers the player, in its voice. */ reply: string }
 
 const RESOURCE_WORDS: Record<Resource, string[]> = {
   metal: ['métal', 'metal'],
@@ -32,6 +35,29 @@ function findNamed(text: string, dict: Record<string, string>): string[] {
 }
 
 /** Deterministic fallback: reads intent from keywords in French or English. */
+/** The General's answer when no model wrote one: acknowledges an order, or says what it listens for. */
+/** Did the text change any rule? Small talk leaves the policy (and its notes) untouched. */
+function policyChanged(policy: Policy, cur: Policy): boolean {
+  return policy.expansion !== cur.expansion || policy.aggression !== cur.aggression || policy.fuel !== cur.fuel
+    || policy.defendFirst.join() !== cur.defendFirst.join() || policy.neverAttack.join() !== cur.neverAttack.join()
+    || JSON.stringify(policy.sellAbove) !== JSON.stringify(cur.sellAbove) || JSON.stringify(policy.buyBelow) !== JSON.stringify(cur.buyBelow)
+    || JSON.stringify(policy.reserves) !== JSON.stringify(cur.reserves) || policy.trustedTraders.join() !== cur.trustedTraders.join()
+    || policy.autoTurrets !== cur.autoTurrets || policy.targetPriority !== cur.targetPriority || policy.retreatBelow !== cur.retreatBelow || policy.escortAbove !== cur.escortAbove;
+}
+
+function cannedReply(ctx: DoctrineContext, policy: Policy): string {
+  const voice = PERSONA_VOICES[ctx.persona ?? 'vane'];
+  const changed = policyChanged(policy, ctx.current);
+  if (ctx.lang === 'fr') {
+    return changed
+      ? `Compris. Doctrine en vigueur : ${summarize(policy, 'fr')}. ${voice.signoff.fr}`
+      : `Je t'écoute, mais je n'y lis pas d'ordre. Dis-moi quoi défendre, quoi vendre ou acheter, jusqu'où t'étendre, qui ne jamais attaquer : je le traduis en règles. ${voice.signoff.fr}`;
+  }
+  return changed
+    ? `Understood. Standing doctrine: ${summarize(policy, 'en')}. ${voice.signoff.en}`
+    : `I hear you, but I read no order in it. Tell me what to defend, what to sell or buy, how far to expand, whom never to attack: I turn it into rules. ${voice.signoff.en}`;
+}
+
 export function heuristicPolicy(text: string, ctx: DoctrineContext): CompiledDoctrine {
   const t = text.toLowerCase();
   const p: Policy = { ...ctx.current, notes: text.slice(0, 2000) };
@@ -66,7 +92,8 @@ export function heuristicPolicy(text: string, ctx: DoctrineContext): CompiledDoc
   const parsed = PolicySchema.safeParse(p);
   const policy = parsed.success ? parsed.data : ctx.current;
   if (!parsed.success) warnings.push('heuristic policy failed validation; kept the current one');
-  return { policy, summary: summarize(policy, ctx.lang), source: 'heuristic', warnings };
+  if (policy !== ctx.current && !policyChanged(policy, ctx.current)) policy.notes = ctx.current.notes; // not an order: the standing doctrine stays
+  return { policy, summary: summarize(policy, ctx.lang), source: 'heuristic', warnings, reply: cannedReply(ctx, policy) };
 }
 
 export function summarize(p: Policy, lang: 'fr' | 'en'): string {
@@ -100,7 +127,8 @@ const SCHEMA_DOC = `{
   "aggression": 0..1,                         // 0 never attack without explicit order, 1 raid weak neighbours freely
   "neverAttack": ["<colony or alliance id>"],
   "trustedTraders": ["<colony id>"],
-  "notes": "one sentence, the doctrine in the General's own words"
+  "notes": "one sentence, the doctrine in the General's own words",
+  "reply": "one or two sentences answering the player, in the General's voice and in the player's language; if the text is not a doctrine (a joke, a question, small talk), answer it in character and say what kind of orders you take"
 }`;
 
 export async function compilePolicy(text: string, ctx: DoctrineContext, client: LlmClient | null): Promise<CompiledDoctrine> {
@@ -109,12 +137,13 @@ export async function compilePolicy(text: string, ctx: DoctrineContext, client: 
   const systems = Object.entries(ctx.systems).map(([id, n]) => `${id} = ${n}`).join('; ');
   const colonies = Object.entries(ctx.colonies).slice(0, 60).map(([id, n]) => `${id} = ${n}`).join('; ');
   const alliances = Object.entries(ctx.alliances).map(([id, n]) => `${id} = ${n}`).join('; ');
+  const voice = PERSONA_VOICES[ctx.persona ?? 'vane'];
   const messages = [
-    { role: 'system' as const, content: `You compile a player's doctrine for a space strategy game into a strict JSON policy. Output ONLY a JSON object matching this shape, no prose, no code fences:\n${SCHEMA_DOC}\nRules: keep the CURRENT policy's values for anything the doctrine does not mention. Use only ids that appear in the lists. Resources are metal, energy, food, crystal, rium (fleet fuel). Prices are in credits (typical: metal 1, food 1, energy 2, crystal 6, rium 3). If the doctrine forbids attacking, aggression must be 0.` },
+    { role: 'system' as const, content: `You are ${voice.name[ctx.lang]}, the player's AI General in the space strategy game Aurane. Voice: ${voice.voice[ctx.lang]}. You compile the player's doctrine into a strict JSON policy and answer them in character. Output ONLY a JSON object matching this shape, no prose, no code fences:\n${SCHEMA_DOC}\nRules: keep the CURRENT policy's values for anything the doctrine does not mention. Use only ids that appear in the lists. Resources are metal, energy, food, crystal, rium (fleet fuel). Prices are in credits (typical: metal 1, food 1, energy 2, crystal 6, rium 3). If the doctrine forbids attacking, aggression must be 0. The reply is always in ${ctx.lang === 'fr' ? 'French' : 'English'}, never more than two sentences.` },
     { role: 'user' as const, content: `CURRENT: ${JSON.stringify(ctx.current)}\nSYSTEMS: ${systems || '(none)'}\nCOLONIES: ${colonies || '(none)'}\nALLIANCES: ${alliances || '(none)'}\nDOCTRINE (${ctx.lang}): ${text.slice(0, 2000)}` },
   ];
   try {
-    const res = await client.chat(messages, { maxTokens: 600, temperature: 0.1, json: true });
+    const res = await client.chat(messages, { maxTokens: 700, temperature: 0.3, json: true, timeoutMs: 20000 });
     const raw = extractJson(res.text) as Record<string, unknown>;
     const parsed = PolicySchema.safeParse({ ...raw, version: 1, notes: typeof raw.notes === 'string' ? raw.notes.slice(0, 2000) : text.slice(0, 2000) });
     if (!parsed.success) return { ...fallback, warnings: [...fallback.warnings, 'model output rejected by schema'] };
@@ -123,7 +152,8 @@ export async function compilePolicy(text: string, ctx: DoctrineContext, client: 
     policy.defendFirst = policy.defendFirst.filter((id) => id in ctx.systems);
     policy.neverAttack = policy.neverAttack.filter((id) => id in ctx.colonies || id in ctx.alliances);
     policy.trustedTraders = policy.trustedTraders.filter((id) => id in ctx.colonies);
-    return { policy, summary: summarize(policy, ctx.lang), source: 'llm', warnings: [] };
+    const reply = typeof raw.reply === 'string' && raw.reply.trim() ? raw.reply.trim().slice(0, 400) : cannedReply(ctx, policy);
+    return { policy, summary: summarize(policy, ctx.lang), source: 'llm', warnings: [], reply };
   } catch (err) {
     return { ...fallback, warnings: [...fallback.warnings, `model unavailable: ${(err as Error).message}`] };
   }

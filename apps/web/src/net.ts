@@ -109,9 +109,11 @@ export async function fetchBriefing(lang: 'fr' | 'en'): Promise<{ text: string; 
   return res.ok ? (await res.json() as { text: string; source: string; awaySeconds: number }) : null;
 }
 
-export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{ summary: string; source: string; warnings: string[] } | null> {
-  const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
-  return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[] }) : null;
+export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{ summary: string; source: string; warnings: string[]; reply: string } | null> {
+  try {
+    const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
+    return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[]; reply: string }) : null;
+  } catch { return null; }
 }
 
 export type BattleSummary = { id: string; system: string; systemName: string; poi: string; startedAt: number; endedAt: number | null; sides: string[]; kills: number };
