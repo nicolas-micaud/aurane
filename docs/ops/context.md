@@ -100,9 +100,14 @@ Règles tirées de ces modules :
   retiré, voir §3).
 - vLLM tourne en `restart: "no"` depuis des emballements RAM en TP=2/4 ; le 8003 peut donc être
   absent après un reboot. Le 8007 est la cible à privilégier.
-- **Accès depuis une session cloud** : rien n'est exposé sur Internet. Options (non encore
+- **Accès depuis une session cloud** : rien n'est exposé sur Internet pour le LLM. Options (non encore
   câblées) : Tailscale Funnel sur rog1 devant le 8007 avec jeton, ou Cloudflare Tunnel + Access
   avec service token. En attendant, développer contre Infomaniak.
+- **La mémoire ninabot, elle, est joignable** depuis le 24.09.2026 : MCP `sokkan-memory`
+  (`memory_search`, `memory_get`, lecture seule) en streamable-HTTP sur `https://memory.ninabot.ch/mcp`,
+  jeton Bearer applicatif (`SOKKAN_MEMORY_MCP_TOKEN`, collection Vaultwarden `starnet`), `/healthz`
+  sans jeton. Pas de Cloudflare Access devant : un connecteur MCP ne sait pas présenter un service
+  token. Config Claude Code : `{"type":"http","url":"https://memory.ninabot.ch/mcp","headers":{"Authorization":"Bearer ${SOKKAN_MEMORY_MCP_TOKEN}"}}`.
 - Avant toute expérience GPU sur rog1 : énumérer ce qui tourne (`clinfo -l`, `docker ps`), c'est
   la prod ninjob/payeh/SOKKAN qui partage la machine. Fenêtres de maintenance :
   `infra/maintenance/maintenance.sh on|off` (ninabot-pro).
@@ -152,35 +157,37 @@ Règles tirées de ces modules :
 
 - **Instance** : Vaultwarden auto-hébergée sur gmk1 (derrière Cloudflare), compte propriétaire
   unique de ninabot, TOTP natif. Sauvegarde quotidienne vers R2.
-- **Organisation du coffre** : **un seul compte, des dossiers personnels** (pas d'Organisation
-  Bitwarden à ce jour). Dossiers : `ninabot` (tous les services du groupe) et, depuis le
-  24.09.2026, **`starnet`** (créé, vide). Convention de nommage des éléments :
-  `ninabot/<service>` ou `<service>-<usage>` ; les secrets multiples d'un même service vont en
-  **champs personnalisés**, pas dans les notes.
-  Éléments existants utiles à StarNet (à lire, pas à dupliquer) : `exoscale-api` (clé scopée +
-  zone par défaut), `ninabot/tailscale` (jeton API tailnet, expire début novembre 2026, à
-  renouveler par Nick), `ninabot/cloudflare`, `ninabot/cloudflare-r2`, l'élément Infomaniak AI.
+- **Organisation du coffre** (état au 24.09.2026, après-midi) : le compte propriétaire garde ses
+  dossiers personnels (`ninabot` pour tout le groupe, `starnet` pour les références côté propriétaire),
+  et une **Organisation Bitwarden `ninabot`** existe désormais avec la **collection `starnet`**. C'est
+  la collection que lit le hook cloud. Convention de nommage des éléments : `ninabot/<service>` ou
+  `<service>-<usage>` ; les secrets multiples d'un même service vont en **champs personnalisés**, pas
+  dans les notes.
 - **Convention StarNet** (attendue par le hook de `docs/ops/access.md`) : un élément par variable,
-  dans le dossier `starnet`, avec un champ personnalisé **`env`** = nom de la variable
-  (`LLM_PRIMARY_BASE_URL`, `LLM_PRIMARY_API_KEY`, `LLM_PRIMARY_MODEL`, `LLM_FALLBACK_*`,
-  `EXOSCALE_API_KEY`, `EXOSCALE_API_SECRET`, `CLOUDFLARE_API_TOKEN`, `TS_API_TOKEN`…).
+  dans la collection `starnet`, avec un champ personnalisé **`env`** = nom de la variable. Premier
+  élément en place : `sokkan-memory-mcp` (`env=SOKKAN_MEMORY_MCP_TOKEN`, plus `url`). À venir :
+  `LLM_PRIMARY_*`, `LLM_FALLBACK_*`, `EXOSCALE_API_KEY`, `EXOSCALE_API_SECRET`, `CLOUDFLARE_API_TOKEN`,
+  `TS_API_TOKEN`.
+- **Compte de service en lecture seule — FAIT** : membre `nina+starnet@ninabot.ch` (rôle User,
+  confirmé, accès limité à la collection `starnet` en Read only). Vérifié depuis un profil `bw` isolé :
+  il voit une organisation, une collection, un élément ; l'édition et la création dans la collection
+  sont refusées. Ses identifiants CLI et son mot de passe maître vont dans les variables de
+  l'environnement cloud (`BW_SERVER`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD`), jamais dans le
+  dépôt ; Nick les tient depuis le coffre (élément `vaultwarden-starnet-ci` du dossier propriétaire).
+  Révocation = retirer le membre de l'organisation. Outil qui a tout créé, idempotent :
+  `infra/vw-tools/vw_starnet_bootstrap.py` (ninabot-pro), API REST + cryptographie client, sans accès
+  à la base.
 - **Accès CLI (procédure du groupe)** : `bw config server` → `bw login --apikey` → `bw unlock`
   (mot de passe maître obligatoire, la clé API ne suffit pas) → `BW_SESSION` → `bw sync` →
   opérations → `bw lock`. Sous systemd, **toujours `Environment=HOME=/root`** (sinon `bw` ouvre un
   profil vide et répond « unauthenticated » sans erreur — panne muette vécue trois fois). Les
   éléments anciens chiffrés en AES-CBC refusent de se déchiffrer avec un `bw` récent : re-sauver
-  l'élément dans l'UI web.
-- **Compte de service en lecture seule — ce qu'il faut savoir** : un **dossier** Bitwarden est
-  personnel et ne se partage pas ; « lecture seule sur `starnet` » n'est possible qu'avec une
-  **Organisation** et une **Collection**. Marche à suivre (UI web, une fois, côté Nick) : créer
-  une Organisation `ninabot` depuis le compte propriétaire (gratuite et illimitée sur
-  Vaultwarden), créer la collection `starnet` et y placer les éléments StarNet, inviter un
-  utilisateur dédié avec le rôle User et un accès **Read only** limité à cette collection, puis
-  confirmer l'invitation. Ce compte dédié fournit au hook ses identifiants CLI et son mot de passe
-  maître, placés dans les variables de l'environnement cloud, jamais dans le dépôt. Révocation =
-  retirer l'utilisateur de l'organisation. Tant que l'organisation n'existe pas, le hook ne peut
-  lire le dossier `starnet` qu'avec le compte propriétaire, qui est le compte à tout faire du
-  groupe : à réserver au poste de Nick.
+  l'élément dans l'UI web. Deux pièges du CLI : les avertissements `Failed to decrypt` sortent sur
+  **stdout** au milieu du JSON (filtrer les lignes qui ne commencent pas par `[` ou `{`), et un profil
+  de test se fait dans un `BITWARDENCLI_APPDATA_DIR` à part pour ne pas écraser la session courante.
+- **SMTP est inactif** sur ce Vaultwarden : une invitation ne part pas par mail, le membre invité
+  s'inscrit directement (le serveur pose une « invitation » interne). Les inscriptions libres sont
+  fermées ; « Allow invitations » a été activé le 24.09 pour créer le membre.
 - **Règle groupe** : jamais un secret dans un dépôt, un log ou une sortie de session ; toute
   valeur lue en clair dans une session est à faire tourner.
 
@@ -279,7 +286,7 @@ Ce qui est constant dans les dépôts existants :
 
 1. Rôle + clé IAM Exoscale scopés `starnet` (compute, sks, dbaas, sos) → Vaultwarden `starnet`.
 2. Tag Tailscale `tag:starnet` avec grant `rog1:8007` seul ; clé d'enrôlement frappée par l'API.
-3. Organisation Vaultwarden + collection `starnet` + compte de service lecture seule (§4).
+3. ~~Organisation Vaultwarden + collection `starnet` + compte de service lecture seule~~ fait le 24.09 (§4).
 4. Exposition du 8007 pour les sessions cloud (Funnel ou Tunnel + Access).
 5. Dépôt `ninabot/starnet` sur la forge (miroir GitHub) ou GitHub Actions assumé.
 6. Budget : SKS + DBaaS + Valkey ≈ 150–250 CHF/mois au-delà du crédit → validation avant `apply`.
