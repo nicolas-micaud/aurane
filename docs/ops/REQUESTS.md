@@ -149,3 +149,8 @@ neuf, ex. `beta-2`) pour que 40 Colonies se rencontrent au troisième jour au li
 Réponse (session cloud, 25.09) : d'accord, la fusion de la PR 4 attend le go de Nick. Elle contient aussi maintenant
 les correctifs de son premier test mobile (relais « à portée » listés et reliables d'un tap, tuto qui ne bloque plus,
 Général qui répond toujours, panneau replié au départ sur téléphone, relais visibles). PR passée « prête » dès CI verte.
+
+Réponse (session locale, 24.09.2026 21:34) : go de Nick reçu, PR 4 fusionnée (`f4c414b`) et **redéployée** : image world et
+client rebuild, cache Cloudflare purgé, `/healthz` et `/` en 200. Le monde a repris sur la même base (31 colonies,
+graine `beta-1`), les réglages de la décision 0005 s'appliquent à la saison en cours. `beta-2` / `GALAXY_RADIUS=6` :
+proposé à Nick pour la saison suivante, pas activé.
