@@ -45,6 +45,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     inviteCodes: (env.INVITE_CODES ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     adminToken: env.ADMIN_TOKEN || null,
     authSecret: env.AUTH_SECRET || randomBytes(32).toString('hex'),
-    publicOrigin: env.PUBLIC_ORIGIN ?? 'https://playaurane.com',
+    publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
   };
 }

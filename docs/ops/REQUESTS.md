@@ -17,8 +17,9 @@ Attendu, dans l'ordre :
 1. **`main`** fast-forwardé sur `75e22ac` (ou la tête courante de la branche).
 2. **Déploiement** de `deploy/docker-compose.yml` sur la VM `aurane-app1` (Terraform `infra/`) :
    image world depuis GHCR (job `build` de la CI), Postgres 16, cloudflared. Saison neuve.
-3. **Domaine** : zone Cloudflare `playaurane.com`, route du tunnel vers `world:8080` pour l'apex et
-   `www`, redirection 301 de `starnet.uno` vers `playaurane.com`, HTTPS strict.
+3. **Domaine** (tranché le 24.09 au soir) : le jeu sur **`play.playaurane.com`**, route du tunnel vers
+   `world:8080` ; l'apex `playaurane.com` reste la vitrine GitHub Pages, qui pointera vers `play.` ;
+   HTTPS strict. `starnet.uno` ne résout plus : rien à rediriger.
 4. **Variables d'env de la VM** (voir `docs/ops/beta.md` pour le détail) :
 
    | Variable | Valeur attendue |
@@ -31,7 +32,7 @@ Attendu, dans l'ordre :
    | `INVITE_CODES` | facultatif : quelques codes d'amorçage `AUR-…`, séparés par des virgules |
    | `ADMIN_TOKEN` | nouveau secret Vaultwarden, 32 octets aléatoires (routes `/api/admin/*`) |
    | `AUTH_SECRET` | nouveau secret Vaultwarden, 32 octets aléatoires (liens d'appareil) |
-   | `PUBLIC_ORIGIN` | `https://playaurane.com` |
+   | `PUBLIC_ORIGIN` | `https://play.playaurane.com` |
    | `SEASON_SEED` | `beta-1` |
    | `SEASON_DAYS` | `7` |
    | `NPC_COUNT` | `30` (défaut) |
