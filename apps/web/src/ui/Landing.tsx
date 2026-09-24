@@ -1,7 +1,7 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol';
-import { connect, createGuest } from '../net.js';
-import { lang, setLang, t } from '../i18n/index.js';
+import { connect, createGuest, fetchPublicConfig, redeem } from '../net.js';
+import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 
 export function Landing() {
@@ -10,12 +10,24 @@ export function Landing() {
   const [persona, setPersona] = useState<Persona>('oriel');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invite, setInvite] = useState('');
+  const [requireInvite, setRequireInvite] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
   const l = useSig(lang);
+  useEffect(() => { void fetchPublicConfig().then((c) => setRequireInvite(c.requireInvite)); }, []);
 
   const submit = async (e: Event) => {
     e.preventDefault();
     setBusy(true); setError(null);
-    try { await createGuest(name.trim(), faction, persona); connect(); } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+    try { await createGuest(name.trim(), faction, persona, invite.trim() || undefined); connect(); } catch (err) { setError(tError((err as Error).message)); } finally { setBusy(false); }
+  };
+  const join = async (e: Event) => {
+    e.preventDefault();
+    const code = joinCode.trim().replace(/^.*#join=/, '');
+    if (!code) return;
+    setBusy(true); setError(null);
+    try { await redeem(decodeURIComponent(code)); connect(); } catch (err) { setError(tError((err as Error).message)); } finally { setBusy(false); }
   };
 
   return (
@@ -27,6 +39,7 @@ export function Landing() {
       <p class="subtitle">{t('subtitle')}</p>
       <form onSubmit={submit} class="card">
         <label>{t('yourName')}<input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} minLength={2} maxLength={32} required autoFocus /></label>
+        {requireInvite && <label>{t('inviteCode')}<input value={invite} onInput={(e) => setInvite((e.target as HTMLInputElement).value)} placeholder="AUR-XXXXXXXX" maxLength={40} required /></label>}
         <fieldset>
           <legend>{t('faction')}</legend>
           <div class="choices">
@@ -48,7 +61,14 @@ export function Landing() {
           </div>
         </fieldset>
         {error && <p class="error">{error}</p>}
-        <button class="primary" disabled={busy || name.trim().length < 2}>{t('play')}</button>
+        <button class="primary" disabled={busy || name.trim().length < 2 || (requireInvite && invite.trim().length < 4)}>{t('play')}</button>
+        <p class="muted small"><button type="button" class="link" onClick={() => setJoining(!joining)}>{t('haveColony')}</button></p>
+        {joining && (
+          <div class="join">
+            <label>{t('pasteLink')}<input value={joinCode} onInput={(e) => setJoinCode((e.target as HTMLInputElement).value)} placeholder="https://playaurane.com/#join=…" /></label>
+            <button type="button" disabled={busy || !joinCode.trim()} onClick={(e) => void join(e)}>{t('openColony')}</button>
+          </div>
+        )}
       </form>
     </div>
   );

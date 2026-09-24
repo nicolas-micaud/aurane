@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_COST, UNIT_COST, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.js';
+import { act, fetchBriefing, status, submitDoctrine, toast, view, requestLink } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -429,6 +429,25 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         <label>{t('aggression')}<input type="range" min={0} max={1} step={0.1} value={p.aggression} onChange={(e) => void act({ type: 'set_policy', policy: { ...p, aggression: Number((e.target as HTMLInputElement).value) } })} /></label>
       </div>
       <button onClick={() => void fetchBriefing(lang.value).then((b) => { if (b) briefing.value = b; })}>{t('briefing')}</button>
+      <DeviceLink />
+    </div>
+  );
+}
+
+/** A 24 h link to open this colony on another device (phone, laptop). */
+function DeviceLink() {
+  const [url, setUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div class="devicelink">
+      {!url && <button onClick={() => void requestLink().then((r) => setUrl(r?.url ?? null))}>{t('linkDevice')}</button>}
+      {url && (
+        <>
+          <p class="muted">{t('linkDeviceHelp')}</p>
+          <input readOnly value={url} onFocus={(e) => (e.target as HTMLInputElement).select()} />
+          <button onClick={() => { void navigator.clipboard?.writeText(url).then(() => setCopied(true)); }}>{copied ? t('copied') : t('copy')}</button>
+        </>
+      )}
     </div>
   );
 }

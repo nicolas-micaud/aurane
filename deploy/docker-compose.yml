@@ -10,6 +10,12 @@ services:
       DATABASE_URL: postgres://aurane:${POSTGRES_PASSWORD}@postgres:5432/aurane
       SEASON_SEED: ${SEASON_SEED:-season-0}
       GALAXY_RADIUS: ${GALAXY_RADIUS:-12}
+      # Closed beta: invitations, admin endpoint and device links (decision: bêta fermée, 24.09.2026).
+      REQUIRE_INVITE: ${REQUIRE_INVITE:-1}
+      INVITE_CODES: ${INVITE_CODES:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      AUTH_SECRET: ${AUTH_SECRET}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://playaurane.com}
       SEASON_DAYS: ${SEASON_DAYS:-56}
       NPC_COUNT: ${NPC_COUNT:-30}
       TIME_SCALE: "1"

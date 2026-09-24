@@ -11,6 +11,7 @@ const GuestSchema = z.object({
   name: z.string().trim().min(2).max(32),
   faction: z.enum(FACTIONS),
   persona: z.enum(PERSONAS),
+  invite: z.string().trim().max(40).optional(),
 });
 
 function html(res: ServerResponse, status: number, body: string): void {
@@ -66,16 +67,36 @@ export function createHttpServer(engine: Engine): Server {
         const c = engine.publicColony(decodeURIComponent(url.pathname.slice(3)));
         return c ? html(res, 200, renderColonyPage(c)) : html(res, 404, '<h1>404</h1>');
       }
+      if (req.method === 'GET' && url.pathname === '/api/public/config') return json(res, 200, engine.publicConfig());
       if (req.method === 'POST' && url.pathname === '/api/guest') {
         const parsed = GuestSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid guest', issues: parsed.error.issues });
-        const { token, colony } = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona);
-        return json(res, 201, { token, colonyId: colony.id });
+        const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite);
+        if ('error' in made) return json(res, 403, { error: made.error });
+        return json(res, 201, { token: made.token, colonyId: made.colony.id });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/redeem') {
+        const parsed = z.object({ code: z.string().min(10).max(400) }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid code' });
+        const made = await engine.redeemLink(parsed.data.code.trim());
+        return made ? json(res, 200, { token: made.token, colonyId: made.colony.id }) : json(res, 403, { error: 'link expired or invalid' });
+      }
+      if (url.pathname.startsWith('/api/admin/')) {
+        const admin = engine.cfg.adminToken;
+        if (!admin || req.headers['x-admin-token'] !== admin) return json(res, 401, { error: 'unauthorized' });
+        if (req.method === 'POST' && url.pathname === '/api/admin/invites') {
+          const parsed = z.object({ count: z.number().int().min(1).max(200).default(10), note: z.string().max(120).default('') }).safeParse(await readBody(req));
+          if (!parsed.success) return json(res, 400, { error: 'invalid request' });
+          return json(res, 201, { codes: await engine.createInvites(parsed.data.count, parsed.data.note) });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/admin/invites') return json(res, 200, { invites: await engine.invites() });
+        return json(res, 404, { error: 'not found' });
       }
       const token = bearer(req);
       const colony = token ? await engine.authenticate(token) : null;
       if (!colony) return json(res, 401, { error: 'unauthorized' });
       if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, engine.view(colony.id));
+      if (req.method === 'POST' && url.pathname === '/api/link') { const code = engine.linkCode(colony.id); return json(res, 200, { code, url: `${engine.cfg.publicOrigin}/#join=${encodeURIComponent(code)}` }); }
       if (req.method === 'GET' && url.pathname.startsWith('/api/system/')) {
         const v = engine.systemView(colony.id, decodeURIComponent(url.pathname.slice('/api/system/'.length)));
         return v ? json(res, 200, v) : json(res, 404, { error: 'no such system' });

@@ -161,3 +161,47 @@ describe('world server', () => {
     expect(Object.keys(again.world.colonies).length).toBe(Object.keys(engine.world.colonies).length);
   });
 });
+
+describe('closed beta', () => {
+  let eng: Engine; let srv: ReturnType<typeof createHttpServer>; let url: string;
+  beforeAll(async () => {
+    const d = await mkdtemp(join(tmpdir(), 'aurane-beta-'));
+    const cfg = loadConfig({ SNAPSHOT_DIR: d, GALAXY_RADIUS: '4', NPC_COUNT: '3', SEASON_SEED: 'beta-test', REQUIRE_INVITE: '1', INVITE_CODES: 'aur-friend1', ADMIN_TOKEN: 'adm', AUTH_SECRET: 'secret', PUBLIC_ORIGIN: 'https://example.test' });
+    eng = new Engine(cfg, new FileStore(d));
+    await eng.init();
+    srv = createHttpServer(eng);
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+    url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => { await eng.stop(); await new Promise<void>((r) => srv.close(() => r())); });
+
+  it('requires an invitation, accepts each code once, and the admin mints more', async () => {
+    expect((await (await fetch(`${url}/api/public/config`)).json() as { requireInvite: boolean }).requireInvite).toBe(true);
+    const body = { name: 'Nick', faction: 'guild', persona: 'oriel' };
+    expect((await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify(body) })).status).toBe(403);
+    expect((await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ ...body, invite: 'AUR-NOPE' }) })).status).toBe(403);
+    const ok = await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ ...body, invite: 'AUR-FRIEND1' }) });
+    expect(ok.status).toBe(201);
+    expect((await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ ...body, name: 'Again', invite: 'aur-friend1' }) })).status).toBe(403);
+    expect((await fetch(`${url}/api/admin/invites`, { method: 'POST', body: JSON.stringify({ count: 2, note: 'wave 1' }) })).status).toBe(401);
+    const minted = await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 2, note: 'wave 1' }) })).json() as { codes: string[] };
+    expect(minted.codes).toHaveLength(2);
+    expect(minted.codes[0]).toMatch(/^AUR-[A-Z2-9]{8}$/);
+    expect((await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ ...body, name: 'Friend', invite: minted.codes[0] }) })).status).toBe(201);
+    const list = await (await fetch(`${url}/api/admin/invites`, { headers: { 'x-admin-token': 'adm' } })).json() as { invites: { code: string; usedBy: string | null }[] };
+    expect(list.invites.filter((i) => i.usedBy).length).toBe(2);
+  });
+
+  it('a device link opens the same colony with a fresh token', async () => {
+    const minted = await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 1 }) })).json() as { codes: string[] };
+    const { token, colonyId } = await (await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Linker', faction: 'oracles', persona: 'solen', invite: minted.codes[0] }) })).json() as { token: string; colonyId: string };
+    const link = await (await fetch(`${url}/api/link`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })).json() as { code: string; url: string };
+    expect(link.url.startsWith('https://example.test/#join=')).toBe(true);
+    const second = await (await fetch(`${url}/api/redeem`, { method: 'POST', body: JSON.stringify({ code: link.code }) })).json() as { token: string; colonyId: string };
+    expect(second.colonyId).toBe(colonyId);
+    expect(second.token).not.toBe(token);
+    const me = await (await fetch(`${url}/api/me`, { headers: { authorization: `Bearer ${second.token}` } })).json() as { me: { id: string } };
+    expect(me.me.id).toBe(colonyId);
+    expect((await fetch(`${url}/api/redeem`, { method: 'POST', body: JSON.stringify({ code: `${link.code}x` }) })).status).toBe(403);
+  });
+});

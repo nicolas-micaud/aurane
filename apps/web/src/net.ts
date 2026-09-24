@@ -12,11 +12,39 @@ export const getToken = (): string | null => { try { return localStorage.getItem
 const setToken = (t: string): void => { try { localStorage.setItem(TOKEN_KEY, t); } catch { /* ignore */ } };
 export const forget = (): void => { try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } };
 
-export async function createGuest(name: string, faction: Faction, persona: Persona): Promise<void> {
-  const res = await fetch('/api/guest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, faction, persona }) });
+export async function createGuest(name: string, faction: Faction, persona: Persona, invite?: string): Promise<void> {
+  const res = await fetch('/api/guest', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, faction, persona, ...(invite ? { invite } : {}) }) });
   if (!res.ok) throw new Error((await res.json() as { error: string }).error);
   const { token } = await res.json() as { token: string };
   setToken(token);
+}
+
+export interface PublicConfig { requireInvite: boolean; seasonDays: number; seasonSeed: string }
+export async function fetchPublicConfig(): Promise<PublicConfig> {
+  try { const r = await fetch('/api/public/config'); if (r.ok) return await r.json() as PublicConfig; } catch { /* offline */ }
+  return { requireInvite: false, seasonDays: 56, seasonSeed: '' };
+}
+
+/** Opens an existing colony on this device from a link code (see requestLink). */
+export async function redeem(code: string): Promise<void> {
+  const res = await fetch('/api/redeem', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) });
+  if (!res.ok) throw new Error((await res.json() as { error: string }).error);
+  const { token } = await res.json() as { token: string };
+  setToken(token);
+}
+
+/** A 24 h link that opens this colony on another device. */
+export async function requestLink(): Promise<{ code: string; url: string } | null> {
+  const token = getToken();
+  if (!token) return null;
+  const res = await fetch('/api/link', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+  return res.ok ? await res.json() as { code: string; url: string } : null;
+}
+
+/** `#join=<code>` in the URL: a device link pasted or scanned. */
+export function joinCodeFromUrl(): string | null {
+  const m = /[#&]join=([^&]+)/.exec(location.hash);
+  return m ? decodeURIComponent(m[1]!) : null;
 }
 
 let ws: WebSocket | null = null;

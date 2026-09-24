@@ -1,6 +1,6 @@
 // The world process: one simulation, a real-time loop, NPC and absent-player Generals,
 // snapshots, and a fan-out of per-colony views to connected clients.
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@aurane/protocol';
 import {
   apply, battleList, battleReport, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
@@ -38,7 +38,7 @@ export class Engine {
   private gazettes = new Map<string, GazetteIssue>();
   private gazetteInFlight = new Map<string, Promise<GazetteIssue>>();
 
-  constructor(private readonly cfg: Config, private readonly store: Store) {}
+  constructor(readonly cfg: Config, private readonly store: Store) {}
 
   async init(): Promise<void> {
     const snap = await this.store.loadSnapshot();
@@ -115,11 +115,66 @@ export class Engine {
 
   // --- players -------------------------------------------------------------
 
-  async createGuest(name: string, faction: Faction, persona: Persona): Promise<{ token: string; colony: Colony }> {
+  async createGuest(name: string, faction: Faction, persona: Persona, invite?: string): Promise<{ token: string; colony: Colony } | { error: 'invite required' | 'invalid invite' }> {
+    // Closed beta: the invitation must exist (store, or the environment's bootstrap list) and be unused.
+    const code = (invite ?? '').trim().toUpperCase();
+    if (this.cfg.requireInvite) {
+      if (!code) return { error: 'invite required' };
+      if (!(await this.store.findInvite(code)) && this.cfg.inviteCodes.map((x) => x.toUpperCase()).includes(code)) {
+        await this.store.createInvite({ code, note: 'env', createdAt: Date.now(), usedBy: null, usedAt: null });
+      }
+      const pending = `pending:${randomBytes(4).toString('hex')}`;
+      if (!(await this.store.useInvite(code, pending, Date.now()))) return { error: 'invalid invite' };
+      const colony = spawnColony(this.world, { name, faction, persona, npc: false });
+      await this.store.createInvite({ code, note: 'env', createdAt: Date.now(), usedBy: colony.id, usedAt: Date.now() }).catch(() => undefined);
+      await this.store.useInvite(code, colony.id, Date.now()).catch(() => undefined);
+      return this.issueToken(colony, name);
+    }
     const colony = spawnColony(this.world, { name, faction, persona, npc: false });
+    return this.issueToken(colony, name);
+  }
+
+  private async issueToken(colony: Colony, name: string): Promise<{ token: string; colony: Colony }> {
     const token = randomBytes(24).toString('base64url');
     await this.store.createPlayer({ id: `P${colony.id}`, colonyId: colony.id, tokenHash: hashToken(token), name, createdAt: Date.now() });
     await this.snapshot();
+    return { token, colony };
+  }
+
+  /** Invitations minted by the admin: short, unambiguous codes. */
+  async createInvites(count: number, note: string): Promise<string[]> {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const codes: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = randomBytes(8);
+      const code = `AUR-${[...bytes].map((b) => alphabet[b % alphabet.length]).join('')}`;
+      await this.store.createInvite({ code, note, createdAt: Date.now(), usedBy: null, usedAt: null });
+      codes.push(code);
+    }
+    return codes;
+  }
+
+  invites(): ReturnType<Store['listInvites']> { return this.store.listInvites(); }
+
+  /** A signed, short-lived code that opens this colony on another device (it mints a second token). */
+  linkCode(colonyId: string, ttlSeconds = 24 * 3600): string {
+    const payload = Buffer.from(JSON.stringify({ c: colonyId, e: Date.now() + ttlSeconds * 1000, n: randomBytes(6).toString('base64url') })).toString('base64url');
+    const sig = createHmac('sha256', this.cfg.authSecret).update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+
+  async redeemLink(code: string): Promise<{ token: string; colony: Colony } | null> {
+    const [payload, sig] = code.split('.');
+    if (!payload || !sig) return null;
+    const expected = createHmac('sha256', this.cfg.authSecret).update(payload).digest('base64url');
+    if (expected.length !== sig.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return null;
+    let data: { c: string; e: number };
+    try { data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { c: string; e: number }; } catch { return null; }
+    if (data.e < Date.now()) return null;
+    const colony = this.world.colonies[data.c];
+    if (!colony || colony.npc) return null;
+    const token = randomBytes(24).toString('base64url');
+    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now() });
     return { token, colony };
   }
 
@@ -262,6 +317,10 @@ export class Engine {
     if (!c) return null;
     const net = ownedSystems(this.world, c.id).length;
     return { id: c.id, name: c.name, faction: c.faction, persona: c.persona, alliance: c.alliance ? this.world.alliances[c.alliance]?.name ?? null : null, score: Math.round(colonyScoreOf(this.world, c) * 10) / 10, connected: net, createdAt: c.createdAt, npc: c.npc, beacons: Object.values(this.world.litBeacons).filter((b) => b.by === c.id).map((b) => this.world.galaxy.systems[b.system]?.beaconName ?? b.system) };
+  }
+
+  publicConfig(): { requireInvite: boolean; seasonDays: number; seasonSeed: string } {
+    return { requireInvite: this.cfg.requireInvite, seasonDays: this.cfg.seasonDays, seasonSeed: this.cfg.seasonSeed };
   }
 
   publicSummary(): { time: number; drawIndex: number; colonies: { id: string; name: string; faction: string; score: number; alliance: string | null }[]; titles: World['titles']; ended: World['ended'] } {
