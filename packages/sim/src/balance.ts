@@ -46,20 +46,21 @@ export const BUILDING_COST: Record<Building, Partial<Stock>> = {
   turret_light: { metal: 40, energy: 20 },
   turret_heavy: { metal: 90, energy: 30, crystal: 10 },
   launcher: { metal: 70, energy: 40 },
+  relay: { metal: 50, energy: 30 },
 };
 export const BUILDING_SECONDS: Record<Building, number> = {
   extractor: 900, shipyard: 1800, bastion: 1800, tradepost: 1200, amplifier: 1500, antenna: 600,
-  warehouse: 900, turret_light: 600, turret_heavy: 1200, launcher: 900,
+  warehouse: 900, turret_light: 600, turret_heavy: 1200, launcher: 900, relay: 1200,
 };
 /** Which orbit each structure lives on: 1 industry, 2 military, 3 Signal. */
 export const BUILDING_ORBIT: Record<Building, 1 | 2 | 3> = {
   extractor: 1, warehouse: 1, tradepost: 1,
   shipyard: 2, bastion: 2, turret_light: 2, turret_heavy: 2, launcher: 2,
-  amplifier: 3, antenna: 3,
+  amplifier: 3, antenna: 3, relay: 3,
 };
 export const STRUCTURE_HP: Record<Building, number> = {
   extractor: 250, shipyard: 350, bastion: 600, tradepost: 250, amplifier: 250, antenna: 250,
-  warehouse: 400, turret_light: 150, turret_heavy: 300, launcher: 200,
+  warehouse: 400, turret_light: 150, turret_heavy: 300, launcher: 200, relay: 300,
 };
 /** Armed structures: damage per second, range in orbit units (crans), what they counter. */
 export const TURRET_STATS: Partial<Record<Building, { dps: number; range: number; counters: 'corvette' | 'frigate' | 'cruiser' }>> = {
@@ -78,7 +79,9 @@ export const SHIP_REPAIR_FIELD_PER_S = 2;
 export const BASTION_SHIELD = 0.35;           // damage reduction inside its range
 export const BASTION_SHIELD_WATCH = 0.5;
 export const BASTION_RANGE = 2.0;
-export const PLATEAU_RADIUS = 4;              // fleets enter at this orbit distance
+export const PLATEAU_RADIUS = 4;
+/** Lanes inside a system you own (or an ally owns) are relayed: faster for you. */
+export const LANE_RELAYED_SPEEDUP = 1.5;              // fleets enter at this orbit distance
 export const COMBAT_VARIANCE_SALVO = 0.1;
 
 export const WAREHOUSE_BASE_CAPACITY = 600;   // per resource per system
@@ -124,8 +127,12 @@ export const BLOCKADE_CAPTURE_HOURS = 12;
 export const LOOT_FRACTION = 0.25;
 export const BULLY_SCORE_RATIO = 3;
 
-export const AGENT_COST_INFLUENCE = { spy: 10, sabotage: 25, envoy: 15 } as const;
-export const AGENT_SECONDS = { spy: 1800, sabotage: 3600, envoy: 2700 } as const;
+/** Probing a system reveals its hidden points of interest. */
+export const PROBE_MINUTES = 20;
+export const PROBE_INFLUENCE_PER_FIND = 3;
+export const WRECK_FIRST_CRYSTAL = 30;
+export const AGENT_COST_INFLUENCE = { spy: 10, sabotage: 25, envoy: 15, probe: 8 } as const;
+export const AGENT_SECONDS = { spy: 1800, sabotage: 3600, envoy: 2700, probe: 1200 } as const;
 export const SPY_REVEAL_HOURS = 6;
 export const SABOTAGE_BASE_SUCCESS = 0.6;
 export const INFLUENCE_PER_CRYSTAL = 0.1;

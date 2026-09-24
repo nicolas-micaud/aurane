@@ -30,13 +30,15 @@ export interface Colony {
   lastSeenAt: number;
 }
 
-export interface BuildJob { building: Building; orbit: Orbit; readyAt: number }
+export interface BuildJob { building: Building; orbit: Orbit; readyAt: number; poi: string }
 export interface TrainJob { unit: UnitType; count: number; readyAt: number }
 
 /** A structure on an orbit. The station-relais is not a structure: see SystemState.stationHp. */
 export interface Structure {
   id: string;
   kind: Building;
+  /** Point of interest the structure orbits (see pois.ts). */
+  poi: string;
   orbit: Orbit;
   /** Angle on the orbit, degrees, for the system view and range checks. */
   angle: number;
@@ -45,8 +47,10 @@ export interface Structure {
 
 export interface SystemState {
   owner: string | null;
+  /** Point of interest carrying the station-relais and the warehouse (docks, blockade, capture). */
+  mainPoi: string;
   structures: Structure[];
-  /** Hit points of the station-relais, the physical node of the Network (0 = relays down). */
+  /** Hit points of the station-relais at the main POI (0 = down). Extra 'relay' structures elsewhere keep the Network up. */
   stationHp: number;
   /** Local stock; production, construction and upkeep happen here. */
   stock: Stock;
@@ -54,17 +58,19 @@ export interface SystemState {
   buildQueue: BuildJob[];
   trainQueue: TrainJob[];
   blockade: { by: string; since: number } | null;
-  /** True while hostile armed units are on the plateau: combat ticks every second. */
+  /** True while hostile armed units are on any plateau of the system: combat ticks every second. */
   engaged: boolean;
+  /** Points of interest with an engagement under way. */
+  engagedPois: string[];
 }
 
 export type FleetOrder =
   | { kind: 'idle' }
   | { kind: 'move'; to: string }
-  | { kind: 'raid'; target: string; via: string }            // target: structure id or 'station'
-  | { kind: 'blockade'; system: string }
-  | { kind: 'defend'; system: string }
-  | { kind: 'ambush'; system: string }
+  | { kind: 'raid'; target: string; via: string }            // target: structure id or 'station'; via: system
+  | { kind: 'blockade'; system: string; poi?: string }
+  | { kind: 'defend'; system: string; poi?: string }
+  | { kind: 'ambush'; system: string; poi?: string }
   | { kind: 'convoy'; to: string; route: string | null }
   | { kind: 'return' };
 
@@ -87,7 +93,13 @@ export interface FleetState {
   departAt: number;
   arriveAt: number;
   order: FleetOrder;
-  /** Position on the plateau while at a system (null when docked and invisible to combat). */
+  /** Point of interest the fleet sits at inside the system (null between two POIs or between systems). */
+  poi: string | null;
+  /** Remaining in-system hops (POI ids) to the order's target. */
+  hops: string[];
+  /** In-system lane travel, when moving between two POIs. */
+  hop: { from: string; to: string; departAt: number; arriveAt: number } | null;
+  /** Position on the POI's plateau (null when docked and invisible to combat). */
   pos: PlateauPos | null;
   /** Explicit target (fleet id, structure id or 'station') set by the player or the General. */
   focus: string | null;
@@ -123,8 +135,8 @@ export interface Alliance { id: string; name: string; leader: string; members: s
 export interface AgentMission {
   id: string;
   owner: string;
-  mission: 'spy' | 'sabotage' | 'envoy';
-  target: string;           // sector key (spy), relay id (sabotage), colony id (envoy)
+  mission: 'spy' | 'sabotage' | 'envoy' | 'probe';
+  target: string;           // sector key (spy), relay id (sabotage), colony id (envoy), system id (probe)
   readyAt: number;
 }
 
@@ -152,6 +164,7 @@ export type WorldEvent = { at: number; kind: string; actors: string[]; data?: Re
 export interface BattleLog {
   id: string;
   system: string;
+  poi: string;
   startedAt: number;
   endedAt: number | null;
   sides: string[];              // colony ids involved
@@ -178,6 +191,8 @@ export interface World {
   missions: Record<string, AgentMission>;
   routes: Record<string, SupplyRoute>;
   reveals: Record<string, Record<string, number>>; // colony → sector → until
+  /** Hidden points of interest a colony has probed: colony → system → POI ids. */
+  known: Record<string, Record<string, string[]>>;
   litBeacons: Record<string, LitBeacon>;
   lastClearing: Clearing[];
   events: WorldEvent[];

@@ -11,7 +11,7 @@ export type Stock = Record<Resource, number>;
 /** A partial stock as produced by zod's .partial() (keys may be present with undefined). */
 export type StockDelta = { [K in Resource]?: number | undefined };
 
-export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna', 'warehouse', 'turret_light', 'turret_heavy', 'launcher'] as const;
+export const BUILDINGS = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna', 'warehouse', 'turret_light', 'turret_heavy', 'launcher', 'relay'] as const;
 export type Building = (typeof BUILDINGS)[number];
 
 export const UNITS = ['corvette', 'frigate', 'cruiser', 'cargo'] as const;
@@ -84,7 +84,7 @@ export const PERSONA_DEFAULTS: Record<Persona, Partial<Policy>> = {
 export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('build_relay'), a: z.string(), b: z.string() }),
   z.object({ type: z.literal('remove_relay'), a: z.string(), b: z.string() }),
-  z.object({ type: z.literal('build'), system: z.string(), building: z.enum(BUILDINGS), orbit: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional() }),
+  z.object({ type: z.literal('build'), system: z.string(), building: z.enum(BUILDINGS), orbit: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(), poi: z.string().optional() }),
   z.object({ type: z.literal('train'), system: z.string(), unit: z.enum(UNITS), count: z.number().int().positive() }),
   z.object({ type: z.literal('market_order'), region: z.string(), resource: z.enum(RESOURCES), side: z.enum(['buy', 'sell']), qty: z.number().int().positive(), price: z.number().positive() }),
   z.object({ type: z.literal('cancel_order'), order: z.string() }),
@@ -96,7 +96,7 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('route_remove'), route: z.string() }),
   z.object({ type: z.literal('convoy_send'), from: z.string(), to: z.string(), cargo: StockSchema.partial(), escort: z.string().optional() }),
   z.object({ type: z.literal('split_fleet'), fleet: z.string(), units: z.object({ corvette: z.number().int().nonnegative(), frigate: z.number().int().nonnegative(), cruiser: z.number().int().nonnegative(), cargo: z.number().int().nonnegative() }).partial() }),
-  z.object({ type: z.literal('agent_mission'), mission: z.enum(['spy', 'sabotage', 'envoy']), target: z.string() }),
+  z.object({ type: z.literal('agent_mission'), mission: z.enum(['spy', 'sabotage', 'envoy', 'probe']), target: z.string() }),
   z.object({ type: z.literal('treaty'), with: z.string(), kind: z.enum(['nap', 'trade', 'transit', 'federation']) }),
   z.object({ type: z.literal('set_watch'), startHour: z.number().int().min(0).max(23) }),
   z.object({ type: z.literal('light_beacon'), system: z.string() }),

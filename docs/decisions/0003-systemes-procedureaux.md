@@ -140,3 +140,34 @@ se reconnaître à 24 pixels de haut sur un téléphone.
    système soit illisible.
 4. Les factions cachées de PNJ : **oui dès la saison 0**, deux ou trois « Repaires » par région,
    tenus par des Généraux PNJ à doctrine corsaire, révélés par le sondage ou leurs raids.
+
+## Résultats du palier 1 de 0003 (simulation, livré)
+
+- **Génération** (`packages/sim/src/pois.ts`) : gabarits Forge, Oasis, Carrefour, Cimetière, Sanctuaire,
+  Repaire, Brûlé pondérés par ressource, type d'étoile, région et distance au centre ; 2 à 7 points
+  d'intérêt (planètes telluriques, géantes, lunes, ceintures, glaces, nébuleuses, épaves, stations
+  abandonnées) placés en anneaux, 1 à 3 points de saut sur le bord à l'opposé du corps principal,
+  couloirs par arbre couvrant plus une ou deux boucles, 45 s à 4 min par couloir. Génération paresseuse
+  et déterministe (cache par galaxie), vérifiée par tests sur une galaxie entière : connexité, corps
+  principal apte au relais et jamais couvert hors Repaire, au moins un emplacement d'industrie et un de
+  défense au corps principal, 8 à 40 % de corps couverts, au moins cinq gabarits présents.
+- **État** : structures et files de construction portent leur point d'intérêt ; les flottes ont un
+  point d'intérêt, une liste de sauts et un saut en cours ; instantané v3 avec migration v2 → v3 (tout
+  ce qui était sur le plateau unique passe au corps principal).
+- **Mouvement** : arrivée d'un autre système au point de saut le plus proche du cap, traversée des
+  couloirs vers la cible de l'ordre (station, installation visée ou point d'intérêt nommé
+  `système:désignation`), couloirs 1,5 fois plus rapides chez soi ; un ennemi armé ou une tourelle sur le
+  chemin ouvre l'engagement sur place ; les convois vont décharger au corps principal.
+- **Combat par point d'intérêt** : plateaux, tourelles, bouclier du Bastion, journaux et rapports
+  portent le point d'intérêt ; blocus et capture se jouent au corps principal.
+- **Relais de secours** : nouvelle installation « Relais » (orbite 3, sur un autre astre apte) ; le
+  système reste sur le Réseau tant qu'un relais tient. Le Général en pose un à la capitale puis dans les
+  systèmes menacés ou riches, et place ses tourelles au dernier point d'intérêt avant la station sur le
+  chemin du point de saut.
+- **Brouillard interne et sondage** : mission d'Agent « sonder » (8 Influence, 20 min) qui révèle les
+  corps couverts, +3 Influence par découverte, premier Cristal des épaves ; un système dont le corps
+  principal est couvert cache son propriétaire et ses flottes aux étrangers tant qu'il n'est pas sondé.
+  Les capitales corsaires préfèrent les Repaires, les autres les évitent.
+- Saison accélérée de 14 jours, 40 colonies : aucune anomalie, médiane de 12 systèmes connectés,
+  97 s de calcul. Reste pour les paliers suivants : vue serveur multi-corps déjà exposée (`pois`,
+  `lanes`, `hop`), client à faire.

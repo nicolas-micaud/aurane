@@ -6,7 +6,8 @@ import type { Draw } from './draw.js';
 import type { Colony, FleetOrder, LitBeacon, PlateauPos, World } from './state.js';
 import { combatSize, fleetSize } from './state.js';
 import { isAlly } from './diplomacy.js';
-import { colonyNetwork, colonyScore, colonyStockTotal, findBridgesFor, isShielded, isWatching, ownedSystems, rangeContext, reachableRegions, routeLimit, visibleSectors } from './world.js';
+import { colonyNetwork, colonyScore, colonyStockTotal, findBridgesFor, hiddenFrom, isShielded, isWatching, ownedSystems, rangeContext, reachableRegions, routeLimit, visibleSectors } from './world.js';
+import { layoutOf } from './pois.js';
 import { linkOptions } from './network.js';
 import { regionName } from './galaxy.js';
 import { capacityOf, orbitSlots } from './structures.js';
@@ -26,7 +27,12 @@ export interface SystemView {
   stock: Stock | null; capacity: number | null;
   population: number | null;
   blockadedBy: string | null; engaged: boolean; lit: LitBeacon | null; beaconName?: string;
+  /** Slots of the main point of interest. */
   orbitSlots: [number, number, number];
+  /** Points of interest in the system (bodies only, jump points excluded) and its template. */
+  pois: number; template: string;
+  /** Someone lives here behind cover: probe to learn who. */
+  signature: boolean;
   buildQueue: { building: Building; orbit: Orbit; readyAt: number }[] | null;
   trainQueue: { unit: UnitType; count: number; readyAt: number }[] | null;
 }
@@ -105,17 +111,20 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       const sys = w.galaxy.systems[id]!;
       const st = w.systems[id]!;
       const mineOrAlly = st.owner !== null && (st.owner === colony.id || isAlly(w, colony.id, st.owner));
-      // Anyone in the sector sees the structures (they are big); only owners/allies see stocks and queues.
-      const seen = st.owner !== null;
+      const hidden = hiddenFrom(w, colony.id, id);
+      // Anyone in the sector sees the structures (they are big); only owners/allies see stocks and queues. A lair shows nothing.
+      const seen = st.owner !== null && !hidden;
+      const layout = layoutOf(w.galaxy, id);
       const v: SystemView = {
         id, name: sys.name, x: sys.x, y: sys.y, sector: sys.sector, region: sys.region, kind: sys.kind, resource: sys.resource,
-        band: sys.band, slots: sys.slots, hue: sys.hue, owner: st.owner, connected: net.has(id),
+        band: sys.band, slots: sys.slots, hue: sys.hue, owner: hidden ? null : st.owner, connected: net.has(id),
         buildings: seen ? st.structures.map((x) => x.kind) : null,
         structures: seen ? st.structures.map((x) => ({ id: x.id, kind: x.kind, orbit: x.orbit, angle: x.angle, hp: x.hp, maxHp: B.STRUCTURE_HP[x.kind] })) : null,
         stationHp: seen ? st.stationHp : null,
         stock: mineOrAlly ? st.stock : null, capacity: mineOrAlly ? capacityOf(w, id) : null,
-        population: mineOrAlly ? st.population : null, blockadedBy: st.blockade?.by ?? null, engaged: st.engaged, lit: w.litBeacons[id] ?? null,
+        population: mineOrAlly ? st.population : null, blockadedBy: hidden ? null : st.blockade?.by ?? null, engaged: st.engaged && !hidden, lit: w.litBeacons[id] ?? null,
         orbitSlots: (() => { const o = orbitSlots(w, sys); return [o[1], o[2], o[3]] as [number, number, number]; })(),
+        pois: layout.pois.filter((p) => p.kind !== 'jump').length, template: layout.template, signature: hidden,
         buildQueue: mineOrAlly ? st.buildQueue : null, trainQueue: mineOrAlly ? st.trainQueue : null,
       };
       if (sys.beaconName) v.beaconName = sys.beaconName;
@@ -134,6 +143,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
     if (!mine && (!at || !visibleSystems.has(at))) continue;
     // Docked foreign fleets (pos null at a system) are invisible: they sit inside the station.
     if (!mine && f.at !== null && f.pos === null) continue;
+    if (!mine && f.at !== null && hiddenFrom(w, colony.id, f.at)) continue;
     fleets.push({
       id: f.id, owner: f.owner, at: f.at, from: f.from, destination: f.destination, path: mine ? f.path : [], departAt: f.departAt, arriveAt: f.arriveAt,
       units: mine ? f.units : null, size: fleetSize(f.units), combat: combatSize(f.units), order: mine ? f.order.kind : f.order.kind === 'convoy' ? 'convoy' : 'fleet',

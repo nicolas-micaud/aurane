@@ -137,8 +137,9 @@ describe('world', () => {
     expect(fleet.at).toBeNull();
     tick(w, route.seconds + 60);
     expect(fleet.at).toBe(outpost);
-    // 8 corvettes against a 300 HP station with no defenders: it goes dark within the minute.
-    tick(w, 120);
+    // The fleet drops at the jump point and crosses the lanes to the station; then 8 corvettes
+    // against a 300 HP station with no defenders: it goes dark within the minute.
+    tick(w, 15 * 60);
     expect(w.systems[outpost]!.stationHp).toBe(0);
     expect(w.events.some((e) => e.kind === 'relay.cut')).toBe(true);
     expect(w.events.some((e) => e.kind === 'battle.start')).toBe(true);

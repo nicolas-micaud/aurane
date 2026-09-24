@@ -139,13 +139,14 @@ describe('continuous combat', () => {
     const raiders = warFleet(w, atk, 'corvette', 2);
     w.systems[atk.capital]!.stock.energy = 1e6;
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: raiders.id, order: 'ambush', target: b }).ok).toBe(true);
-    tick(w, raiders.arriveAt - w.time + 5);
+    tick(w, raiders.arriveAt - w.time + 15 * 60);
     expect(raiders.at).toBe(b);
+    expect(raiders.poi).toBe(w.systems[b]!.mainPoi);
     const stockBefore = w.systems[b]!.stock.metal;
     const res = apply(w, vic.id, { type: 'convoy_send', from: vic.capital, to: b, cargo: { metal: 100 } });
     expect(res.ok).toBe(true);
     const convoy = w.fleets[(res as { id: string }).id]!;
-    tick(w, convoy.arriveAt - w.time + 600);
+    tick(w, convoy.arriveAt - w.time + 15 * 60);
     expect(w.fleets[convoy.id]).toBeUndefined();
     expect(w.systems[b]!.stock.metal).toBeLessThan(stockBefore + 100);
     expect(w.events.some((e) => e.kind === 'convoy.lost')).toBe(true);
@@ -156,7 +157,7 @@ describe('continuous combat', () => {
     expect(res2.ok).toBe(true);
     const convoy2 = w.fleets[(res2 as { id: string }).id]!;
     expect(convoy2.units.frigate).toBe(6);
-    tick(w, convoy2.arriveAt - w.time + 600);
+    tick(w, convoy2.arriveAt - w.time + 20 * 60);
     expect(Object.values(w.fleets).some((f) => f.owner === atk.id && f.units.corvette > 0)).toBe(false);
     expect(w.systems[b]!.stock.metal).toBeGreaterThanOrEqual(stockBefore + 100 - 1);
   });
@@ -172,7 +173,7 @@ describe('continuous combat', () => {
     const raiders = warFleet(w, atk, 'corvette', 2);
     w.systems[atk.capital]!.stock.energy = 1e6;
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: raiders.id, order: 'raid', target: outpost }).ok).toBe(true);
-    tick(w, raiders.arriveAt - w.time + 900);
+    tick(w, raiders.arriveAt - w.time + 15 * 60 + 900);
     expect(w.fleets[raiders.id]).toBeUndefined();
     expect(w.systems[outpost]!.owner).toBe(c.id);
     expect(w.systems[outpost]!.stationHp).toBeGreaterThan(0);
@@ -193,7 +194,7 @@ describe('continuous combat', () => {
       w.systems[atk.capital]!.stock.energy = 1e6;
       w.systems[def.capital]!.structures = []; // no turrets, station only
       expect(apply(w, atk.id, { type: 'fleet_order', fleet: fa.id, order: 'blockade', target: def.capital }).ok).toBe(true);
-      tick(w, fa.arriveAt - w.time + 1200);
+      tick(w, fa.arriveAt - w.time + 15 * 60 + 1200);
       const aAlive = Object.values(w.fleets).some((f) => f.owner === atk.id && f.at === def.capital && f.units[au] > 0);
       const dAlive = Object.values(w.fleets).some((f) => f.owner === def.id && f.units[du] > 0);
       expect(aAlive !== dAlive).toBe(true);
@@ -211,7 +212,7 @@ describe('continuous combat', () => {
     const fleet = warFleet(w, atk, 'cruiser', 6);
     w.systems[atk.capital]!.stock.energy = 1e6;
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: fleet.id, order: 'blockade', target: outpost }).ok).toBe(true);
-    tick(w, fleet.arriveAt - w.time + 300);
+    tick(w, fleet.arriveAt - w.time + 15 * 60 + 300);
     expect(w.systems[outpost]!.blockade?.by).toBe(atk.id);
     expect(w.events.some((e) => e.kind === 'blockade.start')).toBe(true);
     tick(w, B.BLOCKADE_CAPTURE_HOURS * 3600 + 120);
@@ -221,7 +222,7 @@ describe('continuous combat', () => {
     // The capital cannot be taken.
     w.systems[outpost]!.stock.energy = 1e5; // fuel for the off-network hop
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: fleet.id, order: 'blockade', target: c.capital }).ok).toBe(true);
-    tick(w, fleet.arriveAt - w.time + 300 + (B.BLOCKADE_CAPTURE_HOURS + 1) * 3600);
+    tick(w, fleet.arriveAt - w.time + 15 * 60 + 300 + (B.BLOCKADE_CAPTURE_HOURS + 1) * 3600);
     expect(w.systems[c.capital]!.owner).toBe(c.id);
   });
 

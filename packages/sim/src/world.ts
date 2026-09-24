@@ -11,8 +11,9 @@ import { addFleet } from './combat.js';
 import { atPeace, isAlly, transitSet } from './diplomacy.js';
 import { createRng, subSeed } from './rng.js';
 import { planPath, fleetSpeed } from './routing.js';
-import { armedHostilesPresent, battleTick, plateauFleets, plateauIndex, pruneBattles, regenerate } from './battle.js';
-import { capacityOf, defaultOrbit, depositClamped, freeSlotsOnOrbit, hasStructure, nextAngle, orbitSlots } from './structures.js';
+import { armedHostilesPresent, battleTick, plateauFleets, plateauIndex, plateauKey, pruneBattles, regenerate } from './battle.js';
+import { capacityOf, defaultOrbit, depositClamped, freeSlotsOnOrbit, hasStructure, nextAngle, orbitSlots, relayUp } from './structures.js';
+import { RELAY_KINDS, entryJump, laneBetween, layoutOf, pathInSystem, poiOf } from './pois.js';
 import {
   combatSize, emptyDamage, emptyFleet, fleetSize, newId,
   type Colony, type FleetOrder, type FleetState, type SystemState, type World, type WorldEvent, type TreatyKind,
@@ -33,17 +34,17 @@ export interface WorldOptions extends GalaxyOptions {
 export function createWorld(seed: number | string, opts: WorldOptions = {}): World {
   const galaxy = generateGalaxy(seed, opts);
   const systems: Record<string, SystemState> = {};
-  for (const id of Object.keys(galaxy.systems)) systems[id] = emptySystem();
+  for (const id of Object.keys(galaxy.systems)) { systems[id] = emptySystem(); systems[id]!.mainPoi = layoutOf(galaxy, id).main; }
   return {
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
-    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, litBeacons: {}, lastClearing: [],
+    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, litBeacons: {}, lastClearing: [],
     events: [], battles: {}, titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
     owned: {}, relaysByOwner: {}, treatiesByColony: {}, engagedSystems: [],
   };
 }
 
-export const emptySystem = (): SystemState => ({ owner: null, structures: [], stationHp: 0, stock: B.emptyStock(), population: 0, buildQueue: [], trainQueue: [], blockade: null, engaged: false });
+export const emptySystem = (): SystemState => ({ owner: null, mainPoi: '', structures: [], stationHp: 0, stock: B.emptyStock(), population: 0, buildQueue: [], trainQueue: [], blockade: null, engaged: false, engagedPois: [] });
 
 export function logEvent(w: World, kind: string, actors: string[], data?: Record<string, unknown>): void {
   const ev: WorldEvent = { at: w.time, kind, actors };
@@ -104,7 +105,7 @@ export function rangeContext(w: World, colony: Colony): RangeContext {
 
 /** A relay carries the Signal only when both stations stand. */
 export function relayLive(w: World, r: Relay): boolean {
-  return relayActive(r, w.time) && w.systems[r.a]!.stationHp > 0 && w.systems[r.b]!.stationHp > 0;
+  return relayActive(r, w.time) && relayUp(w.systems[r.a]!) && relayUp(w.systems[r.b]!);
 }
 
 /** Systems connected to the colony's capital, with hop distance. Only these exist. */
@@ -251,11 +252,34 @@ function countLinkable(w: World, sys: StarSystem, faction: Faction): number {
   return linkOptions(w.galaxy, sys, ctx).filter((o) => !w.systems[o.to.id]!.owner).length;
 }
 
-function addStructure(w: World, systemId: string, kind: Building, orbit?: Orbit): void {
+function addStructure(w: World, systemId: string, kind: Building, orbit?: Orbit, poi?: string): void {
   const st = w.systems[systemId]!;
   const sys = w.galaxy.systems[systemId]!;
   const o = orbit ?? defaultOrbit(kind);
-  st.structures.push({ id: newId(w, 'S'), kind, orbit: o, angle: nextAngle(st, o, orbitSlots(w, sys)[o]), hp: B.STRUCTURE_HP[kind] });
+  const at = poi ?? st.mainPoi;
+  st.structures.push({ id: newId(w, 'S'), kind, poi: at, orbit: o, angle: nextAngle(st, o, orbitSlots(w, sys, at)[o], at), hp: B.STRUCTURE_HP[kind] });
+}
+
+/** Points of interest a colony can see in a system: open ones always; covered ones once owned, occupied or probed. */
+export function knownPois(w: World, colonyId: string, systemId: string): Set<string> {
+  const layout = layoutOf(w.galaxy, systemId);
+  const st = w.systems[systemId]!;
+  const out = new Set<string>();
+  const owner = st.owner === colonyId || (st.owner !== null && isAlly(w, colonyId, st.owner));
+  const probed = new Set(w.known[colonyId]?.[systemId] ?? []);
+  for (const p of layout.pois) {
+    if (p.cover < 2 || owner || probed.has(p.id)) { out.add(p.id); continue; }
+    if (Object.values(w.fleets).some((f) => f.owner === colonyId && f.at === systemId && (f.poi === p.id || f.hop?.to === p.id))) out.add(p.id);
+  }
+  return out;
+}
+
+/** A system whose main point of interest is covered hides its owner from strangers: a lair. */
+export function hiddenFrom(w: World, colonyId: string, systemId: string): boolean {
+  const st = w.systems[systemId]!;
+  if (!st.owner || st.owner === colonyId || isAlly(w, colonyId, st.owner)) return false;
+  const main = poiOf(layoutOf(w.galaxy, systemId), st.mainPoi);
+  return !!main && main.cover >= 2 && !knownPois(w, colonyId, systemId).has(main.id);
 }
 
 /** Places a new colony on the rim, as far as possible from existing capitals. */
@@ -271,7 +295,8 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
       if (w.systems[id]!.owner || sys.kind === 'beacon' || sys.slots < 2) continue;
       if (countLinkable(w, sys, opts.faction) < 2) continue; // a capital with nothing in range is a dead start
       const d = capitals.length ? Math.min(...capitals.map((c) => dist(c, sys))) : 1e9;
-      const score = Math.min(d, 6000) * rng.range(0.9, 1);
+      const lair = layoutOf(w.galaxy, id).template === 'lair' ? (opts.faction === 'corsairs' ? 1.35 : 0.4) : 1;
+      const score = Math.min(d, 6000) * rng.range(0.9, 1) * lair;
       if (score > bestScore) { bestScore = score; best = sys; }
     }
   }
@@ -325,7 +350,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       removeRelay(w, r.id);
       return { ok: true };
     }
-    case 'build': return build(w, colony, cmd.system, cmd.building, cmd.orbit);
+    case 'build': return build(w, colony, cmd.system, cmd.building, cmd.orbit, cmd.poi);
     case 'train': return train(w, colony, cmd.system, cmd.unit, cmd.count);
     case 'market_order': {
       if (!reachableRegions(w, colony).has(cmd.region)) return { ok: false, reason: 'market out of reach' };
@@ -410,6 +435,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       if (cmd.mission === 'spy' && !w.galaxy.sectors[cmd.target]) return { ok: false, reason: 'no such sector' };
       if (cmd.mission === 'sabotage' && !w.relays[cmd.target]) return { ok: false, reason: 'no such relay' };
       if (cmd.mission === 'envoy' && !w.colonies[cmd.target]) return { ok: false, reason: 'no such colony' };
+      if (cmd.mission === 'probe' && !w.galaxy.systems[cmd.target]) return { ok: false, reason: 'no such system' };
       colony.influence -= cost;
       const id = newId(w, 'M');
       w.missions[id] = { id, owner: colony.id, mission: cmd.mission, target: cmd.target, readyAt: w.time + B.AGENT_SECONDS[cmd.mission] };
@@ -507,21 +533,30 @@ function claim(w: World, colony: Colony, systemId: string): void {
   }
 }
 
-function build(w: World, colony: Colony, systemId: string, building: Building, orbit?: Orbit): ApplyResult {
+function build(w: World, colony: Colony, systemId: string, building: Building, orbit?: Orbit, poiId?: string): ApplyResult {
   const sys = w.galaxy.systems[systemId];
   const st = w.systems[systemId];
   if (!sys || !st || st.owner !== colony.id) return { ok: false, reason: 'not your system' };
   if (!colonyNetwork(w, colony).has(systemId)) return { ok: false, reason: 'system not connected' };
   if (st.blockade) return { ok: false, reason: 'system under blockade' };
+  const layout = layoutOf(w.galaxy, systemId);
+  const poi = poiOf(layout, poiId ?? st.mainPoi);
+  if (!poi) return { ok: false, reason: 'no such point of interest' };
+  if (poi.kind === 'jump' || poi.kind === 'nebula') return { ok: false, reason: 'nothing can be built here' };
   const o = orbit ?? defaultOrbit(building);
   if (Math.abs(o - defaultOrbit(building)) > 1) return { ok: false, reason: 'wrong orbit for this structure' };
-  if (freeSlotsOnOrbit(w, sys, o) <= 0) return { ok: false, reason: 'no free slot on this orbit' };
+  if (freeSlotsOnOrbit(w, sys, o, poi.id) <= 0) return { ok: false, reason: 'no free slot on this orbit' };
   const unique: Building[] = ['extractor', 'shipyard', 'bastion', 'tradepost', 'amplifier', 'antenna'];
   if (unique.includes(building) && (hasStructure(st, building) || st.buildQueue.some((j) => j.building === building))) return { ok: false, reason: 'already built' };
+  if (building === 'relay') {
+    if (poi.id === st.mainPoi) return { ok: false, reason: 'the station already relays here' };
+    if (!RELAY_KINDS.has(poi.kind)) return { ok: false, reason: 'a relay needs a body to anchor to' };
+    if (st.structures.some((x) => x.kind === 'relay' && x.poi === poi.id) || st.buildQueue.some((j) => j.building === 'relay' && j.poi === poi.id)) return { ok: false, reason: 'already built' };
+  }
   const cost = B.BUILDING_COST[building];
   if (!stockHas(st.stock, cost)) return { ok: false, reason: 'not enough resources here' };
   stockSub(st.stock, cost);
-  st.buildQueue.push({ building, orbit: o, readyAt: w.time + B.BUILDING_SECONDS[building] });
+  st.buildQueue.push({ building, orbit: o, readyAt: w.time + B.BUILDING_SECONDS[building], poi: poi.id });
   return { ok: true };
 }
 
@@ -540,9 +575,9 @@ function train(w: World, colony: Colony, systemId: string, unit: UnitType, count
   return { ok: true };
 }
 
-function newFleet(w: World, owner: string, at: string, units: Fleet): FleetState {
+function newFleet(w: World, owner: string, at: string, units: Fleet, poi?: string): FleetState {
   const id = newId(w, 'F');
-  const f: FleetState = { id, owner, units, damage: emptyDamage(), cargo: B.emptyStock(), at, from: null, destination: null, path: [], departAt: 0, arriveAt: 0, order: { kind: 'idle' }, pos: null, focus: null };
+  const f: FleetState = { id, owner, units, damage: emptyDamage(), cargo: B.emptyStock(), at, from: null, destination: null, path: [], departAt: 0, arriveAt: 0, order: { kind: 'idle' }, poi: poi ?? w.systems[at]!.mainPoi, hops: [], hop: null, pos: null, focus: null };
   w.fleets[id] = f;
   return f;
 }
@@ -550,7 +585,8 @@ function newFleet(w: World, owner: string, at: string, units: Fleet): FleetState
 /** Idle fleets of one class merge: warships with warships, cargos with cargos (a convoy is escorted on purpose). */
 function mergeFleet(w: World, owner: string, at: string, units: Fleet): FleetState {
   const cargoClass = combatSize(units) === 0 && units.cargo > 0;
-  const existing = Object.values(w.fleets).find((f) => f.owner === owner && f.at === at && f.order.kind === 'idle' && f.pos === null && (combatSize(f.units) === 0 && f.units.cargo > 0) === cargoClass);
+  const main = w.systems[at]!.mainPoi;
+  const existing = Object.values(w.fleets).find((f) => f.owner === owner && f.at === at && f.poi === main && f.order.kind === 'idle' && f.pos === null && (combatSize(f.units) === 0 && f.units.cargo > 0) === cargoClass);
   if (existing) { existing.units = addFleet(existing.units, units); return existing; }
   return newFleet(w, owner, at, units);
 }
@@ -571,6 +607,7 @@ function depart(w: World, colony: Colony, f: FleetState, to: string, order: Flee
   f.from = f.at;
   f.at = null;
   f.pos = null;
+  f.poi = null; f.hops = []; f.hop = null;
   if (hop && plan.waypoints.length > 1) {
     f.path = plan.waypoints.slice(1);
     f.destination = plan.waypoints[0]!;
@@ -592,12 +629,14 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
   if (order !== 'move' && order !== 'return' && combatSize(fleet.units) === 0) return { ok: false, reason: 'cargos cannot fight' };
   let destination: string;
   let newOrder: FleetOrder;
+  // target: "<systemId>", "<systemId>:<structureId>" (raid) or "<systemId>:<poiId>" (blockade, defend, ambush, move)
+  const [sysId, extra] = target.split(':') as [string, string | undefined];
+  const poiArg = extra && layoutOf(w.galaxy, sysId).pois.some((p) => p.id === `${sysId}/${extra}` || p.id === extra) ? (extra.includes('/') ? extra : `${sysId}/${extra}`) : undefined;
   if (order === 'raid') {
-    // target: "<systemId>" (station) or "<systemId>:<structureId>"
-    const [sysId, structId] = target.split(':') as [string, string | undefined];
     const st = w.systems[sysId];
     if (!st || !st.owner) return { ok: false, reason: 'no such target' };
     if (st.owner === colony.id) return { ok: false, reason: 'your own system' };
+    const structId = extra && !poiArg ? extra : undefined;
     if (structId && !st.structures.some((s) => s.id === structId)) return { ok: false, reason: 'no such structure' };
     destination = sysId;
     newOrder = { kind: 'raid', target: structId ?? 'station', via: sysId };
@@ -605,15 +644,23 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
     destination = colony.capital;
     newOrder = { kind: 'return' };
   } else {
-    if (!w.galaxy.systems[target]) return { ok: false, reason: 'no such system' };
-    destination = target;
-    newOrder = order === 'move' ? { kind: 'move', to: target } : order === 'blockade' ? { kind: 'blockade', system: target } : order === 'ambush' ? { kind: 'ambush', system: target } : { kind: 'defend', system: target };
+    if (!w.galaxy.systems[sysId]) return { ok: false, reason: 'no such system' };
+    destination = sysId;
+    const withPoi = poiArg ? { poi: poiArg } : {};
+    newOrder = order === 'move' ? { kind: 'move', to: sysId } : order === 'blockade' ? { kind: 'blockade', system: sysId, ...withPoi } : order === 'ambush' ? { kind: 'ambush', system: sysId, ...withPoi } : { kind: 'defend', system: sysId, ...withPoi };
   }
   if (newOrder.kind === 'raid' || newOrder.kind === 'blockade') {
     const victim = w.colonies[w.systems[destination]!.owner ?? ''];
     if (victim && (isShielded(w, victim) || isShielded(w, colony) || atPeace(w, colony.id, victim.id))) return { ok: false, reason: 'at peace or shielded' };
   }
-  if (destination === fleet.at) { fleet.order = newOrder; arrive(w, fleet); return { ok: true }; }
+  if (destination === fleet.at) {
+    // Already in the system: travel between points of interest along the lanes.
+    fleet.order = newOrder;
+    if (fleet.hop) return { ok: false, reason: 'fleet in transit' };
+    fleet.pos = null;
+    proceed(w, fleet);
+    return { ok: true };
+  }
   return depart(w, colony, fleet, destination, newOrder);
 }
 
@@ -716,28 +763,31 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
 }
 
 function hasHostilePresence(w: World): boolean {
-  for (const f of Object.values(w.fleets)) if (f.at && f.pos && combatSize(f.units) > 0) return true;
+  for (const f of Object.values(w.fleets)) if (f.at && f.poi && f.pos && combatSize(f.units) > 0) return true;
   return false;
 }
 
 function runBattles(w: World, dt: number): void {
-  const systems = new Set<string>(w.engagedSystems);
-  for (const f of Object.values(w.fleets)) if (f.at && f.pos && combatSize(f.units) > 0) systems.add(f.at);
-  for (const id of systems) {
-    deployDefenders(w, id);
-    const ongoing = battleTick(w, id, dt);
-    if (!ongoing) settlePlateau(w, id);
+  const plateaus = new Set<string>();
+  for (const id of w.engagedSystems) for (const poi of w.systems[id]!.engagedPois) plateaus.add(plateauKey(id, poi));
+  for (const f of Object.values(w.fleets)) if (f.at && f.poi && f.pos && combatSize(f.units) > 0) plateaus.add(plateauKey(f.at, f.poi));
+  for (const key of plateaus) {
+    const [id, poi] = key.split('|') as [string, string];
+    deployDefenders(w, id, poi);
+    const ongoing = battleTick(w, id, poi, dt);
+    if (!ongoing) settlePlateau(w, id, poi);
   }
 }
 
 /** After the shooting stops: convoys move on, friends dock, raiders take their plunder. */
-function settlePlateau(w: World, systemId: string): void {
+function settlePlateau(w: World, systemId: string, poi: string): void {
   const st = w.systems[systemId]!;
   for (const f of Object.values(w.fleets)) {
-    if (f.at !== systemId || f.pos === null) continue;
+    if (f.at !== systemId || f.poi !== poi || f.pos === null) continue;
     const colony = w.colonies[f.owner];
     if (!colony) continue;
     const friendly = st.owner === f.owner || (st.owner !== null && isAlly(w, f.owner, st.owner));
+    if (f.hops.length) { startHop(w, f); continue; }          // passing through: on to the next point of interest
     if (f.order.kind === 'convoy') { continueConvoy(w, f); continue; }
     if (f.order.kind === 'raid') {
       const victim = st.owner ? w.colonies[st.owner] : undefined;
@@ -755,19 +805,19 @@ function settlePlateau(w: World, systemId: string): void {
 }
 
 /** Friendly warships docked at a threatened system come out to fight; cargos stay in the dock. */
-function deployDefenders(w: World, systemId: string): void {
+function deployDefenders(w: World, systemId: string, poi: string): void {
   const st = w.systems[systemId]!;
-  const hostiles = armedHostilesPresent(w, systemId);
+  const hostiles = armedHostilesPresent(w, systemId, poi);
   if (!hostiles.length) return;
   let i = 0;
   for (const f of Object.values(w.fleets)) {
-    if (f.at !== systemId || f.pos !== null || combatSize(f.units) === 0) continue;
+    if (f.at !== systemId || f.poi !== poi || f.pos !== null || combatSize(f.units) === 0) continue;
     if (!st.owner || (f.owner !== st.owner && !isAlly(w, f.owner, st.owner))) continue;
     f.pos = { r: 2, a: (90 + i * 47) % 360 };
     i++;
   }
   // With the station down, docked cargos are exposed.
-  if (st.stationHp <= 0) for (const f of Object.values(w.fleets)) if (f.at === systemId && f.pos === null && f.units.cargo > 0) f.pos = { r: 1, a: 180 };
+  if (poi === st.mainPoi && st.stationHp <= 0) for (const f of Object.values(w.fleets)) if (f.at === systemId && f.poi === poi && f.pos === null && f.units.cargo > 0) f.pos = { r: 1, a: 180 };
 }
 
 function processTimers(w: World, dt: number): void {
@@ -779,7 +829,7 @@ function processTimers(w: World, dt: number): void {
       const done = st.buildQueue.filter((j) => j.readyAt <= w.time);
       if (done.length) {
         st.buildQueue = st.buildQueue.filter((j) => j.readyAt > w.time);
-        for (const j of done) st.structures.push({ id: newId(w, 'S'), kind: j.building, orbit: j.orbit, angle: nextAngle(st, j.orbit, orbitSlots(w, sys)[j.orbit]), hp: B.STRUCTURE_HP[j.building] });
+        for (const j of done) st.structures.push({ id: newId(w, 'S'), kind: j.building, poi: j.poi, orbit: j.orbit, angle: nextAngle(st, j.orbit, orbitSlots(w, sys, j.poi)[j.orbit], j.poi), hp: B.STRUCTURE_HP[j.building] });
       }
     }
     if (st.trainQueue.length && st.owner) {
@@ -791,18 +841,19 @@ function processTimers(w: World, dt: number): void {
         mergeFleet(w, st.owner, id, units);
       }
     }
-    evaluateBlockade(w, id, plateau.get(id) ?? []);
+    evaluateBlockade(w, id, plateau.get(plateauKey(id, st.mainPoi)) ?? []);
     if (st.blockade && st.owner && w.time - st.blockade.since >= B.BLOCKADE_CAPTURE_HOURS * 3600) capture(w, id, st.blockade.by);
   }
   for (const fleet of Object.values(w.fleets)) {
     if (fleet.at === null && fleet.arriveAt <= w.time) arrive(w, fleet);
+    else if (fleet.hop && fleet.hop.arriveAt <= w.time) reachPoi(w, fleet);
   }
   for (const m of Object.values(w.missions)) if (m.readyAt <= w.time) resolveMission(w, m.id);
   for (const [id, f] of Object.entries(w.fleets)) if (fleetSize(f.units) === 0 && f.at !== null) delete w.fleets[id];
   // Healing where nothing hostile is present.
   const nets = new Map<string, Map<string, number>>();
   const contested = new Set<string>();
-  for (const [id, fleets] of plateau) if (fleets.some((f) => combatSize(f.units) > 0 && w.systems[id]!.owner !== f.owner)) contested.add(id);
+  for (const [key, fleets] of plateau) { const id = key.split('|')[0]!; if (fleets.some((f) => combatSize(f.units) > 0 && w.systems[id]!.owner !== f.owner)) contested.add(id); }
   for (const owner of Object.keys(w.owned)) {
     const colony = w.colonies[owner];
     if (!colony) continue;
@@ -815,10 +866,10 @@ function processTimers(w: World, dt: number): void {
 function evaluateBlockade(w: World, systemId: string, plateau: FleetState[]): void {
   const st = w.systems[systemId]!;
   if (!st.owner || !plateau.length) { st.blockade = null; return; }
-  const hostiles = armedHostilesPresent(w, systemId, plateau).filter((f) => f.order.kind === 'blockade' || f.order.kind === 'raid' || f.order.kind === 'ambush');
+  const hostiles = armedHostilesPresent(w, systemId, st.mainPoi, plateau).filter((f) => f.order.kind === 'blockade' || f.order.kind === 'raid' || f.order.kind === 'ambush');
   if (!hostiles.length) { st.blockade = null; return; }
-  const defendersAlive = Object.values(w.fleets).some((f) => f.at === systemId && combatSize(f.units) > 0 && (f.owner === st.owner || isAlly(w, f.owner, st.owner!)));
-  const turretsAlive = st.structures.some((s) => s.kind in B.TURRET_STATS && s.hp > 0);
+  const defendersAlive = Object.values(w.fleets).some((f) => f.at === systemId && f.poi === st.mainPoi && combatSize(f.units) > 0 && (f.owner === st.owner || isAlly(w, f.owner, st.owner!)));
+  const turretsAlive = st.structures.some((s) => s.kind in B.TURRET_STATS && s.hp > 0 && s.poi === st.mainPoi);
   if (defendersAlive || turretsAlive) { st.blockade = null; return; }
   const by = hostiles.reduce((a, b) => (combatSize(a.units) >= combatSize(b.units) ? a : b)).owner;
   if (!st.blockade || st.blockade.by !== by) {
@@ -851,25 +902,87 @@ function approachAngle(w: World, from: string | null, to: string): number {
   return ((Math.atan2(a.y - b.y, a.x - b.x) * 180) / Math.PI + 360) % 360;
 }
 
+/** Arrival from another system: the fleet drops at a jump point, then crosses the lanes to its target. */
 function arrive(w: World, fleet: FleetState): void {
-  land(w, fleet);
-  // Hostile presence on landing: the engagement opens at once (positions, log), damage follows with the ticks.
-  if (fleet.at !== null && fleet.pos !== null && armedHostilesPresent(w, fleet.at).length) { deployDefenders(w, fleet.at); battleTick(w, fleet.at, 0); }
-}
-
-function land(w: World, fleet: FleetState): void {
-  const colony = w.colonies[fleet.owner]!;
   const dest = fleet.destination ?? fleet.at!;
   fleet.at = dest;
   fleet.destination = null;
+  fleet.poi = entryJump(w.galaxy, dest, fleet.from);
+  fleet.pos = null; fleet.hop = null; fleet.hops = [];
+  if (!engageIfContested(w, fleet)) proceed(w, fleet);
+}
+
+/** Armed enemies on this plateau: the fleet stops at the edge and the engagement opens at once. */
+function engageIfContested(w: World, fleet: FleetState): boolean {
+  if (fleet.at === null || fleet.poi === null) return false;
+  const colony = w.colonies[fleet.owner]!;
+  const enemies = plateauFleets(w, fleet.at, fleet.poi).some((g) => g.owner !== colony.id && !isAlly(w, g.owner, colony.id) && !atPeace(w, g.owner, colony.id) && combatSize(g.units) > 0);
+  const st = w.systems[fleet.at]!;
+  const turrets = st.owner !== null && st.owner !== colony.id && !isAlly(w, colony.id, st.owner) && !atPeace(w, colony.id, st.owner) && !isShielded(w, colony) && !isShielded(w, w.colonies[st.owner]!)
+    && st.structures.some((s) => s.poi === fleet.poi && s.kind in B.TURRET_STATS && s.hp > 0) && combatSize(fleet.units) > 0;
+  if (!enemies && !turrets) return false;
+  fleet.pos = { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, fleet.at) };
+  deployDefenders(w, fleet.at, fleet.poi);
+  battleTick(w, fleet.at, fleet.poi, 0);
+  return true;
+}
+
+/** Which point of interest an order aims at inside the system. */
+function targetPoiFor(w: World, fleet: FleetState): string {
+  const st = w.systems[fleet.at!]!;
+  const o = fleet.order;
+  if (o.kind === 'raid') {
+    if (o.target === 'station') return st.mainPoi;
+    return st.structures.find((s) => s.id === o.target)?.poi ?? st.mainPoi;
+  }
+  if ((o.kind === 'blockade' || o.kind === 'defend' || o.kind === 'ambush') && o.poi) return o.poi;
+  return st.mainPoi;
+}
+
+/** From the current point of interest, go to the order's target: land here, or start crossing the lanes. */
+function proceed(w: World, fleet: FleetState): void {
+  if (fleet.at === null || fleet.poi === null) return;
+  const target = targetPoiFor(w, fleet);
+  if (fleet.poi === target) { landAt(w, fleet); return; }
+  fleet.hops = pathInSystem(layoutOf(w.galaxy, fleet.at), fleet.poi, target).hops;
+  startHop(w, fleet);
+}
+
+function startHop(w: World, fleet: FleetState): void {
+  const next = fleet.hops.shift();
+  if (!next || fleet.at === null || fleet.poi === null) { landAt(w, fleet); return; }
+  const layout = layoutOf(w.galaxy, fleet.at);
+  const lane = laneBetween(layout, fleet.poi, next);
+  const st = w.systems[fleet.at]!;
+  const colony = w.colonies[fleet.owner]!;
+  const relayed = st.owner === colony.id || (st.owner !== null && isAlly(w, colony.id, st.owner));
+  const seconds = Math.ceil((lane?.seconds ?? 120) / (relayed ? B.LANE_RELAYED_SPEEDUP : 1) / (colony.faction === 'corsairs' ? B.CORSAIR_SPEED_MULT : 1));
+  fleet.hop = { from: fleet.poi, to: next, departAt: w.time, arriveAt: w.time + seconds };
+  fleet.poi = null; fleet.pos = null;
+}
+
+/** End of a lane hop. */
+function reachPoi(w: World, fleet: FleetState): void {
+  if (!fleet.hop) return;
+  fleet.poi = fleet.hop.to;
+  fleet.hop = null;
+  if (engageIfContested(w, fleet)) return;
+  if (fleet.hops.length) startHop(w, fleet); else landAt(w, fleet);
+}
+
+/** The fleet has reached the point of interest its order aims at. */
+function landAt(w: World, fleet: FleetState): void {
+  const colony = w.colonies[fleet.owner]!;
+  const dest = fleet.at!;
+  const poi = fleet.poi!;
   const st = w.systems[dest]!;
   const order = fleet.order;
   const friendly = st.owner === colony.id || (st.owner !== null && isAlly(w, colony.id, st.owner));
-  const hostileHere = plateauFleets(w, dest).some((g) => g.owner !== colony.id && !isAlly(w, g.owner, colony.id) && !atPeace(w, g.owner, colony.id) && combatSize(g.units) > 0)
+  const hostileHere = plateauFleets(w, dest, poi).some((g) => g.owner !== colony.id && !isAlly(w, g.owner, colony.id) && !atPeace(w, g.owner, colony.id) && combatSize(g.units) > 0)
     || (st.owner !== null && !friendly && !atPeace(w, colony.id, st.owner) && !isShielded(w, colony) && !isShielded(w, w.colonies[st.owner]!));
 
   if (order.kind === 'convoy') {
-    if (hostileHere && (fleet.path.length > 0 || dest !== order.to || true)) {
+    if (hostileHere) {
       // Exposed on the plateau; it continues (or unloads) once the engagement ends.
       fleet.pos = { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
       return;
@@ -895,6 +1008,7 @@ function land(w: World, fleet: FleetState): void {
     return;
   }
   fleet.pos = { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+  if (poi === st.mainPoi || st.structures.some((s) => s.poi === poi)) { deployDefenders(w, dest, poi); battleTick(w, dest, poi, 0); }
 }
 
 /** Next leg, or unloading at the destination. Called on arrival and when an engagement ends. */
@@ -902,6 +1016,11 @@ function continueConvoy(w: World, f: FleetState): void {
   const colony = w.colonies[f.owner]!;
   if (f.order.kind !== 'convoy' || f.at === null) return;
   const st = w.systems[f.at]!;
+  if (f.hops.length > 0) { startHop(w, f); return; }
+  if (f.poi !== st.mainPoi && f.poi !== null) { // unloading happens at the station: cross to the main body first
+    f.hops = pathInSystem(layoutOf(w.galaxy, f.at), f.poi, st.mainPoi).hops;
+    if (f.hops.length) { startHop(w, f); return; }
+  }
   if (f.path.length > 0) {
     const next = f.path.shift()!;
     const plan = planPath(w, colony, f.at, next);
@@ -933,7 +1052,7 @@ function continueConvoy(w: World, f: FleetState): void {
   }
   // Merge with an idle fleet of the same class at the destination.
   const cargoClass = combatSize(f.units) === 0 && f.units.cargo > 0;
-  const other = Object.values(w.fleets).find((g) => g.id !== f.id && g.owner === f.owner && g.at === f.at && g.order.kind === 'idle' && g.pos === null && (combatSize(g.units) === 0 && g.units.cargo > 0) === cargoClass);
+  const other = Object.values(w.fleets).find((g) => g.id !== f.id && g.owner === f.owner && g.at === f.at && g.poi === f.poi && g.order.kind === 'idle' && g.pos === null && (combatSize(g.units) === 0 && g.units.cargo > 0) === cargoClass);
   if (other && f.pos === null) { other.units = addFleet(other.units, f.units); stockAdd(other.cargo, f.cargo); delete w.fleets[f.id]; }
 }
 
@@ -988,7 +1107,7 @@ function capture(w: World, systemId: string, by: string): void {
   st.population *= 0.5;
   for (const r of colonyRelays(w, prev)) if (r.a === systemId || r.b === systemId) removeRelay(w, r.id);
   for (const id of Object.keys(w.routes)) if (w.routes[id]!.from === systemId || w.routes[id]!.to === systemId) delete w.routes[id];
-  for (const f of fleetsAt(w, systemId)) if (f.owner === by) { f.order = { kind: 'idle' }; f.pos = null; }
+  for (const f of fleetsAt(w, systemId)) if (f.owner === by) { f.order = { kind: 'idle' }; f.pos = null; f.hops = []; }
   const winner = w.colonies[by];
   if (winner) {
     const rid = newId(w, 'R');
@@ -1020,6 +1139,17 @@ function resolveMission(w: World, id: string): void {
       owner.influence = Math.max(0, owner.influence - 10);
       logEvent(w, 'sabotage.caught', [owner.id, victim.id], { relay: relay.id });
     }
+  } else if (m.mission === 'probe') {
+    const layout = layoutOf(w.galaxy, m.target);
+    const before = new Set(w.known[owner.id]?.[m.target] ?? []);
+    const hidden = layout.pois.filter((p) => p.cover >= 2).map((p) => p.id);
+    const found = hidden.filter((id) => !before.has(id));
+    (w.known[owner.id] ??= {})[m.target] = hidden;
+    owner.influence += found.length * B.PROBE_INFLUENCE_PER_FIND;
+    // A first look at a wreck yields a little Crystal to the capital.
+    const wrecks = layout.pois.filter((p) => p.kind === 'wreck').length;
+    if (wrecks && !w.events.some((e) => e.kind === 'probe.done' && e.actors[0] === owner.id && e.data?.system === m.target)) depositClamped(w, owner.capital, { crystal: B.WRECK_FIRST_CRYSTAL * wrecks });
+    logEvent(w, 'probe.done', [owner.id], { system: m.target, found: found.length, template: layout.template });
   } else {
     const target = w.colonies[m.target];
     if (!target) return;

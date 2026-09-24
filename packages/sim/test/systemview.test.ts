@@ -13,6 +13,9 @@ describe('system view', () => {
     expect(mine.mine).toBe(true);
     expect(mine.station?.hp).toBe(B.STATION_HP);
     expect(mine.station?.pos).toEqual({ r: 0, a: 0 });
+    expect(mine.pois.length).toBeGreaterThanOrEqual(2);
+    expect(mine.pois.some((p) => p.main)).toBe(true);
+    expect(mine.lanes.length).toBeGreaterThanOrEqual(mine.pois.length - 1);
     expect(mine.structures.map((s) => s.kind).sort()).toEqual(['extractor', 'shipyard']);
     expect(mine.stock?.metal).toBe(B.STARTING_STOCK.metal);
     expect(mine.fleets.some((f) => f.units?.cargo === B.STARTING_CARGOS && f.docked)).toBe(true);
@@ -38,6 +41,10 @@ describe('system view', () => {
     const raiders = fleetsAt(w, atk.capital).find((f) => f.units.corvette === 6)!;
     expect(apply(w, atk.id, { type: 'fleet_order', fleet: raiders.id, order: 'raid', target: def.capital }).ok).toBe(true);
     tick(w, raiders.arriveAt - w.time + 4);
+    expect(raiders.at).toBe(def.capital);
+    // Cross the lanes from the jump point to the station.
+    for (let i = 0; i < 60 && (raiders.poi !== w.systems[def.capital]!.mainPoi || raiders.hop); i++) tick(w, 30);
+    tick(w, 4);
     const live = systemViewFor(w, def, def.capital)!;
     expect(live.engaged).toBe(true);
     expect(live.battle?.sides).toEqual([def.id, atk.id]);

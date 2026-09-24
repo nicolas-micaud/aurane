@@ -10,7 +10,8 @@ import { findBridges, linkOptions, relayActive } from './network.js';
 import { createRng, subSeed } from './rng.js';
 import { combatSize, fleetSize, type Colony, type FleetState, type World } from './state.js';
 import { atPeace, isAlly } from './diplomacy.js';
-import { armedHostilesPresent, fleetHpFraction, plateauIndex } from './battle.js';
+import { armedHostilesPresent, fleetHpFraction, plateauIndex, plateauKey } from './battle.js';
+import { RELAY_KINDS, layoutOf, pathInSystem } from './pois.js';
 import { capacityOf, freeSlotsOnOrbit, hasStructure } from './structures.js';
 import {
   colonyNetwork, colonyRelays, colonyScore, hasBuilding, isShielded, networkUpkeep, ownedSystems, rangeContext,
@@ -178,12 +179,24 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     const turrets = st.structures.filter((s) => s.kind in B.TURRET_STATS).length + st.buildQueue.filter((j) => j.building in B.TURRET_STATS).length;
     if (turrets >= p.autoTurrets || queuedAt(ctx, id) >= 2) continue;
     const sys = w.galaxy.systems[id]!;
-    const hostiles = armedHostilesPresent(w, id);
+    const hostiles = hostilesInSystem(w, id);
     const cruisers = hostiles.reduce((s, f) => s + f.units.cruiser, 0), corvettes = hostiles.reduce((s, f) => s + f.units.corvette, 0);
     const kind = cruisers > corvettes ? 'turret_heavy' : hostiles.some((f) => f.units.frigate > f.units.corvette) ? 'launcher' : 'turret_light';
-    if (freeSlotsOnOrbit(w, sys, 2) > 0 && canAffordAt(ctx, id, B.BUILDING_COST[kind])) { ctx.out.push({ type: 'build', system: id, building: kind }); ctx.notes.push(`turret at ${sys.name}`); }
+    // Guns go where the invasion passes: the last point of interest before the station, else the station itself.
+    const poi = approachPoi(w, id);
+    const where = freeSlotsOnOrbit(w, sys, 2, poi) > 0 ? poi : st.mainPoi;
+    if (freeSlotsOnOrbit(w, sys, 2, where) > 0 && canAffordAt(ctx, id, B.BUILDING_COST[kind])) { ctx.out.push({ type: 'build', system: id, building: kind, poi: where }); ctx.notes.push(`turret at ${sys.name}`); }
   }
   if (totalQueued >= 2) return;
+  // A second relay on another body keeps the Network up when the station falls: capital first, then rich systems.
+  for (const id of [capital, ...ctx.productive.filter((x) => x !== capital)]) {
+    const st = w.systems[id]!;
+    if (st.structures.some((x) => x.kind === 'relay') || st.buildQueue.some((j) => j.building === 'relay')) continue;
+    if (id !== capital && !(threatened.has(id) || st.stock.metal > 250)) continue;
+    const layout = layoutOf(w.galaxy, id);
+    const spot = layout.pois.find((q) => q.id !== st.mainPoi && RELAY_KINDS.has(q.kind) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 3, q.id) > 0);
+    if (spot && canAffordAt(ctx, id, B.BUILDING_COST.relay) && (id !== capital || w.drawIndex >= 6)) { ctx.out.push({ type: 'build', system: id, building: 'relay', poi: spot.id }); ctx.notes.push(`backup relay at ${w.galaxy.systems[id]!.name}`); return; }
+  }
   // Warehouses before anything overflows.
   for (const id of ctx.productive) {
     const st = w.systems[id]!;
@@ -356,14 +369,34 @@ function decideBeacon(ctx: Ctx): void {
   }
 }
 
-/** Systems of this colony with hostiles on the plateau or a fresh blockade. */
+/** Armed hostile fleets anywhere in a system (all points of interest). */
+function hostilesInSystem(w: World, systemId: string): FleetState[] {
+  const out: FleetState[] = [];
+  for (const p of layoutOf(w.galaxy, systemId).pois) out.push(...armedHostilesPresent(w, systemId, p.id));
+  return out;
+}
+
+/** The point of interest an invasion crosses last before the station. */
+function approachPoi(w: World, systemId: string): string {
+  const st = w.systems[systemId]!;
+  const layout = layoutOf(w.galaxy, systemId);
+  const jump = layout.jumps[0];
+  if (!jump) return st.mainPoi;
+  const { hops } = pathInSystem(layout, jump, st.mainPoi);
+  return hops.length >= 2 ? hops[hops.length - 2]! : st.mainPoi;
+}
+
+/** Systems of this colony with hostiles on a plateau or a fresh blockade. */
 function threatenedSystems(w: World, c: Colony, owned: string[]): Set<string> {
   const out = new Set<string>();
   const plateau = plateauIndex(w);
   for (const id of owned) {
     const st = w.systems[id]!;
-    const here = plateau.get(id);
-    if (st.engaged || st.blockade || (here && armedHostilesPresent(w, id, here).length)) out.add(id);
+    if (st.engaged || st.blockade) { out.add(id); continue; }
+    for (const p of layoutOf(w.galaxy, id).pois) {
+      const here = plateau.get(plateauKey(id, p.id));
+      if (here && armedHostilesPresent(w, id, p.id, here).length) { out.add(id); break; }
+    }
   }
   return out;
 }

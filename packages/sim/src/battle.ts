@@ -30,26 +30,29 @@ function hostile(w: World, a: string, b: string): boolean {
   return !shielded(ca) && !shielded(cb);
 }
 
-/** Fleets on the plateau (not docked) of a system. */
-export function plateauFleets(w: World, systemId: string): FleetState[] {
-  return Object.values(w.fleets).filter((f) => f.at === systemId && f.pos !== null && (combatSize(f.units) > 0 || f.units.cargo > 0));
+/** Fleets on the plateau (not docked) of one point of interest. */
+export function plateauFleets(w: World, systemId: string, poi: string): FleetState[] {
+  return Object.values(w.fleets).filter((f) => f.at === systemId && f.poi === poi && f.pos !== null && (combatSize(f.units) > 0 || f.units.cargo > 0));
 }
 
-/** One pass over the fleets: system → fleets on its plateau. Build it once per step, then query many systems. */
+export const plateauKey = (systemId: string, poi: string): string => `${systemId}|${poi}`;
+
+/** One pass over the fleets: "system|poi" → fleets on that plateau. Build it once per step, then query many. */
 export function plateauIndex(w: World): Map<string, FleetState[]> {
   const idx = new Map<string, FleetState[]>();
   for (const f of Object.values(w.fleets)) {
-    if (f.at === null || f.pos === null || (combatSize(f.units) === 0 && f.units.cargo === 0)) continue;
-    const list = idx.get(f.at);
-    if (list) list.push(f); else idx.set(f.at, [f]);
+    if (f.at === null || f.poi === null || f.pos === null || (combatSize(f.units) === 0 && f.units.cargo === 0)) continue;
+    const key = plateauKey(f.at, f.poi);
+    const list = idx.get(key);
+    if (list) list.push(f); else idx.set(key, [f]);
   }
   return idx;
 }
 
-export function armedHostilesPresent(w: World, systemId: string, plateau?: FleetState[]): FleetState[] {
+export function armedHostilesPresent(w: World, systemId: string, poi: string, plateau?: FleetState[]): FleetState[] {
   const st = w.systems[systemId]!;
   const owner = st.owner;
-  const fleets = plateau ?? plateauFleets(w, systemId);
+  const fleets = plateau ?? plateauFleets(w, systemId, poi);
   if (!fleets.length) return fleets;
   return fleets.filter((f) => combatSize(f.units) > 0 && (owner ? hostile(w, f.owner, owner) : fleets.some((g) => g.id !== f.id && hostile(w, f.owner, g.owner))));
 }
@@ -91,18 +94,18 @@ export function damageFleet(f: FleetState, amount: number, prefer: UnitType | nu
   return kills;
 }
 
-function shieldAt(w: World, st: SystemState, defenderOwner: string | null, pos: XY): number {
+function shieldAt(w: World, st: SystemState, poi: string, defenderOwner: string | null, pos: XY): number {
   if (!defenderOwner) return 0;
   const colony = w.colonies[defenderOwner];
   const watch = colony ? ((Math.floor(w.time / 3600) % 24) - colony.watchStartHour + 24) % 24 < B.WATCH_HOURS : false;
   for (const s of st.structures) {
-    if (s.kind !== 'bastion' || s.hp <= 0) continue;
+    if (s.kind !== 'bastion' || s.hp <= 0 || s.poi !== poi) continue;
     if (d2(toXY(structurePos(s)), pos) <= B.BASTION_RANGE) return watch ? B.BASTION_SHIELD_WATCH : B.BASTION_SHIELD;
   }
   return 0;
 }
 
-function pickTarget(w: World, systemId: string, f: FleetState, candidates: Target[], unit: UnitType): Target | null {
+function pickTarget(w: World, f: FleetState, candidates: Target[], unit: UnitType): Target | null {
   if (!candidates.length) return null;
   const me = toXY(f.pos!);
   if (f.focus) {
@@ -138,8 +141,8 @@ function moveToward(f: FleetState, target: XY, range: number, speedPerMin: numbe
   f.pos = fromXY({ x: nx, y: ny });
 }
 
-function log(w: World, systemId: string, kind: string, who: string, what: string, amount?: number, target?: string): void {
-  const b = Object.values(w.battles).find((x) => x.system === systemId && x.endedAt === null);
+function log(w: World, systemId: string, poi: string, kind: string, who: string, what: string, amount?: number, target?: string): void {
+  const b = Object.values(w.battles).find((x) => x.system === systemId && x.poi === poi && x.endedAt === null);
   if (!b) return;
   const e: BattleLog['events'][number] = { at: w.time, kind, who, what };
   if (amount !== undefined) e.amount = amount;
@@ -152,25 +155,25 @@ function log(w: World, systemId: string, kind: string, who: string, what: string
  * Sides: the system owner and its allies defend with fleets, turrets and the station; every
  * hostile fleet on the plateau attacks. In unowned systems, hostile fleets fight each other.
  */
-export function battleTick(w: World, systemId: string, dt = 1): boolean {
+export function battleTick(w: World, systemId: string, poi: string, dt = 1): boolean {
   const st = w.systems[systemId]!;
-  const fleets = plateauFleets(w, systemId);
-  const hostiles = armedHostilesPresent(w, systemId);
-  if (!hostiles.length) return endEngagement(w, systemId);
+  const fleets = plateauFleets(w, systemId, poi);
+  const hostiles = armedHostilesPresent(w, systemId, poi);
+  if (!hostiles.length) return endEngagement(w, systemId, poi);
 
-  // Targets available to each attacker.
-  const structureTargets: Target[] = st.owner ? st.structures.filter((s) => s.hp > 0).map((s) => ({ kind: 'structure' as const, structure: s, pos: toXY(structurePos(s)) })) : [];
-  const stationTarget: Target | null = st.owner && st.stationHp > 0 ? { kind: 'station', pos: toXY(STATION_POS) } : null;
+  // Targets available to each attacker: what stands at this point of interest.
+  const structureTargets: Target[] = st.owner ? st.structures.filter((s) => s.hp > 0 && s.poi === poi).map((s) => ({ kind: 'structure' as const, structure: s, pos: toXY(structurePos(s)) })) : [];
+  const stationTarget: Target | null = st.owner && poi === st.mainPoi && st.stationHp > 0 ? { kind: 'station', pos: toXY(STATION_POS) } : null;
   const candidatesFor = (f: FleetState): Target[] => {
     const enemyFleets: Target[] = fleets.filter((g) => g.id !== f.id && hostile(w, f.owner, g.owner)).map((g) => ({ kind: 'fleet' as const, fleet: g, pos: toXY(g.pos!) }));
     const attackingSystem = st.owner !== null && hostile(w, f.owner, st.owner);
     return [...enemyFleets, ...(attackingSystem ? structureTargets : []), ...(attackingSystem && stationTarget ? [stationTarget] : [])];
   };
-  const turretsLive = st.owner !== null && st.structures.some((s) => s.kind in B.TURRET_STATS && s.hp > 0);
+  const turretsLive = st.owner !== null && st.structures.some((s) => s.kind in B.TURRET_STATS && s.hp > 0 && s.poi === poi);
   // Nothing left to shoot on either side: the plateau is held, not fought over.
-  if (!turretsLive && !fleets.some((f) => combatSize(f.units) > 0 && candidatesFor(f).length > 0)) return endEngagement(w, systemId);
-  if (!st.engaged) startEngagement(w, systemId, fleets);
-  const rng = createRng(subSeed(w.seed, 'salvo', systemId, Math.floor(w.time)));
+  if (!turretsLive && !fleets.some((f) => combatSize(f.units) > 0 && candidatesFor(f).length > 0)) return endEngagement(w, systemId, poi);
+  if (!st.engagedPois.includes(poi)) startEngagement(w, systemId, poi, fleets);
+  const rng = createRng(subSeed(w.seed, 'salvo', systemId, poi, Math.floor(w.time)));
   const variance = (): number => 1 + (rng.next() * 2 - 1) * B.COMBAT_VARIANCE_SALVO;
 
   const kills = new Map<string, number>();
@@ -180,7 +183,7 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
     if (!candidates.length) continue;
     // The fleet manoeuvres as one body toward the target of its longest-range type.
     const longest = [...COMBAT_UNITS].filter((t) => f.units[t] > 0).sort((a, b) => B.UNIT_STATS[b].range - B.UNIT_STATS[a].range)[0]!;
-    const primary = pickTarget(w, systemId, f, candidates, longest);
+    const primary = pickTarget(w, f, candidates, longest);
     if (!primary) continue;
     const slowest = Math.min(...COMBAT_UNITS.filter((t) => f.units[t] > 0).map((t) => B.UNIT_STATS[t].speed));
     moveToward(f, primary.pos, B.UNIT_STATS[longest].range, slowest, dt);
@@ -188,23 +191,23 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
     for (const t of COMBAT_UNITS) {
       if (f.units[t] === 0) continue;
       const stats = B.UNIT_STATS[t];
-      const target = pickTarget(w, systemId, f, candidates.filter((c) => d2(me, c.pos) <= stats.range + 0.05), t) ?? null;
+      const target = pickTarget(w, f, candidates.filter((c) => d2(me, c.pos) <= stats.range + 0.05), t) ?? null;
       if (!target) continue;
       const defenderOwner = target.kind === 'fleet' ? target.fleet.owner : st.owner;
-      const shield = shieldAt(w, st, defenderOwner, target.pos);
+      const shield = shieldAt(w, st, poi, defenderOwner, target.pos);
       let dmg = f.units[t] * stats.dps * dt * variance() * (1 - shield);
       if (target.kind === 'fleet') {
         const prefer = B.COUNTERS[t];
         dmg *= counterMult(t, prefer && target.fleet.units[prefer] > 0 ? prefer : null);
         const k = damageFleet(target.fleet, dmg, prefer);
-        for (const [u, n] of Object.entries(k)) { kills.set(`${f.owner}:${u}`, (kills.get(`${f.owner}:${u}`) ?? 0) + n!); log(w, systemId, 'kill', f.owner, u, n, target.fleet.owner); }
-        if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.fleet.owner, f.owner], data: { system: systemId, cargos: k.cargo } });
+        for (const [u, n] of Object.entries(k)) { kills.set(`${f.owner}:${u}`, (kills.get(`${f.owner}:${u}`) ?? 0) + n!); log(w, systemId, poi, 'kill', f.owner, u, n, target.fleet.owner); }
+        if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.fleet.owner, f.owner], data: { system: systemId, poi, cargos: k.cargo } });
       } else if (target.kind === 'structure') {
         target.structure.hp = Math.max(0, target.structure.hp - dmg);
-        if (target.structure.hp === 0) { log(w, systemId, 'destroyed', f.owner, target.structure.kind, undefined, st.owner ?? undefined); }
+        if (target.structure.hp === 0) { log(w, systemId, poi, 'destroyed', f.owner, target.structure.kind, undefined, st.owner ?? undefined); }
       } else {
         st.stationHp = Math.max(0, st.stationHp - dmg);
-        if (st.stationHp === 0) log(w, systemId, 'station.down', f.owner, systemId, undefined, st.owner ?? undefined);
+        if (st.stationHp === 0) log(w, systemId, poi, 'station.down', f.owner, systemId, undefined, st.owner ?? undefined);
       }
     }
   }
@@ -212,7 +215,7 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
   if (st.owner) {
     for (const s of st.structures) {
       const ts = B.TURRET_STATS[s.kind as Building];
-      if (!ts || s.hp <= 0) continue;
+      if (!ts || s.hp <= 0 || s.poi !== poi) continue;
       const spos = toXY(structurePos(s));
       const inRange = hostiles.filter((f) => d2(spos, toXY(f.pos!)) <= ts.range);
       if (!inRange.length) continue;
@@ -220,35 +223,37 @@ export function battleTick(w: World, systemId: string, dt = 1): boolean {
       const prefer = ts.counters;
       const dmg = ts.dps * dt * variance() * (target.units[prefer] > 0 ? B.COUNTER_MULT : 1);
       const k = damageFleet(target, dmg, prefer);
-      for (const [u, n] of Object.entries(k)) log(w, systemId, 'kill', st.owner, u, n, target.owner);
-      if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.owner, st.owner], data: { system: systemId, cargos: k.cargo } });
+      for (const [u, n] of Object.entries(k)) log(w, systemId, poi, 'kill', st.owner, u, n, target.owner);
+      if (k.cargo) w.events.push({ at: w.time, kind: 'convoy.lost', actors: [target.owner, st.owner], data: { system: systemId, poi, cargos: k.cargo } });
     }
   }
   // Destroyed structures leave their slot; dead fleets vanish.
   st.structures = st.structures.filter((s) => s.hp > 0);
   for (const f of fleets) if (combatSize(f.units) === 0 && f.units.cargo === 0) delete w.fleets[f.id];
-  return armedHostilesPresent(w, systemId).length > 0 ? true : endEngagement(w, systemId);
+  return armedHostilesPresent(w, systemId, poi).length > 0 ? true : endEngagement(w, systemId, poi);
 }
 
-function startEngagement(w: World, systemId: string, fleets: FleetState[]): void {
+function startEngagement(w: World, systemId: string, poi: string, fleets: FleetState[]): void {
   const st = w.systems[systemId]!;
   st.engaged = true;
+  if (!st.engagedPois.includes(poi)) st.engagedPois.push(poi);
   if (!w.engagedSystems.includes(systemId)) w.engagedSystems.push(systemId);
   const id = newId(w, 'X');
   const sides = [...new Set([...(st.owner ? [st.owner] : []), ...fleets.map((f) => f.owner)])];
-  w.battles[id] = { id, system: systemId, startedAt: w.time, endedAt: null, sides, events: [] };
-  w.events.push({ at: w.time, kind: 'battle.start', actors: sides, data: { system: systemId, battle: id } });
+  w.battles[id] = { id, system: systemId, poi, startedAt: w.time, endedAt: null, sides, events: [] };
+  w.events.push({ at: w.time, kind: 'battle.start', actors: sides, data: { system: systemId, poi, battle: id } });
 }
 
-function endEngagement(w: World, systemId: string): boolean {
+function endEngagement(w: World, systemId: string, poi: string): boolean {
   const st = w.systems[systemId]!;
-  if (st.engaged) {
-    st.engaged = false;
-    w.engagedSystems = w.engagedSystems.filter((s) => s !== systemId);
-    const b = Object.values(w.battles).find((x) => x.system === systemId && x.endedAt === null);
+  if (st.engagedPois.includes(poi)) {
+    st.engagedPois = st.engagedPois.filter((p) => p !== poi);
+    st.engaged = st.engagedPois.length > 0;
+    if (!st.engaged) w.engagedSystems = w.engagedSystems.filter((s) => s !== systemId);
+    const b = Object.values(w.battles).find((x) => x.system === systemId && x.poi === poi && x.endedAt === null);
     if (b) {
       b.endedAt = w.time;
-      w.events.push({ at: w.time, kind: 'battle', actors: b.sides, data: { system: systemId, battle: b.id, seconds: b.endedAt - b.startedAt, kills: b.events.filter((e) => e.kind === 'kill').length } });
+      w.events.push({ at: w.time, kind: 'battle', actors: b.sides, data: { system: systemId, poi, battle: b.id, seconds: b.endedAt - b.startedAt, kills: b.events.filter((e) => e.kind === 'kill').length } });
     }
   }
   return false;

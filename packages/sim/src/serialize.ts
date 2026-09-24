@@ -1,22 +1,24 @@
 import { generateGalaxy, type GalaxyOptions } from './galaxy.js';
 import * as B from './balance.js';
+import { layoutOf } from './pois.js';
 import type { Colony, Structure, SystemState, World } from './state.js';
 import { emptyDamage, emptyFleet } from './state.js';
 
-export interface WorldSnapshot { version: 2; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
-/** Season-0 alpha layout: one stock per colony, buildings as a list of kinds, no stations. */
-interface WorldSnapshotV1 { version: 1; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
+export interface WorldSnapshot { version: 3; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
+/** v2: one plateau per system (0002). v1: one stock per colony, buildings as a list of kinds. */
+interface WorldSnapshotOld { version: 1 | 2; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
 
 /** The galaxy is deterministic from the seed, so a snapshot stores only the mutable state. */
 export function snapshotWorld(w: World, galaxyOptions: GalaxyOptions): WorldSnapshot {
   const state: Partial<World> = { ...w };
   delete state.galaxy;
-  return { version: 2, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
+  return { version: 3, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
 }
 
-export function restoreWorld(snap: WorldSnapshot | WorldSnapshotV1): World {
+export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
   const galaxy = generateGalaxy((snap.state as { seed: number }).seed, snap.galaxyOptions);
-  const state = snap.version === 1 ? migrateV1(snap.state) : snap.state;
+  let state = snap.version === 1 ? migrateV1(snap.state) : (snap.state as Omit<World, 'galaxy'>);
+  if (snap.version < 3) state = migrateV2(state, galaxy);
   return { ...state, galaxy };
 }
 
@@ -24,15 +26,14 @@ export function restoreWorld(snap: WorldSnapshot | WorldSnapshotV1): World {
 function migrateV1(raw: Record<string, unknown>): Omit<World, 'galaxy'> {
   const s = raw as unknown as Omit<World, 'galaxy'> & { colonies: Record<string, Colony & { stock?: unknown }> };
   let n = 0;
-  for (const [id, st] of Object.entries(s.systems as Record<string, SystemState & { buildings?: string[] }>)) {
+  for (const st of Object.values(s.systems as Record<string, SystemState & { buildings?: string[] }>)) {
     const kinds = (st.buildings ?? []) as Structure['kind'][];
     delete st.buildings;
-    st.structures ??= kinds.map((kind, i) => ({ id: `mig${(n++).toString(36)}`, kind, orbit: B.BUILDING_ORBIT[kind], angle: (i * 67) % 360, hp: B.STRUCTURE_HP[kind] }));
+    st.structures ??= kinds.map((kind, i) => ({ id: `mig${(n++).toString(36)}`, kind, poi: '', orbit: B.BUILDING_ORBIT[kind], angle: (i * 67) % 360, hp: B.STRUCTURE_HP[kind] }));
     st.stationHp ??= st.owner ? B.STATION_HP : 0;
     st.stock ??= B.emptyStock();
     st.engaged ??= false;
     for (const j of st.buildQueue) (j as { orbit?: number }).orbit ??= B.BUILDING_ORBIT[j.building];
-    void id;
   }
   for (const c of Object.values(s.colonies)) {
     const stock = c.stock as Record<string, number> | undefined;
@@ -60,5 +61,24 @@ function migrateV1(raw: Record<string, unknown>): Omit<World, 'galaxy'> {
   s.routes ??= {};
   s.battles ??= {};
   s.engagedSystems ??= [];
+  return s;
+}
+
+/** v2 → v3: everything that stood on the system's single plateau now stands at its main point of interest. */
+function migrateV2(s: Omit<World, 'galaxy'>, galaxy: ReturnType<typeof generateGalaxy>): Omit<World, 'galaxy'> {
+  for (const [id, st] of Object.entries(s.systems)) {
+    const main = layoutOf(galaxy, id).main;
+    st.mainPoi ||= main;
+    for (const x of st.structures) x.poi ||= st.mainPoi;
+    for (const j of st.buildQueue) j.poi ||= st.mainPoi;
+    st.engagedPois ??= st.engaged ? [st.mainPoi] : [];
+  }
+  for (const f of Object.values(s.fleets)) {
+    f.poi ??= f.at ? s.systems[f.at]?.mainPoi ?? null : null;
+    f.hops ??= [];
+    f.hop ??= null;
+  }
+  for (const b of Object.values(s.battles)) b.poi ||= s.systems[b.system]?.mainPoi ?? '';
+  s.known ??= {};
   return s;
 }
