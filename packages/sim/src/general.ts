@@ -36,18 +36,18 @@ interface Ctx {
   notes: string[];
 }
 
-const BASE_PRICE: Record<Resource, number> = { metal: 1, energy: 1.5, food: 1, crystal: 6, rium: 3 };
+const BASE_PRICE = B.BASE_PRICE;
 
 /** Default reserves at the home system: energy for six hours of upkeep, food for the population. */
 function reserves(w: World, c: Colony, p: Policy, productive: string[]): Stock {
   const upkeep = networkUpkeep(colonyRelays(w, c.id).filter((r) => relayActive(r, w.time)));
   const pop = productive.reduce((s, id) => s + w.systems[id]!.population, 0);
   return {
-    metal: p.reserves.metal ?? 80,
+    metal: p.reserves.metal ?? 160, // relays, turrets and hulls all eat Metal: keep enough for the next moves
     energy: p.reserves.energy ?? Math.max(60, Math.ceil(upkeep * 3)),
     food: p.reserves.food ?? Math.max(40, Math.ceil(pop * B.POP_FOOD_PER_UNIT * 20 * 6)),
     crystal: p.reserves.crystal ?? 20,
-    rium: p.reserves.rium ?? 40,
+    rium: p.reserves.rium ?? Math.round(40 + 120 * p.aggression), // a war chest of fuel grows with the appetite for sorties
   };
 }
 
@@ -57,8 +57,10 @@ function canAffordAt(ctx: Ctx, systemId: string, cost: Partial<Record<Resource, 
   const st = ctx.w.systems[systemId]!;
   const home = systemId === ctx.c.marketSystem;
   for (const r of B.RESOURCE_LIST) {
+    const need = cost[r] ?? 0;
+    if (need <= 0) continue; // a resource the purchase does not touch never blocks it, even below reserve
     const keep = home ? ctx.reserve[r] : 40;
-    if ((cost[r] ?? 0) > st.stock[r] - keep) return false;
+    if (need > st.stock[r] - keep) return false;
   }
   return true;
 }
@@ -137,7 +139,8 @@ function expansionCandidates(ctx: Ctx): Candidate[] {
       if (ctx.net.has(id) || seen.has(id)) continue;
       const st = w.systems[id]!;
       if (st.owner && st.owner !== c.id && !isAlly(w, c.id, st.owner)) continue;
-      if (!canAffordAt(ctx, from, opt.verdict.cost)) continue;
+      // The relay is paid by the anchor or, failing that, by the capital (world.buildRelay).
+      if (!canAffordAt(ctx, from, opt.verdict.cost) && !canAffordAt(ctx, c.capital, opt.verdict.cost)) continue;
       seen.add(id);
       const b = opt.to;
       const kindBonus = b.kind === 'pulsar' ? 1.4 : b.kind === 'beacon' ? 2 : 1;
@@ -218,7 +221,9 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     const gas = layoutOf(w.galaxy, id).pois.find((q) => q.kind === 'gas' && !st.structures.some((x) => x.kind === 'refinery' && x.poi === q.id) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 1, q.id) > 0);
     if (gas && canAffordAt(ctx, id, B.BUILDING_COST.refinery)) { ctx.out.push({ type: 'build', system: id, building: 'refinery', poi: gas.id }); ctx.notes.push(`refinery at ${w.galaxy.systems[id]!.name}`); return; }
   }
-  const wantSynth = p.fuel === 'synthesizer' ? true : p.fuel === 'refinery' ? false : ctx.home.rium < ctx.reserve.rium * 2 && !ctx.owned.some((id) => hasBuilding(w, id, 'refinery'));
+  // A synthesizer eats Energy: never before the second day, never while Energy itself is short.
+  const energyOk = ctx.home.energy > ctx.reserve.energy * 2 && c.avgProduced.energy > B.RIUM_SYNTH_INPUT.energy * 2;
+  const wantSynth = energyOk && w.drawIndex >= 24 && (p.fuel === 'synthesizer' ? true : p.fuel === 'refinery' ? false : ctx.home.rium < ctx.reserve.rium * 1.5 && !ctx.owned.some((id) => hasBuilding(w, id, 'refinery')));
   if (!hasBuilding(w, capital, 'synthesizer') && wantSynth
     && freeSlotsOnOrbit(w, w.galaxy.systems[capital]!, 1) > 0 && canAffordAt(ctx, capital, B.BUILDING_COST.synthesizer) && !w.systems[capital]!.buildQueue.some((j) => j.building === 'synthesizer')) {
     ctx.out.push({ type: 'build', system: capital, building: 'synthesizer' }); return;
@@ -347,7 +352,7 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
     const fuelFor = (to: string): boolean => {
       const plan = planPath(w, c, f.at!, to);
       const need = plan.onNet ? 0 : 2 * offNetRium(plan.length, f.units);
-      return w.systems[f.at!]!.stock.rium - (f.at === capital ? ctx.reserve.rium : 0) >= need;
+      return w.systems[f.at!]!.stock.rium - (f.at === capital ? ctx.reserve.rium * 0.25 : 0) >= need;
     };
     if (!fuelFor(victim.capital)) { ctx.notes.push('no fuel'); continue; }
     const prey = ownedSystems(w, victim.id).filter((id) => id !== victim.capital && !w.systems[id]!.blockade);
