@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
-import { BUILDING_COST, UNIT_COST, type PlayerView, type SystemView } from '@aurane/sim';
+import { AGENT_COST_INFLUENCE, BUILDING_COST, UNIT_COST, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
@@ -240,11 +240,20 @@ function SystemPanel({ v }: { v: PlayerView }) {
 function SystemHostile({ v, s }: { v: PlayerView; s: SystemView }) {
   const idle = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.order === 'idle');
   const relays = v.relays.filter((r) => r.owner === s.owner && (r.a === s.id || r.b === s.id) && r.ready && !r.cut);
-  if (!idle.length) return null;
   return (
-    <div class="actions">
-      <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'blockade', target: s.id })}>{t('blockade')}</button>
-      {relays[0] && <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'raid', target: relays[0]!.id })}>{t('raid')}</button>}
+    <div>
+      {idle.length > 0 && (
+        <div class="actions">
+          <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'blockade', target: s.id })}>{t('blockade')}</button>
+          {relays[0] && <button onClick={() => void act({ type: 'fleet_order', fleet: idle[0]!.id, order: 'raid', target: relays[0]!.id })}>{t('raid')}</button>}
+        </div>
+      )}
+      <h3>{t('agents')} <small>{Math.floor(v.me.influence)} {t('influence')}</small></h3>
+      <div class="cards">
+        <button class="card-btn" disabled={v.me.influence < AGENT_COST_INFLUENCE.spy} onClick={() => void act({ type: 'agent_mission', mission: 'spy', target: s.sector })}><b>{t('spy')}</b><small>{t('spyDesc')}</small><small class="r-influence">★ {AGENT_COST_INFLUENCE.spy}</small></button>
+        {relays[0] && <button class="card-btn" disabled={v.me.influence < AGENT_COST_INFLUENCE.sabotage} onClick={() => void act({ type: 'agent_mission', mission: 'sabotage', target: relays[0]!.id })}><b>{t('sabotage')}</b><small>{t('sabotageDesc')}</small><small class="r-influence">★ {AGENT_COST_INFLUENCE.sabotage}</small></button>}
+        {s.owner && <button class="card-btn" disabled={v.me.influence < AGENT_COST_INFLUENCE.envoy} onClick={() => void act({ type: 'agent_mission', mission: 'envoy', target: s.owner! })}><b>{t('envoy')}</b><small>{t('envoyDesc')}</small><small class="r-influence">★ {AGENT_COST_INFLUENCE.envoy}</small></button>}
+      </div>
     </div>
   );
 }
@@ -303,6 +312,41 @@ function MarketPanel({ v }: { v: PlayerView }) {
       <p class="muted">{t('lastPrice')}: {last ? `${last.price} (${last.qty})` : '—'}</p>
       <h3>{t('myOrders')}</h3>
       <ul class="list">{v.orders.map((o) => <li key={o.id}>{t(o.side)} {o.qty} {t(o.resource)} @ {o.price} <button onClick={() => void act({ type: 'cancel_order', order: o.id })}>{t('cancel')}</button></li>)}</ul>
+      <Barter v={v} />
+    </div>
+  );
+}
+
+function Barter({ v }: { v: PlayerView }) {
+  const partners = v.colonies.filter((c) => c.id !== v.me.id).sort((a, b) => (b.ally ? 1 : 0) - (a.ally ? 1 : 0) || b.score - a.score).slice(0, 40);
+  const [to, setTo] = useState(partners[0]?.id ?? '');
+  const [giveR, setGiveR] = useState<Resource>('food');
+  const [giveQ, setGiveQ] = useState(20);
+  const [wantR, setWantR] = useState<Resource>('energy');
+  const [wantQ, setWantQ] = useState(10);
+  const name = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
+  const fmtStock = (st: Partial<Record<Resource, number | undefined>>): string => RES.filter((r) => st[r]).map((r) => `${st[r]} ${t(r)}`).join(' + ');
+  return (
+    <div>
+      <h3>{t('barter')}</h3>
+      <div class="row">
+        <label>{t('offerTo')}<select value={to} onChange={(e) => setTo((e.target as HTMLSelectElement).value)}>{partners.map((c) => <option key={c.id} value={c.id}>{c.name}{c.ally ? ' ✓' : ''}{c.npc ? ' (PNJ)' : ''}</option>)}</select></label>
+      </div>
+      <div class="row">
+        <label>{t('give')}<div class="seg"><input type="number" min={1} value={giveQ} onInput={(e) => setGiveQ(Number((e.target as HTMLInputElement).value))} /><select value={giveR} onChange={(e) => setGiveR((e.target as HTMLSelectElement).value as Resource)}>{RES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></div></label>
+        <label>{t('want')}<div class="seg"><input type="number" min={1} value={wantQ} onInput={(e) => setWantQ(Number((e.target as HTMLInputElement).value))} /><select value={wantR} onChange={(e) => setWantR((e.target as HTMLSelectElement).value as Resource)}>{RES.map((r) => <option key={r} value={r}>{t(r)}</option>)}</select></div></label>
+        <button class="primary" disabled={!to} onClick={() => void act({ type: 'barter_offer', to, give: { [giveR]: giveQ }, want: { [wantR]: wantQ } })}>{t('send')}</button>
+      </div>
+      <p class="muted">{t('settledAtDraw')}</p>
+      {v.barters.length > 0 && <h3>{t('offers')}</h3>}
+      <ul class="list">
+        {v.barters.map((b) => (
+          <li key={b.id}>
+            <span>{name(b.from)} → {name(b.to)}: <b>{fmtStock(b.give)}</b> ⇄ <b>{fmtStock(b.want)}</b> {b.accepted ? '✓' : ''}</span>
+            {b.to === v.me.id && !b.accepted && <button class="primary" onClick={() => void act({ type: 'barter_accept', offer: b.id })}>{t('accept')}</button>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
