@@ -6,7 +6,8 @@ import type { Draw } from './draw.js';
 import type { Colony, LitBeacon, World } from './state.js';
 import { fleetSize } from './state.js';
 import { isAlly } from './diplomacy.js';
-import { colonyNetwork, colonyScore, findBridgesFor, isShielded, isWatching, ownedSystems, reachableRegions, visibleSectors } from './world.js';
+import { colonyNetwork, colonyScore, findBridgesFor, isShielded, isWatching, ownedSystems, rangeContext, reachableRegions, visibleSectors } from './world.js';
+import { linkOptions } from './network.js';
 
 export interface SystemView {
   id: string; name: string; x: number; y: number; sector: string; region: string;
@@ -35,6 +36,8 @@ export interface PlayerView {
     alliance: string | null; policy: Colony['policy']; regions: string[]; lastProduced: Stock;
   };
   draw: Draw | null;
+  /** For each connected system: ids it could link to right now, with the metal cost. */
+  linkTargets: Record<string, { to: string; metal: number; energy: number }[]>;
   sectors: SectorView[];
   systems: SystemView[];
   relays: RelayView[];
@@ -93,6 +96,14 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
     allianceName: c.alliance ? w.alliances[c.alliance]?.name ?? null : null, capital: c.capital,
     score: Math.round(colonyScore(w, c) * 10) / 10, shielded: isShielded(w, c), npc: c.npc, ally: isAlly(w, colony.id, c.id),
   }));
+  const rctx = rangeContext(w, colony);
+  const linkTargets: PlayerView['linkTargets'] = {};
+  for (const id of net.keys()) {
+    const sys = w.galaxy.systems[id]!;
+    linkTargets[id] = linkOptions(w.galaxy, sys, rctx)
+      .filter((o) => { const st = w.systems[o.to.id]!; return !net.has(o.to.id) && (!st.owner || st.owner === colony.id || isAlly(w, colony.id, st.owner)) && !w.relays[`${[id, o.to.id].sort().join('|')}`]; })
+      .map((o) => ({ to: o.to.id, metal: o.verdict.cost.metal, energy: o.verdict.cost.energy }));
+  }
   const nextDrawAt = (Math.floor(w.time / 3600) + 1) * 3600;
   return {
     galaxyRadius: w.galaxy.radius, timeScale, time: w.time, nextDrawAt, seasonEndsAt: w.seasonEndsAt,
@@ -103,7 +114,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       connectedCount: ownedSystems(w, colony.id).filter((id) => net.has(id)).length, alliance: colony.alliance,
       policy: colony.policy, regions: [...reachableRegions(w, colony)], lastProduced: colony.lastProduced,
     },
-    draw: w.lastDraw, sectors, systems, relays, fleets, colonies,
+    draw: w.lastDraw, linkTargets, sectors, systems, relays, fleets, colonies,
     orders: Object.values(w.orders).filter((o) => o.colony === colony.id).map((o) => ({ id: o.id, region: o.region, resource: o.resource, side: o.side, qty: o.qty, price: o.price })),
     barters: Object.values(w.barters).filter((b) => b.from === colony.id || b.to === colony.id).map((b) => ({ id: b.id, from: b.from, to: b.to, give: b.give as Partial<Stock>, want: b.want as Partial<Stock>, accepted: b.accepted })),
     clearing: w.lastClearing,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
-import type { PlayerView, SystemView } from '@aurane/sim';
+import { BUILDING_COST, UNIT_COST, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, fetchBriefing, status, submitDoctrine, toast, view } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
@@ -59,7 +59,7 @@ export function Game() {
       <Hud v={v} />
       {st !== 'online' && <div class="banner">{t('offline')}</div>}
       {toastV && <div class={`toast ${toastV.kind}`}>{toastV.text}</div>}
-      {linkV && <div class="hint">{t('linkHint')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
+      {linkV && <div class="hint">{t('tapToLink')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
       {brief && (
         <div class="briefing">
           <h3>{t('briefing')} · {t(v.me.persona as 'vane')}</h3>
@@ -141,7 +141,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
-        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); }}>{labels[k]}</button>)}
+        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); }}>{labels[k]}{k === 'log' && v.events.length > 0 ? <i class="dotn" /> : null}</button>)}
         <button class="collapse" onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? '▾' : '▴'}</button>
       </div>
       <div class="body">
@@ -176,35 +176,56 @@ function ColonyPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | nu
   );
 }
 
+function Cost({ cost }: { cost: Partial<Record<Resource, number | undefined>> }) {
+  return <span class="cost">{RES.filter((r) => cost[r]).map((r) => <span key={r} class={`r-${r}`}><Icon name={r} size={12} />{cost[r]}</span>)}</span>;
+}
+
 function SystemPanel({ v }: { v: PlayerView }) {
   const sel = useSig(selected);
   const s = v.systems.find((x) => x.id === sel);
   if (!s) return <p class="muted">{t('selectHint')}</p>;
   const mine = s.owner === v.me.id;
   const ownerName = s.owner ? v.colonies.find((c) => c.id === s.owner)?.name ?? s.owner : t('unclaimed');
-  const free = s.buildings ? s.slots + (s.id === v.me.capital ? 3 : 0) - s.buildings.length : 0;
+  const totalSlots = s.slots + (s.id === v.me.capital ? 3 : 0);
+  const free = s.buildings ? totalSlots - s.buildings.length : 0;
   const fleetsHere = v.fleets.filter((f) => f.at === s.id && f.owner === v.me.id);
+  const drawn = v.draw?.bands.includes(s.band) ?? false;
+  const targets = v.linkTargets[s.id]?.length ?? 0;
   return (
     <div>
-      <h2>{s.name} <small>{s.kind === 'pulsar' ? t('kindPulsar') : s.kind === 'beacon' ? t('kindBeacon') : ''}</small></h2>
-      <p><span class={`dot r-${s.resource}`} /> {t(s.resource)} · {t('band')} {s.band} · {t('slots')} {s.slots} · {t('owner')}: {ownerName}{s.connected ? ' ●' : ''}</p>
-      {s.population !== null && <p>{t('population')}: {(s.population * 100).toFixed(0)} %</p>}
+      <h2><span class={`r-${s.resource}`}><Icon name={s.resource} size={18} /></span> {s.name} {s.id === v.me.capital && <span class="tag">{t('capitalTag')}</span>} {s.kind === 'pulsar' && <span class="tag">{t('kindPulsar')}</span>} {s.kind === 'beacon' && <span class="tag">{t('kindBeacon')}</span>}</h2>
+      <div class="facts">
+        <span><b class={`r-${s.resource}`}>{t(s.resource)}</b> · {t(`${s.resource}Desc`)}</span>
+        <span>{t('band')} <b class={drawn ? 'ev-eruption' : ''}>{s.band}</b>{drawn ? ` ×3 ${t('yieldNow')}` : ''} · {t('slots')} <b>{totalSlots}</b> · {t('owner')}: <b>{ownerName}</b>{s.connected ? ' ●' : ''}</span>
+        {s.population !== null && <span>{t('population')} <b>{(s.population * 100).toFixed(0)} %</b></span>}
+      </div>
       <div class="actions">
-        <button onClick={() => { linkFrom.value = s.id; }} disabled={!s.connected && !mine}>{t('linkMode')}</button>
+        <button class="primary" onClick={() => { linkFrom.value = s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
         {s.kind === 'beacon' && mine && !s.lit && <button onClick={() => void act({ type: 'light_beacon', system: s.id })}>{t('lightBeacon')}</button>}
         {s.lit && <span class="tag">{t('lit')} {t('by')} {v.colonies.find((c) => c.id === s.lit!.by)?.name}</span>}
       </div>
       {mine && s.buildings && (
         <>
-          <h3>{t('build')} <small>({free})</small></h3>
-          <div class="grid">
-            {BUILDINGS.map((b: Building) => <button key={b} disabled={s.buildings!.includes(b) || free <= 0} onClick={() => void act({ type: 'build', system: s.id, building: b })}>{t(b)}</button>)}
+          <h3>{t('build')} <small>{free > 0 ? `${free}/${totalSlots}` : t('noSlot')}</small></h3>
+          <div class="cards">
+            {BUILDINGS.map((b: Building) => {
+              const has = s.buildings!.includes(b);
+              return (
+                <button key={b} class={`card-btn ${has ? 'has' : ''}`} disabled={has || free <= 0} onClick={() => void act({ type: 'build', system: s.id, building: b })}>
+                  <b>{t(b)}</b><small>{t(`${b}Desc`)}</small>{!has && <Cost cost={BUILDING_COST[b]} />}{has && <small class="ok">✓</small>}
+                </button>
+              );
+            })}
           </div>
           {s.buildings.includes('shipyard') && (
             <>
               <h3>{t('train')}</h3>
-              <div class="grid">
-                {UNITS.map((u: UnitType) => <button key={u} onClick={() => void act({ type: 'train', system: s.id, unit: u, count: 4 })}>{t(u)} ×4</button>)}
+              <div class="cards">
+                {UNITS.map((u: UnitType) => (
+                  <button key={u} class="card-btn" onClick={() => void act({ type: 'train', system: s.id, unit: u, count: 4 })}>
+                    <b>{t(u)} ×4</b><small>{t(`${u}Desc`)}</small><Cost cost={Object.fromEntries(Object.entries(UNIT_COST[u]).map(([k, x]) => [k, (x ?? 0) * 4]))} />
+                  </button>
+                ))}
               </div>
             </>
           )}

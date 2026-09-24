@@ -275,6 +275,16 @@ export class GalaxyMap {
       node.addChild(badge, glyph);
 
       if (s.id === this.linkFrom) { const lf = new Graphics(); lf.circle(0, 0, base + 30); lf.stroke({ color: SIGNAL, width: 3 }); node.addChild(lf); }
+      if (this.linkFrom && this.linkFrom !== s.id) {
+        const cand = v.linkTargets[this.linkFrom]?.find((c) => c.to === s.id);
+        if (cand) {
+          const ok = new Graphics(); ok.circle(0, 0, base + 22); ok.stroke({ color: 0x7ee2a8, width: 3, alpha: 0.95 }); node.addChild(ok);
+          const cost = new Text({ text: `${cand.metal}⬡ ${cand.energy}⚡`, style: new TextStyle({ fill: 0x7ee2a8, fontSize: 24, fontFamily: 'Rajdhani, system-ui, sans-serif', fontWeight: '600', stroke: { color: 0x05070f, width: 5 } }) });
+          cost.anchor.set(0.5, 1); cost.position.set(0, -base - 24); node.addChild(cost);
+        } else {
+          node.alpha = 0.45;
+        }
+      }
 
       node.eventMode = 'static';
       node.cursor = 'pointer';
