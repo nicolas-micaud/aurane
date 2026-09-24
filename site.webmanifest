@@ -1,0 +1,1 @@
+{ "name": "Aurane", "short_name": "Aurane", "icons": [ { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png" } ], "theme_color": "#070912", "background_color": "#070912", "display": "browser" }
