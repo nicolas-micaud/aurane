@@ -7,7 +7,8 @@ export function sameAlliance(w: World, a: string, b: string): boolean {
 }
 
 export function treatyBetween(w: World, a: string, b: string, kind: string): boolean {
-  for (const t of Object.values(w.treaties)) {
+  for (const id of w.treatiesByColony[a] ?? []) {
+    const t = w.treaties[id]!;
     if (t.kind !== kind) continue;
     if ((t.a === a && t.b === b) || (t.a === b && t.b === a)) {
       if (t.until === null || t.until > w.time) return true;
@@ -32,6 +33,14 @@ export function atPeace(w: World, a: string, b: string): boolean {
 /** Owners whose relays `colony` may use for movement and trade reach. */
 export function transitSet(w: World, colony: string): Set<string> {
   const out = new Set<string>([colony]);
-  for (const other of Object.keys(w.colonies)) if (canTransit(w, colony, other)) out.add(other);
+  const c = w.colonies[colony];
+  if (c?.alliance) for (const m of w.alliances[c.alliance]?.members ?? []) out.add(m);
+  for (const id of w.treatiesByColony[colony] ?? []) {
+    const t = w.treaties[id]!;
+    if (t.kind !== 'transit' && t.kind !== 'federation') continue;
+    if (t.until !== null && t.until <= w.time) continue;
+    if (t.a === colony) out.add(t.b);
+    else if (t.b === colony) out.add(t.a);
+  }
   return out;
 }

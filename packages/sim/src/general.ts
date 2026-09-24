@@ -59,7 +59,7 @@ const BASE_PRICE: Record<Resource, number> = { metal: 1, energy: 1.5, food: 1, c
 
 function decideMarket(ctx: Ctx): void {
   const { w, c, p } = ctx;
-  if (Object.values(w.orders).some((o) => o.colony === c.id)) return; // one round of orders per draw
+  for (const o of Object.values(w.orders)) if (o.colony === c.id) return; // one round of orders per draw
   const regions = [...reachableRegions(w, c)];
   if (!regions.length) return;
   const home = w.galaxy.systems[c.capital]!.region;

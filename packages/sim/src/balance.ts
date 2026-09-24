@@ -20,7 +20,10 @@ export const DRAW_EVENT_PROBABILITY = 1 / 12;
 export const DRAW_MEMORY_PENALTY = 0.5;   // probability weight of a band drawn last hour
 export const STORM_RANGE_MULT = 0.8;
 
-export const BASE_YIELD = 4;              // per system per draw, before multipliers
+export const BASE_YIELD = 4;              // specialty yield per system per draw, before multipliers
+export const GENERIC_YIELD = 1;           // every connected system also trickles 1 of each resource
+export const CAPITAL_GENERIC_YIELD = 3;   // a capital is a developed world: 3 of each per draw
+export const CREDITS_PER_SYSTEM_PER_DRAW = 2; // market liquidity grows with the network; fees destroy it
 export const EXTRACTOR_MULT = 1.5;
 export const POP_GROWTH = 0.02;           // per draw when fed
 export const POP_FOOD_PER_UNIT = 0.05;

@@ -122,6 +122,10 @@ export interface World {
   nextId: number;
   /** Index colony → owned system ids; maintained by setOwner. */
   owned: Record<string, string[]>;
+  /** Index colony → relay ids; maintained by addRelay/removeRelay. */
+  relaysByOwner: Record<string, string[]>;
+  /** Index colony → treaty ids it is party to. */
+  treatiesByColony: Record<string, string[]>;
 }
 
 export const newId = (w: World, prefix: string): string => `${prefix}${(w.nextId++).toString(36)}`;

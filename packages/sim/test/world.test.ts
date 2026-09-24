@@ -94,8 +94,8 @@ describe('world', () => {
     expect(buyer.credits).toBe(150);
     tick(w, 3600);
     expect(w.lastClearing).toEqual([{ region, resource: 'food', price: 2.5, qty: 50 }]);
-    expect(buyer.credits).toBeCloseTo(300 - 50 * 2.5 * (1 + 0.025), 5); // guild pays half fee
-    expect(seller.credits).toBeCloseTo(300 + 50 * 2.5 * (1 - 0.025), 5);
+    expect(buyer.credits).toBeCloseTo(300 + 2 - 50 * 2.5 * (1 + 0.025), 5); // guild pays half fee; +2 credits per connected system
+    expect(seller.credits).toBeCloseTo(300 + 2 + 50 * 2.5 * (1 - 0.025), 5);
     expect(Object.keys(w.orders)).toHaveLength(0);
   });
 

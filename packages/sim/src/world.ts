@@ -35,7 +35,7 @@ export function createWorld(seed: number | string, opts: WorldOptions = {}): Wor
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
     treaties: {}, proposals: [], alliances: {}, missions: {}, reveals: {}, litBeacons: {}, lastClearing: [],
-    events: [], titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1, owned: {},
+    events: [], titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1, owned: {}, relaysByOwner: {}, treatiesByColony: {},
   };
 }
 
@@ -96,7 +96,23 @@ export function rangeContext(w: World, colony: Colony): RangeContext {
 
 /** Systems connected to the colony's capital, with hop distance. Only these exist. */
 export function colonyNetwork(w: World, colony: Colony): Map<string, number> {
-  return connectedFrom(Object.values(w.relays), colony.capital, colony.id, w.time, transitSet(w, colony.id));
+  const transit = transitSet(w, colony.id);
+  const relays: Relay[] = [];
+  for (const owner of transit) for (const id of w.relaysByOwner[owner] ?? []) relays.push(w.relays[id]!);
+  return connectedFrom(relays, colony.capital, colony.id, w.time, transit);
+}
+
+export function addRelay(w: World, relay: Relay): void {
+  w.relays[relay.id] = relay;
+  (w.relaysByOwner[relay.owner] ??= []).push(relay.id);
+}
+
+export function removeRelay(w: World, id: string): void {
+  const r = w.relays[id];
+  if (!r) return;
+  delete w.relays[id];
+  const list = w.relaysByOwner[r.owner];
+  if (list) { const i = list.indexOf(id); if (i >= 0) list.splice(i, 1); }
 }
 
 export function ownedSystems(w: World, colonyId: string): string[] {
@@ -122,7 +138,7 @@ export function productiveSystems(w: World, colony: Colony): string[] {
 }
 
 export function colonyRelays(w: World, colonyId: string): Relay[] {
-  return Object.values(w.relays).filter((r) => r.owner === colonyId);
+  return (w.relaysByOwner[colonyId] ?? []).map((id) => w.relays[id]!);
 }
 
 /** Regions whose market the colony can trade on: touched by its network, plus one per tradepost. */
@@ -286,7 +302,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
     case 'remove_relay': {
       const r = w.relays[relayId(cmd.a, cmd.b)];
       if (!r || r.owner !== colony.id) return { ok: false, reason: 'not your relay' };
-      delete w.relays[r.id];
+      removeRelay(w, r.id);
       return { ok: true };
     }
     case 'build': return build(w, colony, cmd.system, cmd.building);
@@ -420,7 +436,7 @@ function buildRelay(w: World, colony: Colony, aId: string, bId: string): ApplyRe
   if (!stockHas(colony.stock, verdict.cost)) return { ok: false, reason: 'not enough resources' };
   stockSub(colony.stock, verdict.cost);
   const id = relayId(aId, bId);
-  w.relays[id] = { id, a: id.split('|')[0]!, b: id.split('|')[1]!, owner: colony.id, length: verdict.length, upkeep: verdict.upkeep, readyAt: w.time + verdict.buildSeconds, cutUntil: 0 };
+  addRelay(w, { id, a: id.split('|')[0]!, b: id.split('|')[1]!, owner: colony.id, length: verdict.length, upkeep: verdict.upkeep, readyAt: w.time + verdict.buildSeconds, cutUntil: 0 });
   for (const sid of [aId, bId]) {
     const st = w.systems[sid]!;
     if (!st.owner) { setOwner(w, sid, colony.id); st.population = 0.1; logEvent(w, 'system.claimed', [colony.id], { system: sid }); }
@@ -503,6 +519,8 @@ function proposeTreaty(w: World, colony: Colony, withId: string, kind: TreatyKin
     colony.influence -= cost;
     const id = newId(w, 'T');
     w.treaties[id] = { id, a: other.id, b: colony.id, kind, since: w.time, until: kind === 'nap' ? w.time + B.NAP_DAYS * 86400 : null };
+    (w.treatiesByColony[other.id] ??= []).push(id);
+    (w.treatiesByColony[colony.id] ??= []).push(id);
     logEvent(w, 'treaty.signed', [other.id, colony.id], { kind });
     return { ok: true, id };
   }
@@ -532,7 +550,9 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
 }
 
 function processTimers(w: World): void {
-  for (const [id, st] of Object.entries(w.systems)) {
+  // Only owned systems can have queues or blockades.
+  for (const owner of Object.keys(w.owned)) for (const id of w.owned[owner]!) {
+    const st = w.systems[id]!;
     if (st.buildQueue.length) {
       const done = st.buildQueue.filter((j) => j.readyAt <= w.time);
       if (done.length) {
@@ -671,7 +691,7 @@ function capture(w: World, systemId: string, by: string): void {
   st.buildQueue = [];
   st.trainQueue = [];
   st.population *= 0.5;
-  for (const r of Object.values(w.relays)) if ((r.a === systemId || r.b === systemId) && r.owner === prev) delete w.relays[r.id];
+  for (const r of colonyRelays(w, prev)) if (r.a === systemId || r.b === systemId) removeRelay(w, r.id);
   for (const f of fleetsAt(w, systemId)) if (f.owner === by && f.order.kind === 'blockade') f.order = { kind: 'idle' };
   logEvent(w, 'system.captured', [by, prev], { system: systemId });
 }
@@ -761,6 +781,8 @@ function runDraw(w: World): void {
       if (st.buildings.includes('extractor')) mult *= B.EXTRACTOR_MULT;
       mult *= 1 + B.POP_YIELD_BONUS * st.population;
       produced[sys.resource] += B.BASE_YIELD * sys.baseYield * mult;
+      const generic = (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
+      for (const r of B.RESOURCE_LIST) produced[r] += generic;
       foodNeed += st.population * B.POP_FOOD_PER_UNIT * 20;
     }
     stockAdd(colony.stock, produced);
@@ -772,6 +794,7 @@ function runDraw(w: World): void {
       st.population = fed ? Math.min(1, st.population + B.POP_GROWTH) : Math.max(0, st.population - 2 * B.POP_GROWTH);
     }
     colony.influence += produced.crystal * B.INFLUENCE_PER_CRYSTAL;
+    colony.credits += productive.length * B.CREDITS_PER_SYSTEM_PER_DRAW;
     if (draw.event.kind === 'echo' && net.has(draw.event.beacon)) { colony.stock.crystal += 100; logEvent(w, 'echo.bonus', [colony.id]); }
 
     colony.scoreWindow.push(productive.length);
