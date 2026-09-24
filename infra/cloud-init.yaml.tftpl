@@ -1,0 +1,51 @@
+#cloud-config
+# Aurane game server bootstrap (Ubuntu 24.04). Idempotent enough to be re-run by hand.
+hostname: ${hostname}
+timezone: Europe/Zurich
+package_update: true
+package_upgrade: true
+packages: [ca-certificates, curl, gnupg, jq, git, ufw, unattended-upgrades]
+
+write_files:
+  - path: /etc/systemd/system/docker-prune.service
+    content: |
+      [Unit]
+      Description=Prune dangling Docker images and build cache (disk-full incident 2026-09-18 on front1)
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/docker image prune -f
+      ExecStart=/usr/bin/docker builder prune -af
+  - path: /etc/systemd/system/docker-prune.timer
+    content: |
+      [Unit]
+      Description=Daily Docker prune
+      [Timer]
+      OnCalendar=*-*-* 05:15:00
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+  - path: /srv/aurane/.keep
+    content: ""
+
+runcmd:
+  # Docker (get.docker.com, same as every ninabot VM)
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable --now docker
+  - systemctl enable --now docker-prune.timer
+  # Tailscale: ephemeral tagged key → tag:aurane (ACL: rog1:8007 only), Tailscale SSH for ops
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --authkey '${tailscale_authkey}' --ssh --hostname '${hostname}' --accept-dns=true
+  # Host firewall: nothing public but the Tailscale UDP port; the SG already enforces it
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 41641/udp
+  - ufw allow in on tailscale0
+  - ufw --force enable
+  # Cloudflare tunnel (dedicated to playaurane.com), only when a token was provided
+  - |
+    if [ -n "${cloudflared_token}" ]; then
+      curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+      echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared noble main" > /etc/apt/sources.list.d/cloudflared.list
+      apt-get update -qq && apt-get install -y -qq cloudflared
+      cloudflared service install '${cloudflared_token}'
+    fi
