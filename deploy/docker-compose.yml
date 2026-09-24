@@ -1,0 +1,51 @@
+# Production stack for one season on a single Exoscale VM (ninabot pattern: compose +
+# tunnel). Ports bind to loopback only; cloudflared publishes the world over the tunnel and
+# the tailnet carries everything else. Secrets come from .env, loaded from Vaultwarden at
+# deploy time, never committed.
+services:
+  world:
+    image: ${WORLD_IMAGE:-starnet-world:latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://starnet:${POSTGRES_PASSWORD}@postgres:5432/starnet
+      SEASON_SEED: ${SEASON_SEED:-season-0}
+      GALAXY_RADIUS: ${GALAXY_RADIUS:-12}
+      SEASON_DAYS: ${SEASON_DAYS:-56}
+      NPC_COUNT: ${NPC_COUNT:-30}
+      TIME_SCALE: "1"
+      HOST: 0.0.0.0
+      PORT: "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: starnet
+      POSTGRES_DB: starnet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starnet -d starnet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [world]
+
+volumes:
+  pgdata:

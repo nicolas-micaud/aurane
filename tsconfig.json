@@ -1,8 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/protocol" },
-    { "path": "packages/sim" },
-    { "path": "tools/season-sim" }
+    {
+      "path": "packages/protocol"
+    },
+    {
+      "path": "packages/sim"
+    },
+    {
+      "path": "tools/season-sim"
+    },
+    {
+      "path": "apps/world"
+    }
   ]
 }

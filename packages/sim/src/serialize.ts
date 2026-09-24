@@ -5,7 +5,8 @@ export interface WorldSnapshot { version: 1; galaxyOptions: GalaxyOptions; state
 
 /** The galaxy is deterministic from the seed, so a snapshot stores only the mutable state. */
 export function snapshotWorld(w: World, galaxyOptions: GalaxyOptions): WorldSnapshot {
-  const { galaxy: _galaxy, ...state } = w;
+  const state: Partial<World> = { ...w };
+  delete state.galaxy;
   return { version: 1, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
 }
 
