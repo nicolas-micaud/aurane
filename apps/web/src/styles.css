@@ -171,3 +171,14 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
   .panel.open { max-height: 58%; }
   .briefing { top: 72px; }
 }
+
+/* Talking to the General with the keyboard open: the composer sits at the top of the panel, the map stays above. */
+.generalpanel .say { margin: 4px 0 8px; }
+@media (max-width: 899px) {
+  .panel.open:has(.generalpanel) { max-height: 52%; }
+  .generalpanel .talk { max-height: 34vh; overflow: auto; }
+}
+@media (max-height: 560px) {
+  .hud .chips, .hud .status, .coach, .legend { display: none; }
+  .panel.open, .panel.open:has(.generalpanel) { max-height: 70%; }
+}

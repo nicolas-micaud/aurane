@@ -22,6 +22,10 @@ export interface ProviderConfig {
   /** Send reasoning_effort: "none" (Infomaniak-style gateways). */
   disableReasoning?: boolean;
   timeoutMs?: number;
+  /** Provider-specific fields merged into every request body, e.g. { enable_thinking: false } for Alibaba's Qwen3. */
+  extraBody?: Record<string, unknown>;
+  /** Ask for response_format json_object when the caller wants JSON (providers that support it). */
+  jsonMode?: boolean;
 }
 
 /** Bounded concurrency: excess calls wait, they never hit the model in parallel. */
@@ -58,6 +62,8 @@ export class OpenAICompatibleClient implements LlmClient {
         stream: false,
       };
       if (this.cfg.disableReasoning) body.reasoning_effort = 'none';
+      if (opts.json && this.cfg.jsonMode) body.response_format = { type: 'json_object' };
+      if (this.cfg.extraBody) Object.assign(body, this.cfg.extraBody);
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? this.cfg.timeoutMs ?? 45000);
       try {
@@ -113,13 +119,32 @@ export class FailoverClient implements LlmClient {
 }
 
 /** Build the client stack from LLM_PRIMARY_* / LLM_FALLBACK_* env vars; null when nothing is configured. */
+function parseExtra(raw: string | undefined): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try { const v = JSON.parse(raw) as unknown; return v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined; } catch { return undefined; }
+}
+
+/** Provider config from LLM_<ROLE>_* variables: BASE_URL, API_KEY, MODEL, CONCURRENCY, DISABLE_REASONING, TIMEOUT_MS, JSON_MODE, EXTRA_BODY (JSON). */
+export function providerFromEnv(role: 'PRIMARY' | 'FALLBACK', env: NodeJS.ProcessEnv = process.env): OpenAICompatibleClient | null {
+  const baseUrl = env[`LLM_${role}_BASE_URL`], model = env[`LLM_${role}_MODEL`];
+  if (!baseUrl || !model) return null;
+  const defaults = role === 'PRIMARY' ? { concurrency: 2, disableReasoning: env.LLM_PRIMARY_DISABLE_REASONING === '1' } : { concurrency: 4, disableReasoning: env.LLM_FALLBACK_DISABLE_REASONING !== '0' };
+  const cfg: ProviderConfig = {
+    name: role.toLowerCase(), baseUrl, apiKey: env[`LLM_${role}_API_KEY`], model,
+    concurrency: Number(env[`LLM_${role}_CONCURRENCY`] ?? defaults.concurrency),
+    disableReasoning: defaults.disableReasoning,
+    jsonMode: env[`LLM_${role}_JSON_MODE`] === '1',
+  };
+  const timeout = Number(env[`LLM_${role}_TIMEOUT_MS`]);
+  if (Number.isFinite(timeout) && timeout > 0) cfg.timeoutMs = timeout;
+  const extra = parseExtra(env[`LLM_${role}_EXTRA_BODY`]);
+  if (extra) cfg.extraBody = extra;
+  return new OpenAICompatibleClient(cfg);
+}
+
 export function clientFromEnv(env: NodeJS.ProcessEnv = process.env): LlmClient | null {
-  const primary = env.LLM_PRIMARY_BASE_URL && env.LLM_PRIMARY_MODEL
-    ? new OpenAICompatibleClient({ name: 'primary', baseUrl: env.LLM_PRIMARY_BASE_URL, apiKey: env.LLM_PRIMARY_API_KEY, model: env.LLM_PRIMARY_MODEL, concurrency: Number(env.LLM_PRIMARY_CONCURRENCY ?? 2), disableReasoning: env.LLM_PRIMARY_DISABLE_REASONING === '1' })
-    : null;
-  const fallback = env.LLM_FALLBACK_BASE_URL && env.LLM_FALLBACK_MODEL
-    ? new OpenAICompatibleClient({ name: 'fallback', baseUrl: env.LLM_FALLBACK_BASE_URL, apiKey: env.LLM_FALLBACK_API_KEY, model: env.LLM_FALLBACK_MODEL, concurrency: Number(env.LLM_FALLBACK_CONCURRENCY ?? 4), disableReasoning: env.LLM_FALLBACK_DISABLE_REASONING !== '0' })
-    : null;
+  const primary = providerFromEnv('PRIMARY', env);
+  const fallback = providerFromEnv('FALLBACK', env);
   if (primary) return new FailoverClient(primary, fallback);
   return fallback;
 }

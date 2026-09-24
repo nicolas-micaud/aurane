@@ -154,3 +154,41 @@ Réponse (session locale, 24.09.2026 21:34) : go de Nick reçu, PR 4 fusionnée 
 client rebuild, cache Cloudflare purgé, `/healthz` et `/` en 200. Le monde a repris sur la même base (31 colonies,
 graine `beta-1`), les réglages de la décision 0005 s'appliquent à la saison en cours. `beta-2` / `GALAXY_RADIUS=6` :
 proposé à Nick pour la saison suivante, pas activé.
+
+## 2026-09-25 — PR 5 : Généraux conversationnels (décision 0006)
+
+**PR 5 fusionnée, redéployer** (dès que cette entrée est sur `main`). Contenu : conversation avec le Général
+(`POST /api/talk`, une requête modèle par message, quota 60 par Colonie et par jour, repli sans modèle), fiches
+de personnalité, mémento des règles, carte qui reste visible quand le clavier s'ouvre. Aucune variable nouvelle.
+Le trafic LLM va monter : surveille la file de rog1 (`LLM_PRIMARY_CONCURRENCY=2`) pendant le week-end ; si les
+réponses dépassent 20 s, le repli Infomaniak prend le relais automatiquement.
+
+## 2026-09-25 — Fournisseur LLM : le moins cher et rapide (Scaleway ou Alibaba)
+
+Décision de Nick : le modèle des Généraux va chez le fournisseur le moins cher entre **Scaleway** (Generative
+APIs, Paris) et **Alibaba Cloud Model Studio** (Qwen, endpoint international), en visant le plus rapide. La
+session locale a les comptes. Rien ne change dans le code : le client est OpenAI-compatible, avec deux
+variables de plus pour les particularités des fournisseurs.
+
+Demandé :
+
+1. **Clés** dans Vaultwarden (collection `aurane`) : `llm-scaleway-*` et `llm-alibaba-*`. Jamais dans le dépôt.
+2. **Banc** : depuis gmk1 ou la VM, après `npm run build`, pour chaque candidat :
+   ```
+   LLM_PRIMARY_BASE_URL=<url> LLM_PRIMARY_API_KEY=<clé> LLM_PRIMARY_MODEL=<modèle> node tools/llm-bench/bench.mjs 3
+   ```
+   Candidats à confirmer contre `GET <url>/models` (les identifiants changent) :
+   - Scaleway (`https://api.scaleway.ai/<project-id>/v1`) : un Mistral Small 24B instruct, Llama 3.3 70B instruct,
+     un Qwen3 instruct, Gemma 3 27B.
+   - Alibaba (`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`) : `qwen-flash`, `qwen-turbo`, `qwen-plus`,
+     avec `LLM_PRIMARY_EXTRA_BODY='{"enable_thinking":false}'` pour les Qwen3 (sinon ils raisonnent et traînent).
+   Colle ici les lignes de résumé (p50, p90, taux de réponses modèle, jetons, nom servi), pas les réponses entières.
+3. **Choix** : le moins cher au jeton parmi ceux qui font **p90 < 6 s** et **≥ 95 % de JSON valide** au banc.
+   À qualité de français égale, prendre le plus rapide. Poser le gagnant en `LLM_PRIMARY_*` (avec
+   `LLM_PRIMARY_CONCURRENCY=8`, `LLM_PRIMARY_TIMEOUT_MS=20000`, `LLM_PRIMARY_JSON_MODE=1` si le fournisseur
+   accepte `response_format`), garder Infomaniak en `LLM_FALLBACK_*`. rog1 devient facultatif.
+4. **Point d'attention pour Nick** (le GDD § 9.3 promettait que les doctrines restent sous contrôle suisse ou
+   européen) : Scaleway est à Paris ; Alibaba sert depuis Singapour. Si Alibaba gagne au prix, Nick tranche en
+   connaissance de cause et le GDD sera mis à jour.
+
+Réponse attendue : tableau du banc, fournisseur et modèle retenus, variables posées (noms).
