@@ -754,6 +754,10 @@ export class SystemScene {
   private animate(dtMs: number): void {
     if (!this.view) return;
     const now = performance.now();
+    // Labels keep a readable screen size whatever the zoom (they grow only a little up close).
+    const ls = Math.pow(this.zoom, -0.85);
+    for (const l of this.labels) l.scale.set(ls);
+    for (const l of this.orbitLabels.children) l.scale.set(ls);
     if (this.focus === null) {
       // System map: planets turn, ships glide along their lanes, engaged bodies pulse.
       for (const pf of this.mapPlanets) pf.time = now / 1000;
