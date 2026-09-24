@@ -142,7 +142,7 @@ function expansionCandidates(ctx: Ctx): Candidate[] {
       const b = opt.to;
       const kindBonus = b.kind === 'pulsar' ? 1.4 : b.kind === 'beacon' ? 2 : 1;
       // A gas giant is a refinery site: worth reaching for, more so when fuel is short and none is held yet.
-      const gasBonus = layoutOf(w.galaxy, id).pois.some((q) => q.kind === 'gas') ? (ctx.owned.some((o) => hasBuilding(w, o, 'refinery')) ? 1.15 : 1.4) : 1;
+      const gasBonus = layoutOf(w.galaxy, id).pois.some((q) => q.kind === 'gas') ? (ctx.p.fuel === 'refinery' ? 1.8 : ctx.owned.some((o) => hasBuilding(w, o, 'refinery')) ? 1.15 : 1.4) : 1;
       const score = (need[b.resource] * (1 + b.slots * 0.3) * kindBonus * gasBonus) / (1 + opt.verdict.cost.metal / 20);
       out.push({ a: from, b: id, score, cost: opt.verdict.cost, upkeep: opt.verdict.upkeep });
     }
@@ -218,7 +218,8 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     const gas = layoutOf(w.galaxy, id).pois.find((q) => q.kind === 'gas' && !st.structures.some((x) => x.kind === 'refinery' && x.poi === q.id) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 1, q.id) > 0);
     if (gas && canAffordAt(ctx, id, B.BUILDING_COST.refinery)) { ctx.out.push({ type: 'build', system: id, building: 'refinery', poi: gas.id }); ctx.notes.push(`refinery at ${w.galaxy.systems[id]!.name}`); return; }
   }
-  if (!hasBuilding(w, capital, 'synthesizer') && ctx.home.rium < ctx.reserve.rium * 2 && !ctx.owned.some((id) => hasBuilding(w, id, 'refinery'))
+  const wantSynth = p.fuel === 'synthesizer' ? true : p.fuel === 'refinery' ? false : ctx.home.rium < ctx.reserve.rium * 2 && !ctx.owned.some((id) => hasBuilding(w, id, 'refinery'));
+  if (!hasBuilding(w, capital, 'synthesizer') && wantSynth
     && freeSlotsOnOrbit(w, w.galaxy.systems[capital]!, 1) > 0 && canAffordAt(ctx, capital, B.BUILDING_COST.synthesizer) && !w.systems[capital]!.buildQueue.some((j) => j.building === 'synthesizer')) {
     ctx.out.push({ type: 'build', system: capital, building: 'synthesizer' }); return;
   }
@@ -259,6 +260,23 @@ function decideLogistics(ctx: Ctx): void {
   const cap = w.systems[c.capital]!;
   if (cargos < 2 + Math.floor(ctx.productive.length / 3) && hasStructure(cap, 'shipyard') && cap.trainQueue.length === 0 && canAffordAt(ctx, c.capital, { metal: B.UNIT_COST.cargo.metal! * 2, food: B.UNIT_COST.cargo.food! * 2 })) {
     ctx.out.push({ type: 'train', system: c.capital, unit: 'cargo', count: 2 });
+  }
+  // Refinery depots: a cargo shuttle per depot, and a route bringing the fuel home.
+  for (const id of ctx.owned) {
+    const st = w.systems[id]!;
+    for (const s of st.structures) {
+      if (s.kind !== 'refinery' || s.poi === st.mainPoi || (w.depots[s.poi] ?? 0) < 80) continue;
+      const served = Object.values(w.fleets).some((f) => f.owner === c.id && f.units.cargo > 0 && (f.shuttle === s.poi || (f.at === id && f.poi === s.poi)));
+      if (served) continue;
+      const cargo = Object.values(w.fleets).find((f) => f.owner === c.id && f.units.cargo > 0 && combatSize(f.units) === 0 && f.order.kind === 'idle' && f.at === id)
+        ?? Object.values(w.fleets).find((f) => f.owner === c.id && f.units.cargo > 0 && combatSize(f.units) === 0 && f.order.kind === 'idle' && f.at === c.capital);
+      if (!cargo) continue;
+      const designation = layoutOf(w.galaxy, id).pois.find((q) => q.id === s.poi)?.designation;
+      if (designation) { ctx.out.push({ type: 'fleet_order', fleet: cargo.id, order: 'move', target: `${id}:${designation}` }); ctx.notes.push(`shuttle to ${w.galaxy.systems[id]!.name}`); }
+    }
+    if (id !== c.capital && st.structures.some((s) => s.kind === 'refinery') && st.stock.rium > 150 && routes < limit && !routeKeys.has(`${id}>${c.capital}:rium`)) {
+      routes++; routeKeys.add(`${id}>${c.capital}:rium`); ctx.out.push({ type: 'route_set', from: id, to: c.capital, resource: 'rium', perTrip: 120, whenBelow: 400 });
+    }
   }
   // Explicit resupply to threatened or building systems that are short of metal/energy.
   for (const id of ctx.productive) {

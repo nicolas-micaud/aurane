@@ -38,6 +38,8 @@ export interface PoiView {
   battle: { id: string; startedAt: number; sides: string[]; kills: Record<string, number> } | null;
   /** Wrecks: what remains to salvage, 0..1. */
   salvage: number | null;
+  /** Refinery depot: Rium waiting for a cargo (owner and allies only). */
+  depot: number | null;
 }
 
 export interface SystemDetailView {
@@ -97,6 +99,7 @@ export function systemViewFor(w: World, colony: Colony, systemId: string): Syste
     id: p.id, kind: p.kind, designation: p.designation, x: p.x, y: p.y, size: p.size, cover: p.cover, hue: p.hue, ...(p.parent ? { parent: p.parent } : {}),
     known: known.has(p.id), main: p.id === st.mainPoi && !hidden, orbitSlots: slotsOf(p.id), structures: [], station: null, engaged: false, shield: null, battle: null,
     salvage: p.kind === 'wreck' && known.has(p.id) ? w.salvage[p.id] ?? 1 : null,
+    depot: detail && (w.depots[p.id] ?? 0) > 0 ? Math.round(w.depots[p.id]!) : null,
   }));
   if (!visible) return base;
 

@@ -122,7 +122,7 @@ export const OFF_NET_SPEED_MULT = 0.5;
  *  (~2200 units) with 24 ships costs ~105 Rium: a real budget line, not a wall (0.02 made it 1000+). */
 export const OFF_NET_RIUM_PER_UNIT = 0.002;
 /** Rium the capital pays per draw for each armed ship deployed outside friendly systems. */
-export const RIUM_OPS_PER_SHIP_PER_DRAW = 0.2;
+export const RIUM_OPS_PER_SHIP_PER_DRAW = 0.5;
 /** A fleet whose operations went unpaid at the last draw is dry: its guns fire at half strength. */
 export const DRY_DPS_MULT = 0.5;
 /** Refinery: Rium mined per draw in orbit of a gas giant. It pays five times a synthesizer because the
@@ -131,6 +131,10 @@ export const DRY_DPS_MULT = 0.5;
 export const RIUM_REFINERY_YIELD = 20;
 export const RIUM_SYNTH_INPUT = { energy: 8, food: 4 } as const;
 export const RIUM_SYNTH_OUTPUT = 4;
+/** Mined Rium waits in a depot at the gas giant until a cargo carries it to the station (unless the giant is the main body). */
+export const DEPOT_CAP = 600;
+/** A raid that breaks a refinery carries off this share of its depot (the refinery must then be rebuilt). */
+export const DEPOT_LOOT_FRACTION = 0.6;
 export const CORSAIR_SHIP_COST_MULT = 0.85;
 export const CORSAIR_SPEED_MULT = 1.1;
 export const BASTION_DEFENSE_MULT = 2;

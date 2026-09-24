@@ -96,5 +96,6 @@ function migrateV3(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
     const cap = s.systems[c.capital];
     if (cap && cap.stock.rium === 0) cap.stock.rium = B.STARTING_STOCK.rium;
   }
+  s.depots ??= {};
   return s;
 }

@@ -172,7 +172,7 @@ function MapTab({ v, sv, sel, picked }: { v: PlayerView; sv: SystemDetailView; s
       {selected && (
         <div class="selbox">
           <h3>{poiName(sv, selected)} <small>{selected.known ? t(POI_LABEL[selected.kind]) : t('unknownPoi')}</small></h3>
-          {selected.known && selected.kind !== 'jump' && <p class="muted">{selected.structures.length} {t('structure').toLowerCase()} · {selected.orbitSlots.join(' / ')} {t('slots').toLowerCase()}{selected.main ? ` · ${t('mainBody')}` : ''}{selected.cover >= 2 ? ` · ${t('probed')}` : ''}{selected.salvage !== null ? ` · ${t('salvage')} ${Math.round(selected.salvage * 100)} %` : ''}</p>}
+          {selected.known && selected.kind !== 'jump' && <p class="muted">{selected.structures.length} {t('structure').toLowerCase()} · {selected.orbitSlots.join(' / ')} {t('slots').toLowerCase()}{selected.main ? ` · ${t('mainBody')}` : ''}{selected.cover >= 2 ? ` · ${t('probed')}` : ''}{selected.salvage !== null ? ` · ${t('salvage')} ${Math.round(selected.salvage * 100)} %` : ''}{selected.depot !== null ? ` · ${t('depot')} ${selected.depot}` : ''}</p>}
           {pickedFleetView && <p class="muted">{unitLine(pickedFleetView.units, pickedFleetView.size)} → {selected.designation}{eta ? ` · ${hms(eta)}` : ''}</p>}
           <div class="actions">
             {selected.known && selected.kind !== 'jump' && <button class="primary" onClick={() => { focusPoi.value = selected.id; sceneSel.value = null; }}>{t('enterPoi')}</button>}
@@ -217,8 +217,18 @@ function FleetSendButtons({ v, sv, poi, fleetId }: { v: PlayerView; sv: SystemDe
       {!friendly && poi.kind !== 'jump' && <button onClick={() => go('ambush')}>{t('ambush')}</button>}
       {poi.kind === 'wreck' && <button onClick={() => go(friendly ? 'defend' : 'ambush')}>{t('salvageHere')}</button>}
       {!friendly && !sv.owner && poi.kind !== 'jump' && poi.kind !== 'wreck' && <button onClick={() => go('move')}>{t('move')}</button>}
+      <CargoShuttleButton v={v} sv={sv} poi={poi} />
     </>
   );
+}
+
+/** A refinery depot away from the station: park a cargo there and it shuttles the Rium home. */
+function CargoShuttleButton({ v, sv, poi }: { v: PlayerView; sv: SystemDetailView; poi: PoiView }) {
+  if (!sv.mine || poi.main || !poi.structures.some((s) => s.kind === 'refinery')) return null;
+  const cargo = v.fleets.find((f) => f.owner === v.me.id && f.at === sv.id && f.combat === 0 && f.size > 0 && f.order === 'idle')
+    ?? v.fleets.find((f) => f.owner === v.me.id && f.at !== null && f.combat === 0 && f.size > 0 && f.order === 'idle');
+  if (!cargo) return null;
+  return <button onClick={() => void act({ type: 'fleet_order', fleet: cargo.id, order: 'move', target: `${sv.id}:${poi.designation}` })}>{t('shuttleHere')}</button>;
 }
 
 function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; poi: PoiView }) {

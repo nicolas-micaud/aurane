@@ -49,6 +49,8 @@ export function heuristicPolicy(text: string, ctx: DoctrineContext): CompiledDoc
   }
   if (has('étend', 'expan', 'colonis', 'grandis', 'grow', 'expand')) p.expansion = has('vite', 'fast', 'agressi', 'max') ? 1 : Math.max(p.expansion, 0.7);
   if (has('consolid', 'ne t\'étends pas', 'stop expand', 'no expansion', 'pas d\'expansion')) p.expansion = 0.1;
+  if (has('autonom', 'synthé', 'synthe', 'self-suffic', 'pas de raffinerie', 'no refinery')) p.fuel = 'synthesizer';
+  else if (has('raffinerie', 'refiner', 'géante', 'geante', 'gas giant', 'conqu')) p.fuel = 'refinery';
   for (const r of RESOURCES) {
     const words = RESOURCE_WORDS[r];
     if (words.some((w) => has(`vends le surplus de ${w}`, `vends ${w}`, `sell ${w}`, `sell surplus ${w}`, `surplus de ${w}`))) p.sellAbove = { ...p.sellAbove, [r]: p.sellAbove[r] ?? 0.5 };
@@ -75,6 +77,7 @@ export function summarize(p: Policy, lang: 'fr' | 'en'): string {
     if (Object.keys(p.sellAbove).length) parts.push(`vend ${Object.keys(p.sellAbove).join(', ')}`);
     if (Object.keys(p.buyBelow).length) parts.push(`achète ${Object.keys(p.buyBelow).join(', ')}`);
     if (p.neverAttack.length) parts.push(`n'attaque jamais ${p.neverAttack.length} cible(s)`);
+    if (p.fuel !== 'auto') parts.push(p.fuel === 'refinery' ? 'carburant : raffineries' : 'carburant : synthétiseurs');
     return parts.join(' · ');
   }
   const parts = [`expansion ${pct(p.expansion)}`, `aggression ${pct(p.aggression)}`];
@@ -82,6 +85,7 @@ export function summarize(p: Policy, lang: 'fr' | 'en'): string {
   if (Object.keys(p.sellAbove).length) parts.push(`sells ${Object.keys(p.sellAbove).join(', ')}`);
   if (Object.keys(p.buyBelow).length) parts.push(`buys ${Object.keys(p.buyBelow).join(', ')}`);
   if (p.neverAttack.length) parts.push(`never attacks ${p.neverAttack.length} target(s)`);
+  if (p.fuel !== 'auto') parts.push(p.fuel === 'refinery' ? 'fuel: refineries' : 'fuel: synthesizers');
   return parts.join(' · ');
 }
 
@@ -92,6 +96,7 @@ const SCHEMA_DOC = `{
   "buyBelow": { "<resource>": maxPrice },    // buy up to the reserve when the price is at most this
   "defendFirst": ["<system id>"],            // only ids from the SYSTEMS list
   "expansion": 0..1,                          // 0 never build relays, 1 expand whenever affordable
+  "fuel": "auto" | "refinery" | "synthesizer", // refinery: hold gas giants, never synthesize; synthesizer: autonomy at home
   "aggression": 0..1,                         // 0 never attack without explicit order, 1 raid weak neighbours freely
   "neverAttack": ["<colony or alliance id>"],
   "trustedTraders": ["<colony id>"],

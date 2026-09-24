@@ -66,7 +66,7 @@ export interface SystemState {
 
 export type FleetOrder =
   | { kind: 'idle' }
-  | { kind: 'move'; to: string }
+  | { kind: 'move'; to: string; poi?: string }
   | { kind: 'raid'; target: string; via: string }            // target: structure id or 'station'; via: system
   | { kind: 'blockade'; system: string; poi?: string }
   | { kind: 'defend'; system: string; poi?: string }
@@ -82,6 +82,8 @@ export interface FleetState {
   units: Fleet;
   /** Operations unpaid at the last draw (no Rium): guns at half strength. */
   dry?: boolean;
+  /** Cargo shuttle: point of interest (a refinery depot) this fleet keeps ferrying Rium from. */
+  shuttle?: string;
   /** Accumulated damage per unit type; a unit is lost when damage ≥ its HP. */
   damage: Record<UnitType, number>;
   /** Cargo carried by the cargos of this fleet. */
@@ -197,6 +199,8 @@ export interface World {
   known: Record<string, Record<string, string[]>>;
   /** What remains to salvage at each wreck (POI id → fraction 0..1 of the pool). Absent = untouched. */
   salvage: Record<string, number>;
+  /** Rium waiting at refinery depots (POI id → amount). */
+  depots: Record<string, number>;
   litBeacons: Record<string, LitBeacon>;
   lastClearing: Clearing[];
   events: WorldEvent[];

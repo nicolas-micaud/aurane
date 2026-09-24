@@ -60,6 +60,8 @@ export const PolicySchema = z.object({
   retreatBelow: z.number().min(0).max(1).default(0.3),
   /** Turrets the General may build on its own when a system is attacked and local stock allows. */
   autoTurrets: z.number().int().min(0).max(6).default(2),
+  /** Fuel doctrine: refinery (hold gas giants, never synthesize), synthesizer (autonomy at home first), auto. */
+  fuel: z.enum(['auto', 'refinery', 'synthesizer']).default('auto'),
   /** Target priority for own units when the player is absent. */
   targetPriority: z.enum(['ships', 'turrets', 'station', 'economy']).default('ships'),
   /** Free text the General keeps to explain its choices in briefings. */
@@ -74,10 +76,10 @@ export const PERSONAS = ['vane', 'kestrel', 'oriel', 'solen'] as const;
 export type Persona = (typeof PERSONAS)[number];
 
 export const PERSONA_DEFAULTS: Record<Persona, Partial<Policy>> = {
-  vane: { expansion: 0.3, aggression: 0 },
-  kestrel: { expansion: 0.8, aggression: 0.7 },
+  vane: { expansion: 0.3, aggression: 0, fuel: 'synthesizer' },
+  kestrel: { expansion: 0.8, aggression: 0.7, fuel: 'refinery' },
   oriel: { expansion: 0.5, aggression: 0.25 },
-  solen: { expansion: 0.4, aggression: 0 },
+  solen: { expansion: 0.4, aggression: 0, fuel: 'synthesizer' },
 };
 
 /** Commands a player (or their General) can issue. Validated at the world boundary. */

@@ -38,7 +38,7 @@ export function createWorld(seed: number | string, opts: WorldOptions = {}): Wor
   return {
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
-    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, salvage: {}, litBeacons: {}, lastClearing: [],
+    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, salvage: {}, depots: {}, litBeacons: {}, lastClearing: [],
     events: [], battles: {}, titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
     owned: {}, relaysByOwner: {}, treatiesByColony: {}, engagedSystems: [],
   };
@@ -636,6 +636,7 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
   if (fleet.at === null) return { ok: false, reason: 'fleet in transit' };
   if (fleetSize(fleet.units) === 0) return { ok: false, reason: 'empty fleet' };
   if (order !== 'move' && order !== 'return' && combatSize(fleet.units) === 0) return { ok: false, reason: 'cargos cannot fight' };
+  delete fleet.shuttle;
   let destination: string;
   let newOrder: FleetOrder;
   // target: "<systemId>", "<systemId>:<structureId>" (raid) or "<systemId>:<poiId>" (blockade, defend, ambush, move)
@@ -656,7 +657,7 @@ function fleetOrder(w: World, colony: Colony, fleetId: string, order: 'move' | '
     if (!w.galaxy.systems[sysId]) return { ok: false, reason: 'no such system' };
     destination = sysId;
     const withPoi = poiArg ? { poi: poiArg } : {};
-    newOrder = order === 'move' ? { kind: 'move', to: sysId } : order === 'blockade' ? { kind: 'blockade', system: sysId, ...withPoi } : order === 'ambush' ? { kind: 'ambush', system: sysId, ...withPoi } : { kind: 'defend', system: sysId, ...withPoi };
+    newOrder = order === 'move' ? { kind: 'move', to: sysId, ...withPoi } : order === 'blockade' ? { kind: 'blockade', system: sysId, ...withPoi } : order === 'ambush' ? { kind: 'ambush', system: sysId, ...withPoi } : { kind: 'defend', system: sysId, ...withPoi };
   }
   if (newOrder.kind === 'raid' || newOrder.kind === 'blockade') {
     const victim = w.colonies[w.systems[destination]!.owner ?? ''];
@@ -765,7 +766,7 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
     remaining -= step;
     processTimers(w, step);
     const routeSlot = Math.floor(w.time / ROUTE_INTERVAL_S);
-    if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); processSalvage(w); }
+    if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); processSalvage(w); processDepots(w); }
     if (w.time >= nextHour) { runDraw(w); pruneBattles(w); }
     if (w.time >= w.seasonEndsAt) endSeason(w, 'silence');
   }
@@ -826,7 +827,7 @@ function settlePlateau(w: World, systemId: string, poi: string, fleets: FleetSta
       const targetGone = target === 'station' ? st.stationHp <= 0 : !st.structures.some((x) => x.id === target && x.hp > 0);
       if (victim && targetGone) {
         if (target === 'station') logEvent(w, 'relay.cut', [f.owner, victim.id], { system: systemId });
-        loot(w, colony, victim, systemId, combatSize(f.units));
+        loot(w, colony, victim, systemId, combatSize(f.units), poi);
         f.order = { kind: 'idle' };
       }
       continue;
@@ -851,8 +852,8 @@ function deployDefenders(w: World, systemId: string, poi: string, dockedHere?: F
     deployed.push(f);
     i++;
   }
-  // With the station down, docked cargos are exposed.
-  if (poi === st.mainPoi && st.stationHp <= 0) for (const f of docked) if (f.pos === null && f.units.cargo > 0) { f.pos = { r: 1, a: 180 }; deployed.push(f); }
+  // With the station down, or away from the station, docked cargos are exposed.
+  if (poi !== st.mainPoi || st.stationHp <= 0) for (const f of docked) if (f.pos === null && f.units.cargo > 0) { f.pos = { r: 1, a: 180 }; deployed.push(f); }
   return deployed;
 }
 
@@ -914,7 +915,7 @@ function evaluateBlockade(w: World, systemId: string, plateau: FleetState[]): vo
   }
 }
 
-function loot(w: World, attacker: Colony, victim: Colony, systemId: string, size: number): void {
+function loot(w: World, attacker: Colony, victim: Colony, systemId: string, size: number, poi?: string): void {
   if (colonyScore(w, attacker) > B.BULLY_SCORE_RATIO * Math.max(1, colonyScore(w, victim))) {
     attacker.influence = Math.max(0, attacker.influence - 5);
     logEvent(w, 'raid.bully', [attacker.id, victim.id]);
@@ -925,6 +926,13 @@ function loot(w: World, attacker: Colony, victim: Colony, systemId: string, size
   for (const r of B.RESOURCE_LIST) {
     const amount = Math.min(Math.floor(st.stock[r] * B.LOOT_FRACTION), size * 5);
     if (amount > 0) { st.stock[r] -= amount; taken[r] = amount; }
+  }
+  // A raid that breaks a refinery carries off most of its depot; the refinery itself is gone and must be rebuilt.
+  if (poi && (w.depots[poi] ?? 0) > 0 && !st.structures.some((s) => s.kind === 'refinery' && s.poi === poi && s.hp > 0)) {
+    const depot = w.depots[poi]!;
+    const grabbed = Math.min(Math.floor(depot * B.DEPOT_LOOT_FRACTION), size * 20);
+    if (grabbed > 0) { w.depots[poi] = depot - grabbed; taken.rium = (taken.rium ?? 0) + grabbed; }
+    logEvent(w, 'refinery.raided', [attacker.id, victim.id], { system: systemId, poi, rium: grabbed });
   }
   // Loot travels home with the fleet as cargo-less plunder: credited to the raider's capital.
   depositClamped(w, attacker.capital, taken);
@@ -971,7 +979,7 @@ function targetPoiFor(w: World, fleet: FleetState): string {
     if (o.target === 'station') return st.mainPoi;
     return st.structures.find((s) => s.id === o.target)?.poi ?? st.mainPoi;
   }
-  if ((o.kind === 'blockade' || o.kind === 'defend' || o.kind === 'ambush') && o.poi) return o.poi;
+  if ((o.kind === 'blockade' || o.kind === 'defend' || o.kind === 'ambush' || o.kind === 'move') && o.poi) return o.poi;
   return st.mainPoi;
 }
 
@@ -1029,6 +1037,13 @@ function landAt(w: World, fleet: FleetState): void {
   if (order.kind === 'move' || order.kind === 'return') {
     fleet.order = { kind: 'idle' };
     fleet.pos = friendly && !hostileHere ? null : { r: B.PLATEAU_RADIUS, a: approachAngle(w, fleet.from, dest) };
+    if (friendly && !hostileHere && poi === st.mainPoi && stockTotal(fleet.cargo) > 0) {
+      // Cargos unload at the station; a shuttle then heads back to its depot.
+      fleet.cargo = depositClamped(w, dest, fleet.cargo);
+      if (stockTotal(fleet.cargo) === 0) fleet.cargo = B.emptyStock();
+      if (fleet.shuttle && st.structures.some((s) => s.kind === 'refinery' && s.poi === fleet.shuttle && s.hp > 0)) { fleet.order = { kind: 'move', to: dest }; fleet.hops = pathInSystem(layoutOf(w.galaxy, dest), poi, fleet.shuttle).hops; if (fleet.hops.length) startHop(w, fleet); }
+      else delete fleet.shuttle;
+    }
     return;
   }
   if (order.kind === 'defend' || order.kind === 'ambush') {
@@ -1093,6 +1108,33 @@ function continueConvoy(w: World, f: FleetState): void {
 }
 
 /** Fleets holding a wreck salvage it: Metal and Crystal for their capital, until the pool runs dry. */
+/** Cargos parked at a refinery depot load its Rium and shuttle it to the station, again and again. */
+function processDepots(w: World): void {
+  for (const [poiId, amount] of Object.entries(w.depots)) {
+    if (amount <= 0) continue;
+    const systemId = poiId.split('/')[0]!;
+    const st = w.systems[systemId];
+    if (!st?.owner) continue;
+    for (const f of Object.values(w.fleets)) {
+      if (f.at !== systemId || f.poi !== poiId || f.hop || f.units.cargo === 0 || combatSize(f.units) > 0) continue;
+      if (f.order.kind !== 'idle' && f.order.kind !== 'defend' && f.order.kind !== 'move') continue;
+      if (f.owner !== st.owner && !isAlly(w, f.owner, st.owner)) continue;
+      if (armedHostilesPresent(w, systemId, poiId).length) continue;
+      const room = f.units.cargo * B.CARGO_CAPACITY - stockTotal(f.cargo);
+      const load = Math.min(room, w.depots[poiId] ?? 0);
+      if (load <= 0) continue;
+      w.depots[poiId]! -= load;
+      f.cargo.rium += load;
+      f.shuttle = poiId;
+      f.order = { kind: 'move', to: systemId };
+      f.pos = null;
+      f.hops = pathInSystem(layoutOf(w.galaxy, systemId), poiId, st.mainPoi).hops;
+      if (f.hops.length) startHop(w, f); else landAt(w, f);
+      logEvent(w, 'depot.loaded', [f.owner], { system: systemId, poi: poiId, rium: Math.round(load) });
+    }
+  }
+}
+
 function processSalvage(w: World): void {
   for (const f of Object.values(w.fleets)) {
     if (f.at === null || f.poi === null || f.hop || combatSize(f.units) === 0) continue;
@@ -1277,8 +1319,12 @@ function runDraw(w: World): void {
       const generic = (id === colony.capital ? B.CAPITAL_GENERIC_YIELD : B.GENERIC_YIELD) * (1 + B.POP_YIELD_BONUS * st.population);
       for (const r of B.RESOURCE_LIST) if (r !== 'rium') local[r] += generic;
       // Rium is never a natural yield: refineries mine it at gas giants, synthesizers make it from stock.
-      const refineries = st.structures.filter((s) => s.kind === 'refinery' && s.hp > 0).length;
-      local.rium += refineries * B.RIUM_REFINERY_YIELD * (1 + B.POP_YIELD_BONUS * st.population);
+      for (const s of st.structures) {
+        if (s.kind !== 'refinery' || s.hp <= 0) continue;
+        const mined = B.RIUM_REFINERY_YIELD * (1 + B.POP_YIELD_BONUS * st.population);
+        if (s.poi === st.mainPoi) local.rium += mined; // the station is right there
+        else w.depots[s.poi] = Math.min(B.DEPOT_CAP, (w.depots[s.poi] ?? 0) + mined); // waits for a cargo
+      }
       for (const s of st.structures) {
         if (s.kind !== 'synthesizer' || s.hp <= 0) continue;
         if (st.stock.energy < B.RIUM_SYNTH_INPUT.energy || st.stock.food < B.RIUM_SYNTH_INPUT.food) continue;

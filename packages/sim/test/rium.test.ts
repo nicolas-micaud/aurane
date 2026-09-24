@@ -35,7 +35,64 @@ describe('rium', () => {
     expect(cap.structures.some((s) => s.kind === 'refinery' && s.poi === gas)).toBe(true);
     const before = cap.stock.rium;
     tick(w, B.DRAW_INTERVAL_S);
-    expect(cap.stock.rium).toBeGreaterThanOrEqual(before + B.RIUM_REFINERY_YIELD - 0.01);
+    // Mined Rium lands in the station's stock when the giant is the main body, else it waits in the depot.
+    const mined = cap.mainPoi === gas ? cap.stock.rium - before : w.depots[gas] ?? 0;
+    expect(mined).toBeGreaterThanOrEqual(B.RIUM_REFINERY_YIELD - 0.01);
+  });
+
+  it('a cargo parked at the depot shuttles the Rium to the station and goes back for more', () => {
+    const { w, c, gas } = withGasGiant('rium6');
+    const cap = w.systems[c.capital]!;
+    if (cap.mainPoi === gas) return; // nothing to shuttle when the giant is the main body
+    cap.stock = { metal: 1e4, energy: 1e4, food: 1e4, crystal: 1e4, rium: 0 };
+    expect(apply(w, c.id, { type: 'build', system: c.capital, building: 'refinery', poi: gas }).ok).toBe(true);
+    expect(apply(w, c.id, { type: 'train', system: c.capital, unit: 'cargo', count: 2 }).ok).toBe(true);
+    tick(w, B.BUILDING_SECONDS.refinery + 60);
+    const cargo = fleetsAt(w, c.capital).find((x) => x.units.cargo >= 2 && x.units.corvette + x.units.frigate + x.units.cruiser === 0)!;
+    w.depots[gas] = 200;
+    const designation = layoutOf(w.galaxy, c.capital).pois.find((p) => p.id === gas)!.designation;
+    expect(apply(w, c.id, { type: 'fleet_order', fleet: cargo.id, order: 'move', target: `${c.capital}:${designation}` }).ok).toBe(true);
+    const stockBefore = cap.stock.rium;
+    tick(w, 3 * 600 + 4 * 240); // lane there, load on the route cadence, lane back, unload
+    expect(w.events.some((e) => e.kind === 'depot.loaded')).toBe(true);
+    expect(cap.stock.rium).toBeGreaterThan(stockBefore);
+    expect(cargo.shuttle).toBe(gas); // keeps ferrying
+    // An explicit order ends the shuttle.
+    expect(apply(w, c.id, { type: 'fleet_order', fleet: cargo.id, order: 'return', target: '' }).ok).toBe(true);
+    expect(cargo.shuttle).toBeUndefined();
+  });
+
+  it('a raid that breaks a refinery carries off most of its depot', () => {
+    const { w, c, gas } = withGasGiant('rium7');
+    const cap = w.systems[c.capital]!;
+    if (cap.mainPoi === gas) return;
+    cap.stock = { metal: 1e4, energy: 1e4, food: 1e4, crystal: 1e4, rium: 0 };
+    expect(apply(w, c.id, { type: 'build', system: c.capital, building: 'refinery', poi: gas }).ok).toBe(true);
+    tick(w, B.BUILDING_SECONDS.refinery + 60);
+    const refinery = cap.structures.find((s) => s.kind === 'refinery')!;
+    w.depots[gas] = 300;
+    const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
+    atk.createdAt = -1e9; c.createdAt = -1e9;
+    w.systems[atk.capital]!.stock = { metal: 1e4, energy: 1e4, food: 1e4, crystal: 1e4, rium: 1e4 };
+    expect(apply(w, atk.id, { type: 'train', system: atk.capital, unit: 'cruiser', count: 6 }).ok).toBe(true);
+    tick(w, B.UNIT_SECONDS.cruiser * 6 + 60);
+    const f = fleetsAt(w, atk.capital).find((x) => x.units.cruiser === 6)!;
+    const riumBefore = w.systems[atk.capital]!.stock.rium;
+    expect(apply(w, atk.id, { type: 'fleet_order', fleet: f.id, order: 'raid', target: `${c.capital}:${refinery.id}` }).ok).toBe(true);
+    tick(w, f.arriveAt - w.time + 40 * 60);
+    const raided = w.events.find((e) => e.kind === 'refinery.raided');
+    expect(raided).toBeDefined();
+    expect(Number(raided!.data!.rium)).toBeGreaterThanOrEqual(100);
+    expect(cap.structures.some((s) => s.id === refinery.id)).toBe(false); // broken: to be rebuilt
+    expect(w.systems[atk.capital]!.stock.rium).toBeGreaterThan(riumBefore - 200); // fuel spent, plunder recovered part of it
+  });
+
+  it('the fuel doctrine is compiled from the persona and steers the General', () => {
+    const w = createWorld('rium8', { radius: 4 });
+    const vane = spawnColony(w, { name: 'V', faction: 'concordat', persona: 'vane' });
+    const kestrel = spawnColony(w, { name: 'K', faction: 'corsairs', persona: 'kestrel' });
+    expect(vane.policy.fuel).toBe('synthesizer');
+    expect(kestrel.policy.fuel).toBe('refinery');
   });
 
   it('a synthesizer turns Energy and Food into Rium at the draw, and idles when the stock is short', () => {
