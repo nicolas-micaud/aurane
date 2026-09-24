@@ -113,3 +113,16 @@ Réponse (session locale, 24.09.2026 20:18) : PR 2 fusionnée par mes soins (`09
 **redéployée** sur aurane-app1 via `infra/aurane-deploy/deploy.sh` : image world reconstruite depuis `main`,
 client web rebuild, `world` recréé, sondes `/healthz` et `/` en 200 en public. Aucune variable modifiée.
 Prochaines fusions : même protocole, « PR N fusionnée, redéployer » ici sur `main`, veille toutes les 10 min.
+
+## 2026-09-24 (nuit) — PR 3 : application installable (PWA)
+
+**PR 3 fusionnée, redéployer** (dès que cette entrée est sur `main`). Contenu : manifeste complet avec icônes
+maskables et raccourci Gazette, service worker généré au build (coquille précachée, mises à jour proposées
+par bandeau), invite d'installation Android et rappel iOS, ajustements plein écran. Deux points pour toi :
+
+- `deploy/web/nginx.conf` change : `/sw.js` et `/manifest.webmanifest` passent en `Cache-Control: no-cache`
+  (sinon les mises à jour du client mettraient sept jours à arriver). À prendre au redéploiement.
+- Le client web doit être rebuild depuis `main` (le `sw.js` est produit par `vite build`, il n'existe plus
+  dans `public/`).
+
+Aucune variable, aucun changement serveur.

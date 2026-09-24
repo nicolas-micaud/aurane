@@ -9,7 +9,7 @@ import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
 import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
-import { Cost, RES, fmt, hms } from './bits.js';
+import { Cost, InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt';
@@ -128,8 +128,10 @@ function Hud({ v }: { v: PlayerView }) {
           <p><span class="r-credits"><Icon name="credits" /></span> <b>{t('credits')}</b> — {t('creditsDesc')}</p>
           <p><span class="r-influence"><Icon name="influence" /></span> <b>{t('influence')}</b> — {t('influenceDesc')}</p>
           <p class="muted">{t('coach3')}</p>
+          <InstallButton compact />
         </div>
       )}
+      <UpdateBanner />
       <Alerts v={v} />
       <Coach v={v} />
     </div>
