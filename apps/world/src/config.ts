@@ -22,7 +22,7 @@ export interface Config {
   adminToken: string | null;
   /** Signs device-link codes. Random per process when unset: links then die with the process. */
   authSecret: string;
-  /** Public origin used in device links, e.g. https://playaurane.com. */
+  /** Public origin used in device links, e.g. https://play.playaurane.com. */
   publicOrigin: string;
 }
 
