@@ -1,0 +1,11 @@
+{
+  "name": "starnet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StarNet — can't stop the signal. A daily cosmic network puzzle.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "start": "npx --yes http-server -c-1 -p 8080 ."
+  }
+}
