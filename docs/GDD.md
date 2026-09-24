@@ -8,7 +8,7 @@
 
 ## 1. Vision
 
-Aurane (nom de travail initial : Aurane, abandonné le 24 septembre 2026 pour cause d'homonymes) est un jeu de stratégie **web, gratuit, persistant et massivement multijoueur**, jouable en cinq minutes sur mobile et en cinq heures sur grand écran. Le joueur incarne une **Colonie** qui étend un réseau de relais à travers une galaxie partagée, produit et échange des ressources au rythme d'un tirage horaire, se bat pour des goulets stratégiques et confie son empire à un **Général**, un général IA qui joue en son absence et le briefe à son retour.
+Aurane (nom de travail initial : StarNet, abandonné le 24 septembre 2026 pour cause d'homonymes) est un jeu de stratégie **web, gratuit, persistant et massivement multijoueur**, jouable en cinq minutes sur mobile et en cinq heures sur grand écran. Le joueur incarne une **Colonie** qui étend un réseau de relais à travers une galaxie partagée, produit et échange des ressources au rythme d'un tirage horaire, se bat pour des goulets stratégiques et confie son empire à un **Général**, un général IA qui joue en son absence et le briefe à son retour.
 
 ### 1.1 Piliers
 
@@ -364,7 +364,7 @@ Sans dates ; l'ordre compte, pas le calendrier.
 | **M4** | Flottes, raids, blocus, agents, protections | rapports de bataille publics et rejouables |
 | **M5** | Général : briefing, doctrine, événements, PNJ, mémoires ; primaire rog1, repli Infomaniak | budget mesuré sur une semaine de test |
 | **M6** | Gazette, pages publiques, cartes rendues, PWA, tutoriel, bilingue complet | un inconnu joue 10 minutes sans aide |
-| **M7** | Bêta fermée « Réveil zéro » sur starnet.uno, 8 semaines, équilibrage à chaud | Palmarès publié, plan de la Saison 1 |
+| **M7** | Bêta fermée « Réveil zéro » sur playaurane.com, 8 semaines, équilibrage à chaud | Palmarès publié, plan de la Saison 1 |
 
 ---
 
