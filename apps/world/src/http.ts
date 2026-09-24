@@ -5,12 +5,18 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
 import { CommandSchema, FACTIONS, PERSONAS } from '@aurane/protocol';
 import type { Engine } from './engine.js';
+import { renderColonyPage, renderGazettePage } from './pages.js';
 
 const GuestSchema = z.object({
   name: z.string().trim().min(2).max(32),
   faction: z.enum(FACTIONS),
   persona: z.enum(PERSONAS),
 });
+
+function html(res: ServerResponse, status: number, body: string): void {
+  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' });
+  res.end(body);
+}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const data = JSON.stringify(body);
@@ -42,6 +48,24 @@ export function createHttpServer(engine: Engine): Server {
     try {
       if (req.method === 'GET' && url.pathname === '/healthz') return json(res, 200, { ok: true, time: engine.world.time, draw: engine.world.drawIndex });
       if (req.method === 'GET' && url.pathname === '/api/public/summary') return json(res, 200, engine.publicSummary());
+      if (req.method === 'GET' && url.pathname === '/api/public/gazette') {
+        const day = url.searchParams.get('day');
+        const issue = await engine.gazette(url.searchParams.get('lang') === 'en' ? 'en' : 'fr', day ? Number(day) : undefined);
+        return issue ? json(res, 200, issue) : json(res, 404, { error: 'no issue yet' });
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/api/public/colony/')) {
+        const c = engine.publicColony(decodeURIComponent(url.pathname.slice('/api/public/colony/'.length)));
+        return c ? json(res, 200, c) : json(res, 404, { error: 'no such colony' });
+      }
+      if (req.method === 'GET' && (url.pathname === '/gazette' || url.pathname === '/gazette/')) {
+        const lang = url.searchParams.get('lang') === 'en' ? 'en' : 'fr';
+        const issue = await engine.gazette(lang, url.searchParams.get('day') ? Number(url.searchParams.get('day')) : undefined);
+        return html(res, 200, renderGazettePage(issue, lang, engine.publicSummary()));
+      }
+      if (req.method === 'GET' && url.pathname.startsWith('/c/')) {
+        const c = engine.publicColony(decodeURIComponent(url.pathname.slice(3)));
+        return c ? html(res, 200, renderColonyPage(c)) : html(res, 404, '<h1>404</h1>');
+      }
       if (req.method === 'POST' && url.pathname === '/api/guest') {
         const parsed = GuestSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid guest', issues: parsed.error.issues });

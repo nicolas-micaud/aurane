@@ -82,6 +82,22 @@ describe('world server', () => {
     expect(messages.find((m) => m.type === 'result')?.result?.ok).toBe(true);
   });
 
+  it('serves the public gazette and colony pages', async () => {
+    // Fast-forward two days so day 1 has an issue.
+    const { tick } = await import('@aurane/sim');
+    tick(engine.world, 86400 + 3600, 300);
+    const issue = await (await fetch(`${base}/api/public/gazette?lang=fr`)).json() as { day: number; title: string; sections: unknown[] };
+    expect(issue.day).toBe(1);
+    expect(issue.title).toContain('jour 1');
+    expect(issue.sections.length).toBeGreaterThanOrEqual(3);
+    const page = await (await fetch(`${base}/gazette?lang=en`)).text();
+    expect(page).toContain('<title>Aurane Gazette');
+    const id = Object.keys(engine.world.colonies)[0]!;
+    const colony = await (await fetch(`${base}/c/${id}`)).text();
+    expect(colony).toContain(engine.world.colonies[id]!.name);
+    expect((await fetch(`${base}/c/nope`)).status).toBe(404);
+  });
+
   it('advances time, runs NPC Generals and persists a snapshot that restores', async () => {
     const before = engine.world.time;
     await engine.step();

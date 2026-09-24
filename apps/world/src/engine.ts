@@ -6,7 +6,7 @@ import {
   apply, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, tick, viewFor,
   type ApplyResult, type Colony, type PlayerView, type World,
 } from '@aurane/sim';
-import { clientFromEnv, compilePolicy, writeBriefing, Quota, type LlmClient } from '@aurane/general';
+import { clientFromEnv, compilePolicy, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -29,6 +29,8 @@ export class Engine {
   private quota = new Quota();
   /** Sim time of the last briefing per colony, so the next one covers only what is new. */
   private lastBriefedAt = new Map<string, number>();
+  private gazettes = new Map<string, GazetteIssue>();
+  private gazetteInFlight = new Map<string, Promise<GazetteIssue>>();
 
   constructor(private readonly cfg: Config, private readonly store: Store) {}
 
@@ -188,6 +190,29 @@ export class Engine {
     return { ...res, awaySeconds };
   }
 
+  /** Yesterday's issue (the current day is still being written). Cached per day and language. */
+  async gazette(lang: 'fr' | 'en', day?: number): Promise<GazetteIssue | null> {
+    const today = Math.floor(this.world.time / 86400) + 1;
+    const target = day ?? today - 1;
+    if (target < 1 || target >= today) return null;
+    const key = `${target}:${lang}`;
+    const hit = this.gazettes.get(key);
+    if (hit) return hit;
+    let p = this.gazetteInFlight.get(key);
+    if (!p) {
+      p = writeGazette(this.world, target, lang, this.llm).then((issue) => { this.gazettes.set(key, issue); this.gazetteInFlight.delete(key); return issue; });
+      this.gazetteInFlight.set(key, p);
+    }
+    return p;
+  }
+
+  publicColony(id: string): { id: string; name: string; faction: string; persona: string; alliance: string | null; score: number; connected: number; createdAt: number; npc: boolean; beacons: string[] } | null {
+    const c = this.world.colonies[id];
+    if (!c) return null;
+    const net = ownedSystems(this.world, c.id).length;
+    return { id: c.id, name: c.name, faction: c.faction, persona: c.persona, alliance: c.alliance ? this.world.alliances[c.alliance]?.name ?? null : null, score: Math.round(colonyScoreOf(this.world, c) * 10) / 10, connected: net, createdAt: c.createdAt, npc: c.npc, beacons: Object.values(this.world.litBeacons).filter((b) => b.by === c.id).map((b) => this.world.galaxy.systems[b.system]?.beaconName ?? b.system) };
+  }
+
   publicSummary(): { time: number; drawIndex: number; colonies: { id: string; name: string; faction: string; score: number; alliance: string | null }[]; titles: World['titles']; ended: World['ended'] } {
     const w = this.world;
     return {
@@ -198,7 +223,7 @@ export class Engine {
   }
 }
 
-import { colonyScore as colonyScoreOf } from '@aurane/sim';
+import { colonyScore as colonyScoreOf, ownedSystems } from '@aurane/sim';
 
 export const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
