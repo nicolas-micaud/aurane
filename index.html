@@ -91,10 +91,29 @@
 								<hr />
 								<p lang="en">A season lasts eight weeks, from Awakening to Silence. You score for systems linked at the Draw, for Beacons relit and held, and for rotating titles: the Great Network, the Admiralty, the Exchange. An early victory, <strong>the Renaissance</strong>, goes to the alliance that keeps all Seven Beacons lit for twenty-four hours. Every season's Hall of Fame stays public forever.</p>
 								<p lang="en">Season 0, "Awakening Zero", will be a <strong>closed, invitation-only beta</strong> with a public waiting list. No account needed to play: a faction, a General, a capital in ten seconds.</p>
-								<ul class="actions">
-									<li><a href="mailto:nina@ninabot.ch?subject=Aurane%20%E2%80%94%20liste%20d%27attente%20%2F%20waiting%20list" class="button primary">Liste d'attente · Waiting list</a></li>
-									<li><a href="https://ninabot.ch">ninabot sàrl</a></li>
-								</ul>
+								<form id="waitlist" method="post" action="https://api.playaurane.com/waitlist" novalidate>
+									<div class="fields">
+										<div class="field half">
+											<label for="wl-name">Nom · Name</label>
+											<input type="text" name="name" id="wl-name" autocomplete="name" />
+										</div>
+										<div class="field half">
+											<label for="wl-email">E-mail</label>
+											<input type="email" name="email" id="wl-email" required autocomplete="email" />
+										</div>
+										<div class="field">
+											<label for="wl-lang">Langue · Language</label>
+											<select name="lang" id="wl-lang"><option value="fr">Français</option><option value="en">English</option></select>
+										</div>
+										<div class="field" style="position:absolute;left:-9999px" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+										<div class="field"><div class="cf-turnstile" data-sitekey="0x4AAAAAAFCSIqXFBc1hwh8k" data-theme="dark" data-language="auto"></div></div>
+									</div>
+									<ul class="actions">
+										<li><input type="submit" value="Rejoindre la liste · Join the list" class="primary" /></li>
+									</ul>
+									<p id="wl-status" role="status" aria-live="polite"></p>
+								</form>
+								<p style="font-size:.85em"><a href="https://ninabot.ch">ninabot sàrl</a></p>
 							</article>
 						<!-- Elements -->
 							<article id="elements">
@@ -356,6 +375,32 @@ print 'It took ' + i + ' iterations to sort the deck.';</code></pre>
 			<script src="assets/js/breakpoints.min.js"></script>
 			<script src="assets/js/util.js"></script>
 			<script src="assets/js/main.js"></script>
+			<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+			<script>
+			(function () {
+				var f = document.getElementById('waitlist'), st = document.getElementById('wl-status');
+				var M = {
+					ok:      "Merci, tu es sur la liste. Le Réveil t'attendra. — Thank you, you're on the list. The Awakening will wait for you.",
+					captcha: "Le contrôle anti-robot n'a pas abouti, réessaie. — The anti-bot check did not complete, please try again.",
+					invalid: "Adresse e-mail invalide. — Invalid e-mail address.",
+					rate:    "Trop d'essais, reviens dans une heure. — Too many attempts, come back in an hour.",
+					err:     "Le Signal est coupé, réessaie plus tard. — The Signal is down, please try again later."
+				};
+				f.addEventListener('submit', function (e) {
+					e.preventDefault(); st.textContent = '…';
+					fetch(f.action, { method: 'POST', body: new FormData(f) })
+						.then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return [r.status, j]; }); })
+						.then(function (x) {
+							var j = x[1];
+							if (j.ok) { st.textContent = M.ok; f.reset(); }
+							else { st.textContent = M[j.error] || M.err; }
+							if (window.turnstile) { try { window.turnstile.reset(); } catch (_) {} }
+						})
+						.catch(function () { st.textContent = M.err; });
+				});
+			})();
+			</script>
+
 
 	</body>
 </html>
