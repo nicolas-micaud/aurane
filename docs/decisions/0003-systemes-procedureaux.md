@@ -171,3 +171,16 @@ se reconnaître à 24 pixels de haut sur un téléphone.
 - Saison accélérée de 14 jours, 40 colonies : aucune anomalie, médiane de 12 systèmes connectés,
   97 s de calcul. Reste pour les paliers suivants : vue serveur multi-corps déjà exposée (`pois`,
   `lanes`, `hop`), client à faire.
+
+## Compléments validés (24.09.2026)
+
+- **Épaves à fouiller** : une flotte armée qui tient une épave (ordre défendre, embuscade ou à l'arrêt)
+  en récupère Métal et Cristal pour sa capitale toutes les dix minutes, jusqu'à épuisement d'une réserve
+  finie (600 Métal, 120 Cristal), plus vite avec plus de coques ; interrompu si un hostile est présent.
+  La carte affiche ce qu'il reste à fouiller. Les Généraux n'en font rien pour l'instant : c'est un
+  terrain pour les joueurs et les corsaires.
+- **Itinéraire d'invasion** : sur la carte du système, toucher un corps trace le chemin le plus court
+  depuis la flotte choisie (ou depuis le point de saut d'entrée) avec la durée estimée ; les ordres
+  partent vers ce corps précis (défendre, blocus, embuscade, fouiller).
+- **Sprites dédiés** pour l'épave (coque cisaillée, membrures, débris en dérive) et la station
+  abandonnée (moyeu éteint, anneau rompu, panneaux pendants).

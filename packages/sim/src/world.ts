@@ -38,7 +38,7 @@ export function createWorld(seed: number | string, opts: WorldOptions = {}): Wor
   return {
     seed: galaxy.seed, galaxy, time: 0, seasonEndsAt: (opts.seasonDays ?? B.SEASON_DAYS) * 86400,
     drawIndex: -1, lastDraw: null, colonies: {}, systems, relays: {}, fleets: {}, orders: {}, barters: {},
-    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, litBeacons: {}, lastClearing: [],
+    treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, salvage: {}, litBeacons: {}, lastClearing: [],
     events: [], battles: {}, titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
     owned: {}, relaysByOwner: {}, treatiesByColony: {}, engagedSystems: [],
   };
@@ -756,7 +756,7 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
     remaining -= step;
     processTimers(w, step);
     const routeSlot = Math.floor(w.time / ROUTE_INTERVAL_S);
-    if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); }
+    if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); processSalvage(w); }
     if (w.time >= nextHour) { runDraw(w); pruneBattles(w); }
     if (w.time >= w.seasonEndsAt) endSeason(w, 'silence');
   }
@@ -1054,6 +1054,27 @@ function continueConvoy(w: World, f: FleetState): void {
   const cargoClass = combatSize(f.units) === 0 && f.units.cargo > 0;
   const other = Object.values(w.fleets).find((g) => g.id !== f.id && g.owner === f.owner && g.at === f.at && g.poi === f.poi && g.order.kind === 'idle' && g.pos === null && (combatSize(g.units) === 0 && g.units.cargo > 0) === cargoClass);
   if (other && f.pos === null) { other.units = addFleet(other.units, f.units); stockAdd(other.cargo, f.cargo); delete w.fleets[f.id]; }
+}
+
+/** Fleets holding a wreck salvage it: Metal and Crystal for their capital, until the pool runs dry. */
+function processSalvage(w: World): void {
+  for (const f of Object.values(w.fleets)) {
+    if (f.at === null || f.poi === null || f.hop || combatSize(f.units) === 0) continue;
+    if (f.order.kind !== 'defend' && f.order.kind !== 'ambush' && f.order.kind !== 'idle' && f.order.kind !== 'move') continue;
+    const poi = poiOf(layoutOf(w.galaxy, f.at), f.poi);
+    if (!poi || poi.kind !== 'wreck') continue;
+    if (armedHostilesPresent(w, f.at, f.poi).length) continue;
+    const left = w.salvage[f.poi] ?? 1;
+    if (left <= 0) continue;
+    const colony = w.colonies[f.owner];
+    if (!colony) continue;
+    const k = Math.min(1, 0.3 + combatSize(f.units) * 0.1);
+    const take = { metal: Math.min(B.SALVAGE_PER_PASS.metal * k, B.SALVAGE_POOL.metal * left), crystal: Math.min(B.SALVAGE_PER_PASS.crystal * k, B.SALVAGE_POOL.crystal * left) };
+    const spent = Math.max(take.metal / B.SALVAGE_POOL.metal, take.crystal / B.SALVAGE_POOL.crystal);
+    w.salvage[f.poi] = Math.max(0, left - spent);
+    depositClamped(w, colony.capital, take);
+    logEvent(w, 'salvage', [colony.id], { system: f.at, poi: f.poi, metal: Math.round(take.metal), crystal: Math.round(take.crystal * 10) / 10, left: Math.round(w.salvage[f.poi]! * 100) });
+  }
 }
 
 /** Standing routes: idle cargos at the origin carry what the destination lacks. */

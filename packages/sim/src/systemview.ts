@@ -36,6 +36,8 @@ export interface PoiView {
   engaged: boolean;
   shield: { active: boolean; fraction: number } | null;
   battle: { id: string; startedAt: number; sides: string[]; kills: Record<string, number> } | null;
+  /** Wrecks: what remains to salvage, 0..1. */
+  salvage: number | null;
 }
 
 export interface SystemDetailView {
@@ -94,6 +96,7 @@ export function systemViewFor(w: World, colony: Colony, systemId: string): Syste
   base.pois = layout.pois.map((p) => ({
     id: p.id, kind: p.kind, designation: p.designation, x: p.x, y: p.y, size: p.size, cover: p.cover, hue: p.hue, ...(p.parent ? { parent: p.parent } : {}),
     known: known.has(p.id), main: p.id === st.mainPoi && !hidden, orbitSlots: slotsOf(p.id), structures: [], station: null, engaged: false, shield: null, battle: null,
+    salvage: p.kind === 'wreck' && known.has(p.id) ? w.salvage[p.id] ?? 1 : null,
   }));
   if (!visible) return base;
 

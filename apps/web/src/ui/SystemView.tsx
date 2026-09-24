@@ -18,6 +18,24 @@ const dockTab = signal<DockTab>('plateau');
 const sceneSel = signal<SceneSelection>(null);
 /** Body whose plateau is open; null = the system map. */
 const focusPoi = signal<string | null>(null);
+/** Last fleet of mine picked on the map: orders to a body go to it. */
+const pickedFleet = signal<string | null>(null);
+
+/** Shortest lane path inside the system, client side, for previews. */
+function pathOnMap(sv: SystemDetailView, from: string, to: string): string[] {
+  if (from === to) return [from];
+  const dist = new Map<string, number>([[from, 0]]); const prev = new Map<string, string>(); const done = new Set<string>();
+  for (;;) {
+    let u: string | null = null, du = Infinity;
+    for (const [k, d] of dist) if (!done.has(k) && d < du) { u = k; du = d; }
+    if (u === null || u === to) break;
+    done.add(u);
+    for (const l of sv.lanes) { const v = l.a === u ? l.b : l.b === u ? l.a : null; if (!v) continue; const nd = du + l.seconds; if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); } }
+  }
+  if (!dist.has(to)) return [];
+  const out = [to]; for (let v = to; v !== from; v = prev.get(v)!) out.unshift(prev.get(v)!);
+  return out;
+}
 const RES: Resource[] = ['metal', 'energy', 'food', 'crystal'];
 
 const POI_LABEL: Record<PoiView['kind'], 'poiRocky' | 'poiGas' | 'poiMoon' | 'poiBelt' | 'poiIce' | 'poiNebula' | 'poiWreck' | 'poiDerelict' | 'poiJump'> = {
@@ -42,7 +60,8 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
     focusPoi.value = null;
     dockTab.value = 'plateau';
     const sc = new SystemScene({ onSelect: (s) => {
-      if (s?.kind === 'poi') { sceneSel.value = s; return; }
+      if (s?.kind === 'poi') { sceneSel.value = s; dockTab.value = 'plateau'; return; }
+      if (s?.kind === 'fleet') { const f = systemView.value?.fleets.find((x) => x.id === s.id); if (f && f.owner === v.me.id) pickedFleet.value = f.id; }
       sceneSel.value = s;
       if (s?.kind === 'fleet') dockTab.value = 'fleets'; else if (s) dockTab.value = 'plateau';
     } });
@@ -55,6 +74,15 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
   useEffect(() => { if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sv, v]);
   useEffect(() => { scene.current?.setSelection(sel); if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sel]);
   useEffect(() => { scene.current?.setFocus(focus); }, [focus]);
+  const picked = useSig(pickedFleet);
+  // Route preview: from the picked fleet's body (or the entry jump point) to the selected body.
+  useEffect(() => {
+    if (!sv || !scene.current) return;
+    const target = sel?.kind === 'poi' ? sel.id : null;
+    const f = picked ? sv.fleets.find((x) => x.id === picked) : undefined;
+    const from = f ? (f.poi ?? f.hop?.to ?? null) : sv.jumps[0] ?? null;
+    scene.current.setRoute(target && from && target !== from ? pathOnMap(sv, from, target) : []);
+  }, [sel, picked, sv?.id]);
   // A system with a single body goes straight to its plateau.
   useEffect(() => { if (sv && focus === null && sv.pois.filter((p) => p.kind !== 'jump').length === 1) focusPoi.value = sv.mainPoi; }, [sv?.id]);
 
@@ -76,7 +104,7 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
         </h2>
         {sv && <SystemStatus sv={sv} />}
       </div>
-      {sv && <Dock v={v} sv={sv} sel={sel} focus={fp} />}
+      {sv && <Dock v={v} sv={sv} sel={sel} focus={fp} picked={picked} />}
       {!sv && <div class="dock"><p class="muted">{t('connecting')}</p></div>}
     </div>
   );
@@ -106,7 +134,7 @@ function SystemStatus({ sv }: { sv: SystemDetailView }) {
   );
 }
 
-function Dock({ v, sv, sel, focus }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; focus: PoiView | null }) {
+function Dock({ v, sv, sel, focus, picked }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; focus: PoiView | null; picked: string | null }) {
   const tab = useSig(dockTab);
   const tabs: DockTab[] = ['plateau', 'fleets', 'logistics', 'battle'];
   const labels: Record<DockTab, string> = { plateau: focus ? t('plateau') : t('systemMap'), fleets: t('tabFleets'), logistics: t('tabLogistics'), battle: t('tabBattle') };
@@ -116,7 +144,7 @@ function Dock({ v, sv, sel, focus }: { v: PlayerView; sv: SystemDetailView; sel:
         {tabs.map((k) => <button key={k} class={tab === k ? 'on' : ''} onClick={() => { dockTab.value = k; }}>{labels[k]}{k === 'battle' && sv.engaged ? <i class="dotn bad" /> : null}</button>)}
       </div>
       <div class="body">
-        {tab === 'plateau' && (focus ? <PlateauTab v={v} sv={sv} sel={sel} poi={focus} /> : <MapTab v={v} sv={sv} sel={sel} />)}
+        {tab === 'plateau' && (focus ? <PlateauTab v={v} sv={sv} sel={sel} poi={focus} /> : <MapTab v={v} sv={sv} sel={sel} picked={picked} />)}
         {tab === 'fleets' && <FleetsTab v={v} sv={sv} sel={sel} poi={focus} />}
         {tab === 'logistics' && <LogisticsHere v={v} sv={sv} />}
         {tab === 'battle' && <BattleTab v={v} sv={sv} poi={focus} />}
@@ -131,20 +159,23 @@ const unitLine = (u: { corvette: number; frigate: number; cruiser: number; cargo
   u ? [u.corvette && `${u.corvette} ${t('corvette')}`, u.frigate && `${u.frigate} ${t('frigate')}`, u.cruiser && `${u.cruiser} ${t('cruiser')}`, u.cargo && `${u.cargo} ${t('cargo')}`].filter(Boolean).join(' · ') : `${size} · ${t('unknownComposition')}`;
 
 /** The system map's list: every body, what stands there, probing. */
-function MapTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection }) {
+function MapTab({ v, sv, sel, picked }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; picked: string | null }) {
   const bodies = sv.pois.filter((p) => p.kind !== 'jump');
   const unknown = sv.pois.filter((p) => !p.known).length;
   const canProbe = v.me.influence >= AGENT_COST_INFLUENCE.probe;
   const selected = sel?.kind === 'poi' ? sv.pois.find((p) => p.id === sel.id) ?? null : null;
+  const pickedFleetView = picked ? sv.fleets.find((f) => f.id === picked && f.owner === v.me.id) ?? null : null;
+  const eta = selected && pickedFleetView ? (() => { const from = pickedFleetView.poi ?? pickedFleetView.hop?.to; if (!from) return 0; const path = pathOnMap(sv, from, selected.id); let s = 0; for (let i = 0; i + 1 < path.length; i++) { const l = sv.lanes.find((x) => (x.a === path[i] && x.b === path[i + 1]) || (x.b === path[i] && x.a === path[i + 1])); s += l?.seconds ?? 0; } return sv.mine || sv.allied ? s / 1.5 : s; })() : 0;
   return (
     <div>
       {selected && (
         <div class="selbox">
           <h3>{poiName(sv, selected)} <small>{selected.known ? t(POI_LABEL[selected.kind]) : t('unknownPoi')}</small></h3>
-          {selected.known && selected.kind !== 'jump' && <p class="muted">{selected.structures.length} {t('structure').toLowerCase()} · {selected.orbitSlots.join(' / ')} {t('slots').toLowerCase()}{selected.main ? ` · ${t('mainBody')}` : ''}{selected.cover >= 2 ? ` · ${t('probed')}` : ''}</p>}
+          {selected.known && selected.kind !== 'jump' && <p class="muted">{selected.structures.length} {t('structure').toLowerCase()} · {selected.orbitSlots.join(' / ')} {t('slots').toLowerCase()}{selected.main ? ` · ${t('mainBody')}` : ''}{selected.cover >= 2 ? ` · ${t('probed')}` : ''}{selected.salvage !== null ? ` · ${t('salvage')} ${Math.round(selected.salvage * 100)} %` : ''}</p>}
+          {pickedFleetView && <p class="muted">{unitLine(pickedFleetView.units, pickedFleetView.size)} → {selected.designation}{eta ? ` · ${hms(eta)}` : ''}</p>}
           <div class="actions">
             {selected.known && selected.kind !== 'jump' && <button class="primary" onClick={() => { focusPoi.value = selected.id; sceneSel.value = null; }}>{t('enterPoi')}</button>}
-            <FleetSendButtons v={v} sv={sv} poi={selected} />
+            <FleetSendButtons v={v} sv={sv} poi={selected} fleetId={pickedFleetView?.id ?? null} />
           </div>
         </div>
       )}
@@ -170,18 +201,21 @@ function MapTab({ v, sv, sel }: { v: PlayerView; sv: SystemDetailView; sel: Scen
 }
 
 /** Orders that send an idle fleet of mine to a body: defend/move when the system is friendly, raid/blockade/ambush otherwise. */
-function FleetSendButtons({ v, sv, poi }: { v: PlayerView; sv: SystemDetailView; poi: PoiView }) {
-  const idle = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.order === 'idle' && f.combat > 0);
-  const here = idle.find((f) => f.at === sv.id) ?? idle[0];
-  if (!here || poi.kind === 'jump') return null;
+function FleetSendButtons({ v, sv, poi, fleetId }: { v: PlayerView; sv: SystemDetailView; poi: PoiView; fleetId: string | null }) {
+  const idle = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.order !== 'convoy' && f.combat > 0);
+  const here = (fleetId ? idle.find((f) => f.id === fleetId) : undefined) ?? idle.find((f) => f.at === sv.id && f.order === 'idle') ?? idle.find((f) => f.order === 'idle');
+  if (!here) return null;
   const target = `${sv.id}:${poi.designation}`;
   const friendly = sv.mine || sv.allied;
+  const go = (order: 'defend' | 'blockade' | 'ambush' | 'move'): void => { void act({ type: 'fleet_order', fleet: here.id, order, target }); };
   return (
     <>
-      {friendly && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'defend', target })}>{t('defend')}</button>}
-      {!friendly && sv.owner && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'blockade', target })}>{t('blockade')}</button>}
-      {!friendly && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'ambush', target })}>{t('ambush')}</button>}
-      {!friendly && !sv.owner && <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'move', target })}>{t('move')}</button>}
+      {friendly && poi.kind !== 'jump' && <button onClick={() => go('defend')}>{t('defend')}</button>}
+      {poi.kind === 'jump' && <button onClick={() => go(friendly ? 'defend' : 'ambush')}>{friendly ? t('defend') : t('ambush')}</button>}
+      {!friendly && sv.owner && poi.kind !== 'jump' && <button onClick={() => go('blockade')}>{t('blockade')}</button>}
+      {!friendly && poi.kind !== 'jump' && <button onClick={() => go('ambush')}>{t('ambush')}</button>}
+      {poi.kind === 'wreck' && <button onClick={() => go(friendly ? 'defend' : 'ambush')}>{t('salvageHere')}</button>}
+      {!friendly && !sv.owner && poi.kind !== 'jump' && poi.kind !== 'wreck' && <button onClick={() => go('move')}>{t('move')}</button>}
     </>
   );
 }

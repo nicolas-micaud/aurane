@@ -193,6 +193,8 @@ export interface World {
   reveals: Record<string, Record<string, number>>; // colony → sector → until
   /** Hidden points of interest a colony has probed: colony → system → POI ids. */
   known: Record<string, Record<string, string[]>>;
+  /** What remains to salvage at each wreck (POI id → fraction 0..1 of the pool). Absent = untouched. */
+  salvage: Record<string, number>;
   litBeacons: Record<string, LitBeacon>;
   lastClearing: Clearing[];
   events: WorldEvent[];

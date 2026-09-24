@@ -483,6 +483,43 @@ export const MODELS = {
     g.add(greebles(5, 0, 0.2, 0, 0.5, 0.5, 0.12));
     return g;
   },
+  /** A broken warship: a torn hull section, exposed frames, dead engines, one lingering light. */
+  wreck() {
+    srand(113);
+    const g = group(
+      wedge(6.4, 2.2, 1.0, HULL_DARK),
+      box(2.0, 0.6, 1.4, GUN, [-0.6, 0.75, 0]),
+      // The prow is sheared off: frames sticking out
+      box(0.12, 1.2, 0.12, RUST, [2.6, 0.2, 0.5]), box(0.12, 0.9, 0.12, RUST, [2.4, 0.1, -0.4]), box(1.2, 0.1, 0.1, RUST, [2.2, 0.6, 0.0], [0, 0, 0.5]),
+      // Ribs along a torn flank
+      cyl(0.36, 0.4, 3.0, GUN, [-1.4, 0, 1.5], [0, 0, Math.PI / 2]),
+      cyl(0.3, 0.5, 0.6, GUN, [-3.0, 0, 1.5], [0, 0, Math.PI / 2], 16),
+      box(0.8, 0.5, 0.5, RUST, [-2.0, -0.2, -1.4]),
+      sphere(0.09, WINDOW, [-0.9, 1.1, 0.2], 8),
+    );
+    for (let i = 0; i < 5; i++) g.add(box(0.1, 0.7 + rnd() * 0.5, 0.1, RUST, [-2.2 + i * 0.7, 0.2, -1.1], [0, 0, (rnd() - 0.5) * 0.6]));
+    g.add(greebles(14, -0.6, 0.5, 0, 2.2, 0.8, 0.2, GUN));
+    // Debris drifting around the hull
+    for (let i = 0; i < 9; i++) { const a = rnd() * Math.PI * 2, r = 3.2 + rnd() * 1.4; g.add(box(0.2 + rnd() * 0.4, 0.1 + rnd() * 0.2, 0.2 + rnd() * 0.3, rnd() < 0.5 ? GUN : RUST, [Math.cos(a) * r, (rnd() - 0.5) * 0.8, Math.sin(a) * r], [rnd(), rnd(), rnd()])); }
+    return g;
+  },
+  /** A dead station: dark hub, a missing ring section, panels hanging, no lights but one. */
+  derelict() {
+    srand(127);
+    const g = group(
+      hexPrism(2.0, 1.2, GUN, [0, 0, 0], [0, Math.PI / 6, 0]),
+      hexPrism(1.3, 2.4, HULL_DARK, [0, 0, 0], [0, Math.PI / 6, 0]),
+      mesh(new THREE.TorusGeometry(4.4, 0.34, 12, 64, Math.PI * 1.45), GUN, [0, 0, 0], [Math.PI / 2, 0, 0.6]),
+      cyl(0.18, 0.24, 3.0, RUST, [0, 2.4, 0], [0.2, 0, 0.1]),
+      sphere(0.18, WINDOW, [0, 3.9, 0.3], 8),
+    );
+    for (let i = 0; i < 8; i++) { const a = 0.6 + (i / 8) * Math.PI * 1.45; g.add(box(1.2, 0.8, 0.8, i % 3 ? GUN : RUST, [Math.cos(a) * 4.4, 0, -Math.sin(a) * 4.4], [0, a, 0])); }
+    for (let i = 0; i < 3; i++) { const a = (i * Math.PI * 2) / 3; g.add(at(truss(2.6, 0.6, GUN, 3), Math.cos(a) * 3.2, 0, Math.sin(a) * 3.2, -a)); }
+    g.add(at(solar(2.4, 1.2, new THREE.MeshStandardMaterial({ color: 0x1a2236, metalness: 0.4, roughness: 0.7 })), 5.4, -0.3, 1.2, 0.9));
+    g.add(box(0.1, 0.1, 1.6, RUST, [5.0, -0.2, 0.6], [0.4, 0, 0]));
+    g.add(greebles(10, 0, 0.6, 0, 1.4, 1.4, 0.22, GUN));
+    return g;
+  },
   tradepost() {
     srand(109);
     const g = group(

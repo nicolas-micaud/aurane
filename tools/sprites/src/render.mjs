@@ -64,7 +64,10 @@ if (icons) {
   process.exit(0);
 }
 await mkdir(outDir, { recursive: true });
-const manifest = { px, frames: 16, models: {} };
+// A partial render (--only) keeps the other models' entries.
+let previous = {};
+try { previous = JSON.parse(await readFile(join(outDir, 'manifest.json'), 'utf8')).models ?? {}; } catch { /* first render */ }
+const manifest = { px, frames: 16, models: only.length ? previous : {} };
 for (const kind of kinds) {
   const r = await page.evaluate(({ kind, px }) => window.renderModel(kind, px), { kind, px });
   await writeFile(join(outDir, `${kind}.png`), Buffer.from(r.base.split(',')[1], 'base64'));

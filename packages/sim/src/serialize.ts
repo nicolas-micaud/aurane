@@ -80,5 +80,6 @@ function migrateV2(s: Omit<World, 'galaxy'>, galaxy: ReturnType<typeof generateG
   }
   for (const b of Object.values(s.battles)) b.poi ||= s.systems[b.system]?.mainPoi ?? '';
   s.known ??= {};
+  s.salvage ??= {};
   return s;
 }

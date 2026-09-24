@@ -64,7 +64,7 @@ const STRINGS = {
     poiRocky: 'Planète tellurique', poiGas: 'Géante gazeuse', poiMoon: 'Lune', poiBelt: 'Ceinture d\'astéroïdes', poiIce: 'Champ de glace', poiNebula: 'Poche de nébuleuse', poiWreck: 'Épave ancienne', poiDerelict: 'Station abandonnée', poiJump: 'Point de saut',
     systemMap: 'Carte du système', enterPoi: 'Voir le plateau', unknownPoi: 'Signature non identifiée', probe: 'Sonder', probeDesc: 'Révèle les corps couverts de ce système. 20 min.', probed: 'Sondé', hiddenOwner: 'Quelqu\'un vit ici, à couvert.',
     tplForge: 'Forge', tplOasis: 'Oasis', tplCrossroads: 'Carrefour', tplGraveyard: 'Cimetière', tplSanctuary: 'Sanctuaire', tplLair: 'Repaire', tplBurnt: 'Brûlé',
-    laneTravel: 'en transit vers', mainBody: 'corps principal', bodies: 'corps', sendHere: 'Envoyer ici', relayHere: 'Relais de secours ici',
+    salvage: 'Épave à fouiller', salvageHere: 'Fouiller l\'épave', laneTravel: 'en transit vers', mainBody: 'corps principal', bodies: 'corps', sendHere: 'Envoyer ici', relayHere: 'Relais de secours ici',
     briefing: 'Briefing', dismiss: 'Compris', compiling: 'Ton Général relit ta doctrine…', compiled: 'Doctrine appliquée', viaModel: 'interprétée par ton Général', viaRules: 'interprétée par les règles de base (modèle indisponible)',
   },
   en: {
@@ -128,7 +128,7 @@ const STRINGS = {
     poiRocky: 'Rocky planet', poiGas: 'Gas giant', poiMoon: 'Moon', poiBelt: 'Asteroid belt', poiIce: 'Ice field', poiNebula: 'Nebula pocket', poiWreck: 'Ancient wreck', poiDerelict: 'Derelict station', poiJump: 'Jump point',
     systemMap: 'System map', enterPoi: 'View the plateau', unknownPoi: 'Unidentified signature', probe: 'Probe', probeDesc: 'Reveals the covered bodies of this system. 20 min.', probed: 'Probed', hiddenOwner: 'Someone lives here, under cover.',
     tplForge: 'Forge', tplOasis: 'Oasis', tplCrossroads: 'Crossroads', tplGraveyard: 'Graveyard', tplSanctuary: 'Sanctuary', tplLair: 'Lair', tplBurnt: 'Burnt',
-    laneTravel: 'in transit to', mainBody: 'main body', bodies: 'bodies', sendHere: 'Send here', relayHere: 'Backup relay here',
+    salvage: 'Salvage left', salvageHere: 'Salvage the wreck', laneTravel: 'in transit to', mainBody: 'main body', bodies: 'bodies', sendHere: 'Send here', relayHere: 'Backup relay here',
     briefing: 'Briefing', dismiss: 'Got it', compiling: 'Your General is reading your doctrine…', compiled: 'Doctrine applied', viaModel: 'interpreted by your General', viaRules: 'interpreted by the base rules (model unavailable)',
   },
 } as const;

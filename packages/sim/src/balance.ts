@@ -131,6 +131,9 @@ export const BULLY_SCORE_RATIO = 3;
 export const PROBE_MINUTES = 20;
 export const PROBE_INFLUENCE_PER_FIND = 3;
 export const WRECK_FIRST_CRYSTAL = 30;
+/** Salvage: a fleet holding a wreck recovers this much per pass (every route interval), from a finite pool. */
+export const SALVAGE_POOL = { metal: 600, crystal: 120 } as const;
+export const SALVAGE_PER_PASS = { metal: 24, crystal: 5 } as const;
 export const AGENT_COST_INFLUENCE = { spy: 10, sabotage: 25, envoy: 15, probe: 8 } as const;
 export const AGENT_SECONDS = { spy: 1800, sabotage: 3600, envoy: 2700, probe: 1200 } as const;
 export const SPY_REVEAL_HOURS = 6;

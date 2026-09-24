@@ -63,6 +63,8 @@ export class SystemScene {
   private static readonly STATION_VIS = { r: 1.15, a: 325 };
   /** Point of interest whose plateau is shown; null shows the system map. */
   private focus: string | null = null;
+  /** A planned in-system route to preview on the map (POI ids, in order). */
+  private route: string[] = [];
   private mapUnit = 30;
   private laneShips: LaneShip[] = [];
   private mapPlanets: PlanetFilter[] = [];
@@ -121,6 +123,12 @@ export class SystemScene {
     if (this.ready && this.view && this.ctx) this.render(this.view, this.ctx);
   }
   get focused(): string | null { return this.focus; }
+
+  /** Preview an in-system route on the map (empty to clear). */
+  setRoute(pois: string[]): void {
+    this.route = pois;
+    if (this.ready && this.view && this.ctx && this.focus === null) this.render(this.view, this.ctx);
+  }
 
   update(view: SystemDetailView, ctx: SceneContext): void {
     this.view = view; this.ctx = ctx;
@@ -229,6 +237,18 @@ export class SystemScene {
       const a = byId.get(f.hop.from), b = byId.get(f.hop.to);
       if (a && b) { const pa = this.mapXY(a), pb = this.mapXY(b); routeG.moveTo(pa.x, pa.y).lineTo(pb.x, pb.y); routeG.stroke({ color: 0xffffff, width: 2.5, alpha: 0.5 }); }
     }
+    // Planned route preview: a bright dashed line with arrowheads.
+    for (let i = 0; i + 1 < this.route.length; i++) {
+      const a = byId.get(this.route[i]!), b = byId.get(this.route[i + 1]!);
+      if (!a || !b) continue;
+      const pa = this.mapXY(a), pb = this.mapXY(b);
+      const len = Math.hypot(pb.x - pa.x, pb.y - pa.y); const ux = (pb.x - pa.x) / len, uy = (pb.y - pa.y) / len;
+      for (let d = 0; d < len; d += 14) { const e = Math.min(len, d + 8); routeG.moveTo(pa.x + ux * d, pa.y + uy * d).lineTo(pa.x + ux * e, pa.y + uy * e); }
+      routeG.stroke({ color: 0xffffff, width: 2.5, alpha: 0.85 });
+      const mx = pa.x + ux * len * 0.55, my = pa.y + uy * len * 0.55;
+      routeG.moveTo(mx + ux * 7, my + uy * 7).lineTo(mx - ux * 5 - uy * 6, my - uy * 5 + ux * 6).lineTo(mx - ux * 5 + uy * 6, my - uy * 5 - ux * 6).closePath();
+      routeG.fill({ color: 0xffffff, alpha: 0.9 });
+    }
     this.mapLayer.addChild(routeG);
     // Points of interest.
     for (const p of v.pois) {
@@ -259,7 +279,7 @@ export class SystemScene {
         const n = new Sprite(this.tex.glow); n.anchor.set(0.5); n.tint = p.hue % 2 ? 0x8a46c9 : 0x2a8f9d; n.blendMode = 'add'; n.alpha = 0.55; n.width = n.height = R * 4.2; node.addChild(n);
         const n2 = new Sprite(this.tex.glow); n2.anchor.set(0.5); n2.tint = 0x5a4bd6; n2.blendMode = 'add'; n2.alpha = 0.35; n2.width = R * 3; n2.height = R * 2; n2.rotation = 0.6; node.addChild(n2);
       } else if (p.kind === 'wreck' || p.kind === 'derelict') {
-        const model = hasSprite(p.kind === 'wreck' ? 'cruiser' : 'station') ? this.spriteNode(p.kind === 'wreck' ? 'cruiser' : 'station', (p.hue * Math.PI) / 180, R * 2.2, p.kind === 'wreck' ? 0x333940 : 0x556070, p.kind === 'wreck' ? 0.55 : 0.8) : null;
+        const model = hasSprite(p.kind) ? this.spriteNode(p.kind, (p.hue * Math.PI) / 180, R * 2.4, 0xffb060, 0.95) : null;
         if (model) node.addChild(model);
         else { const g = new Graphics(); g.circle(0, 0, R * 0.6); g.stroke({ color: 0x8a93a6, width: 2 }); node.addChild(g); }
       } else {
@@ -390,7 +410,7 @@ export class SystemScene {
       for (let i = 0; i < 90; i++) { const a = rnd() * Math.PI * 2, rr = this.unit * (0.2 + rnd() * 0.7); g.circle(Math.cos(a) * rr, Math.sin(a) * rr * 0.7, 1.5 + rnd() * 4); g.fill({ color: [0x8a93a6, 0x6e7688, 0xa8b0c0][i % 3]!, alpha: 0.9 }); }
       this.bg.addChild(g);
     } else if (poi && (poi.kind === 'wreck' || poi.kind === 'derelict')) {
-      const model = this.spriteNode(poi.kind === 'wreck' ? 'cruiser' : 'station', (poi.hue * Math.PI) / 180, this.unit * (poi.kind === 'wreck' ? 1.6 : 1.9), poi.kind === 'wreck' ? 0x333940 : 0x556070, poi.kind === 'wreck' ? 0.6 : 0.85);
+      const model = this.spriteNode(poi.kind, (poi.hue * Math.PI) / 180, this.unit * (poi.kind === 'wreck' ? 1.9 : 2.3), 0xffb060, 1);
       if (model) this.bg.addChild(model);
     }
     // Plateau edge: where fleets arrive.

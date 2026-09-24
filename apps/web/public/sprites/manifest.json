@@ -62,6 +62,14 @@
       "radius": 2.755200000166893,
       "elevation": 55
     },
+    "wreck": {
+      "radius": 5.7081747960568965,
+      "elevation": 55
+    },
+    "derelict": {
+      "radius": 10.439771625657661,
+      "elevation": 55
+    },
     "tradepost": {
       "radius": 5.271959594928935,
       "elevation": 55

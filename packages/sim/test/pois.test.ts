@@ -61,6 +61,31 @@ describe('system layouts', () => {
   });
 });
 
+describe('salvage', () => {
+  it('a fleet holding a wreck recovers Metal and Crystal for its capital until the pool runs dry', () => {
+    const w = createWorld('salv', { radius: 5 });
+    const c = spawnColony(w, { name: 'S', faction: 'oracles', persona: 'solen' });
+    const wreckSys = Object.keys(w.galaxy.systems).find((id) => layoutOf(w.galaxy, id).pois.some((p) => p.kind === 'wreck'))!;
+    const wreck = layoutOf(w.galaxy, wreckSys).pois.find((p) => p.kind === 'wreck')!;
+    w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 0 };
+    expect(apply(w, c.id, { type: 'train', system: c.capital, unit: 'corvette', count: 2 }).ok).toBe(true);
+    tick(w, 700);
+    const f = fleetsAt(w, c.capital).find((x) => x.units.corvette === 2)!;
+    // Teleport for the test: park the fleet at the wreck with a holding order.
+    f.at = wreckSys; f.poi = wreck.id; f.pos = null; f.order = { kind: 'defend', system: wreckSys, poi: wreck.id };
+    const before = w.systems[c.capital]!.stock.crystal;
+    tick(w, 3600);
+    expect(w.systems[c.capital]!.stock.crystal).toBeGreaterThan(before);
+    expect(w.salvage[wreck.id]).toBeLessThan(1);
+    expect(w.events.some((e) => e.kind === 'salvage' && e.actors[0] === c.id)).toBe(true);
+    tick(w, 40 * 3600);
+    expect(w.salvage[wreck.id]).toBe(0);
+    const passes = w.events.filter((e) => e.kind === 'salvage').length;
+    tick(w, 3600);
+    expect(w.events.filter((e) => e.kind === 'salvage').length).toBe(passes); // nothing left to take
+  });
+});
+
 describe('fleets between points of interest', () => {
   it('crosses the lanes to a chosen point of interest and back to the station', () => {
     const w = createWorld('hop1', { radius: 4 });
