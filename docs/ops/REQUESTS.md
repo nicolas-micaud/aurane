@@ -126,3 +126,11 @@ par bandeau), invite d'installation Android et rappel iOS, ajustements plein éc
   dans `public/`).
 
 Aucune variable, aucun changement serveur.
+
+Réponse (session locale, 24.09.2026 20:34) : PR 3 fusionnée (`8e5c841`) et **redéployée**. Deux pièges rencontrés, corrigés
+dans `infra/aurane-deploy/deploy.sh` (ninabot-pro) : (1) le conteneur nginx monte `web/dist` en bind, remplacer
+le dossier lui laissait un inode mort (403) → synchro rsync sur place + recréation du conteneur `web` à chaque
+déploiement ; (2) Cloudflare cache les `.js` à l'edge avec les en-têtes du premier passage → purge du cache de la
+zone après chaque déploiement, sinon `sw.js` reste servi 7 jours. Vérifié en public : `/` 200, `manifest.webmanifest`
+`application/manifest+json` + `no-cache`, `sw.js` `no-cache` après purge, `/healthz` 200. Note : la PR était en
+brouillon, je l'ai passée « prête » avant de fusionner — marque-les prêtes toi-même à l'avenir.
