@@ -34,7 +34,15 @@ Infomaniak prend la suite en cas de panne.
 
 ## Fournisseur
 
-Nick choisit le moins cher et rapide entre Scaleway et Alibaba Cloud ; la session locale fait le banc
+**Retenu : Scaleway, Mistral Small 3.2 24B instruct** (banc du 25.09 par la session locale, 12 conversations par
+candidat sur 3 tours) : 12/12 réponses modèle, p50 0,96 s, p90 1,16 s, JSON valide, le moins cher au jeton des
+candidats, servi depuis Paris. Derrière : gpt-oss-120b (Scaleway, p90 3,4 s), Qwen 3.6 35B sur Alibaba Francfort
+(p90 2,5 s, plus cher), qwen3.8-flash (p90 3,1 s), qwen-flash (83 % de réponses, hors critère). Les modèles
+raisonnants sans coupure du raisonnement (Gemma 4, Qwen 3.6 chez Scaleway) rendent des réponses vides : le
+raisonnement consomme `max_tokens`. Références : rog1 p90 13,6 s, Apertus p90 9,4 s. Variables posées :
+`LLM_PRIMARY_*` Scaleway avec `CONCURRENCY=8`, `TIMEOUT_MS=20000`, `JSON_MODE=1` ; Infomaniak en repli.
+
+Nick avait choisi le moins cher et rapide entre Scaleway et Alibaba Cloud ; la session locale a fait le banc
 (`tools/llm-bench/bench.mjs` : latence p50/p90, JSON valide, jetons, une réponse par personnage à lire) et pose
 les variables. Le client accepte désormais `LLM_<ROLE>_TIMEOUT_MS`, `LLM_<ROLE>_JSON_MODE=1` et
 `LLM_<ROLE>_EXTRA_BODY` (JSON fusionné dans chaque requête, ex. `{"enable_thinking":false}` pour Qwen3).
