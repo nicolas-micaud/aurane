@@ -13,7 +13,9 @@ aws --endpoint-url "$ENDPOINT" s3 cp --quiet "$OUT" "s3://$BUCKET/pg/aurane-${ST
 rm -f "$OUT"
 # rétention 14 jours
 CUTOFF=$(date -u -d '14 days ago' +%Y%m%dT%H%M%SZ)
+# (boucle en if/fi : une condition fausse en fin de `&&` ferait sortir le script en erreur sous `set -e -o pipefail`)
 aws --endpoint-url "$ENDPOINT" s3 ls "s3://$BUCKET/pg/" | awk '{print $4}' | while read -r f; do
-  s=${f#aurane-}; s=${s%.dump}; [ -n "$s" ] && [[ "$s" < "$CUTOFF" ]] && aws --endpoint-url "$ENDPOINT" s3 rm --quiet "s3://$BUCKET/pg/$f" && echo "purgé $f"
+  s=${f#aurane-}; s=${s%.dump}
+  if [ -n "$s" ] && [[ "$s" < "$CUTOFF" ]]; then aws --endpoint-url "$ENDPOINT" s3 rm --quiet "s3://$BUCKET/pg/$f"; echo "purgé $f"; fi
 done
 echo "backup ok aurane-${STAMP}.dump"
