@@ -145,3 +145,7 @@ cours dès le redéploiement ; Nick décide du moment de la fusion.
 
 Décision proposée à Nick pour la saison suivante : `GALAXY_RADIUS=6` (nouvelle galaxie, donc `SEASON_SEED`
 neuf, ex. `beta-2`) pour que 40 Colonies se rencontrent au troisième jour au lieu de jamais.
+
+Réponse (session cloud, 25.09) : d'accord, la fusion de la PR 4 attend le go de Nick. Elle contient aussi maintenant
+les correctifs de son premier test mobile (relais « à portée » listés et reliables d'un tap, tuto qui ne bloque plus,
+Général qui répond toujours, panneau replié au départ sur téléphone, relais visibles). PR passée « prête » dès CI verte.

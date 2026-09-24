@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { BUILDINGS, UNITS, type Building, type Resource, type UnitType } from '@aurane/protocol';
-import { AGENT_COST_INFLUENCE, BUILDING_COST, UNIT_COST, type PlayerView, type SystemView } from '@aurane/sim';
+import type { Resource } from '@aurane/protocol';
+import { AGENT_COST_INFLUENCE, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, fetchBriefing, status, submitDoctrine, toast, view, requestLink } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
@@ -9,7 +9,7 @@ import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
 import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
-import { Cost, InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
+import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt';
@@ -152,7 +152,7 @@ function Coach({ v }: { v: PlayerView }) {
   const built = owned.some((s) => (s.buildings?.length ?? 0) > 2 || (s.buildQueue?.length ?? 0) > 0);
   const steps: { text: string; why: string; met: boolean; go?: () => void }[] = [
     { text: t('coach1'), why: t('coach1Why'), met: sel !== null, go: () => { selected.value = v.me.capital; tab.value = 'system'; } },
-    { text: t('coach2'), why: t('coach2Why'), met: v.me.connectedCount >= 2, go: () => { selected.value = v.me.capital; tab.value = 'system'; } },
+    { text: t('coach2'), why: t('coach2Why'), met: v.me.connectedCount >= 2 || v.relays.some((r) => r.owner === v.me.id), go: () => { selected.value = v.me.capital; tab.value = 'system'; linkFrom.value = v.me.capital; } },
     { text: t('coach6'), why: t('coach6Why'), met: entered, go: () => { systemMode.value = v.me.capital; } },
     { text: t('coach7'), why: t('coach7Why'), met: built, go: () => { systemMode.value = v.me.capital; } },
     { text: t('coach8'), why: t('coach8Why'), met: (v.me.policy.notes ?? '').length > 0, go: () => { tab.value = 'general'; } },
@@ -180,15 +180,24 @@ function Coach({ v }: { v: PlayerView }) {
 let hudReceivedAt = Date.now();
 view.subscribe(() => { hudReceivedAt = Date.now(); });
 
+const isNarrow = (): boolean => window.innerWidth < 900;
+
 function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => !isNarrow());
+  const [more, setMore] = useState(false);
   const current = useSig(tab);
-  const tabs: Tab[] = ['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'];
+  const sel = useSig(selected);
+  // On a phone the panel stays folded until something is selected or a tab is tapped: the map comes first.
+  useEffect(() => { if (sel && isNarrow()) setOpen(true); }, [sel]);
+  const all: Tab[] = ['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'];
+  const primary: Tab[] = ['colony', 'system', 'general'];
+  const tabs: Tab[] = isNarrow() && !more ? [...primary, ...(primary.includes(current) ? [] : [current])] : all;
   const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), logistics: t('tabLogistics'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog') };
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
-        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); }}>{labels[k]}{k === 'log' && v.events.length > 0 ? <i class="dotn" /> : null}</button>)}
+        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && v.events.length > 0 ? <i class="dotn" /> : null}</button>)}
+        {isNarrow() && <button class={more ? 'on' : ''} onClick={(e) => { e.stopPropagation(); setMore(!more); }} title={t('more')}>⋯</button>}
         <button class="collapse" onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? '▾' : '▴'}</button>
       </div>
       <div class="body">
@@ -235,6 +244,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
   const fleetsHere = v.fleets.filter((f) => f.at === s.id && f.owner === v.me.id);
   const drawn = v.draw?.bands.includes(s.band) ?? false;
   const targets = v.linkTargets[s.id]?.length ?? 0;
+  const linking = useSig(linkFrom) === s.id;
   return (
     <div>
       <h2><span class={`r-${s.resource}`}><Icon name={s.resource} size={18} /></span> {s.name} {s.id === v.me.capital && <span class="tag">{t('capitalTag')}</span>} {s.kind === 'pulsar' && <span class="tag">{t('kindPulsar')}</span>} {s.kind === 'beacon' && <span class="tag">{t('kindBeacon')}</span>}</h2>
@@ -248,40 +258,39 @@ function SystemPanel({ v }: { v: PlayerView }) {
       </div>
       <div class="actions">
         <button class={`enter ${s.engaged ? 'hot' : ''}`} onClick={() => { systemMode.value = s.id; }}>◎ {t('enterSystem')}</button>
-        <button class="primary" onClick={() => { linkFrom.value = s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
+        <button class="primary" onClick={() => { linkFrom.value = linking ? null : s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
         {s.kind === 'beacon' && mine && !s.lit && <button onClick={() => void act({ type: 'light_beacon', system: s.id })}>{t('lightBeacon')}</button>}
         {!mine && <button disabled={v.me.influence < AGENT_COST_INFLUENCE.probe} onClick={() => void act({ type: 'agent_mission', mission: 'probe', target: s.id })}>{t('probe')} ★{AGENT_COST_INFLUENCE.probe}</button>}
         {s.lit && <span class="tag">{t('lit')} {t('by')} {v.colonies.find((c) => c.id === s.lit!.by)?.name}</span>}
       </div>
-      {mine && s.buildings && (
-        <>
-          <h3>{t('build')} <small>{free > 0 ? `${free}/${totalSlots}` : t('noSlot')}</small></h3>
-          <div class="cards">
-            {BUILDINGS.map((b: Building) => {
-              const has = s.buildings!.includes(b);
-              return (
-                <button key={b} class={`card-btn ${has ? 'has' : ''}`} disabled={has || free <= 0} onClick={() => void act({ type: 'build', system: s.id, building: b })}>
-                  <b>{t(b)}</b><small>{t(`${b}Desc`)}</small>{!has && <Cost cost={BUILDING_COST[b]} />}{has && <small class="ok">✓</small>}
-                </button>
-              );
-            })}
-          </div>
-          {s.buildings.includes('shipyard') && (
-            <>
-              <h3>{t('train')}</h3>
-              <div class="cards">
-                {UNITS.map((u: UnitType) => (
-                  <button key={u} class="card-btn" onClick={() => void act({ type: 'train', system: s.id, unit: u, count: 4 })}>
-                    <b>{t(u)} ×4</b><small>{t(`${u}Desc`)}</small><Cost cost={Object.fromEntries(Object.entries(UNIT_COST[u]).map(([k, x]) => [k, (x ?? 0) * 4]))} />
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </>
-      )}
+      {linking && <LinkTargets v={v} from={s.id} />}
+      {mine && s.buildings && <p class="muted small">{t('buildHint')} · {free > 0 ? `${free}/${totalSlots} ${t('slots').toLowerCase()}` : t('noSlot')}</p>}
       {fleetsHere.length > 0 && <FleetList v={v} fleets={fleetsHere} />}
       {!mine && s.owner && <SystemHostile v={v} s={s} />}
+    </div>
+  );
+}
+
+/** Link mode: the systems a relay can reach from here, with their cost. Tap a row to build; no need to find the star. */
+function LinkTargets({ v, from }: { v: PlayerView; from: string }) {
+  const cands = (v.linkTargets[from] ?? []).map((c) => ({ ...c, sys: v.systems.find((x) => x.id === c.to) })).filter((c) => c.sys);
+  const stock = v.systems.find((x) => x.id === from)?.stock ?? v.me.stock;
+  return (
+    <div class="linktargets">
+      <h3>{t('targetsInRange')} <small>{cands.length}</small></h3>
+      {cands.length === 0 && <p class="muted small">{t('noTargets')}</p>}
+      <ul class="list">
+        {cands.map((c) => {
+          const afford = c.metal <= Math.max(stock.metal, v.me.stock.metal) && c.energy <= Math.max(stock.energy, v.me.stock.energy);
+          return (
+            <li key={c.to}>
+              <span class={`dot r-${c.sys!.resource}`} /> <b>{c.sys!.name}</b> <small>{t(c.sys!.resource)} · {t('band')} {c.sys!.band}</small>
+              <span class="cost"><span class="r-metal"><Icon name="metal" size={12} />{c.metal}</span><span class="r-energy"><Icon name="energy" size={12} />{c.energy}</span></span>
+              <button class="primary" disabled={!afford} onClick={() => { linkFrom.value = null; void act({ type: 'build_relay', a: from, b: c.to }).then((ok) => { if (!ok && toast.value) toast.value = { text: tError(toast.value.text), kind: 'err' }; }); }}>{t('linkTo')}</button>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -430,24 +439,36 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
   );
 }
 
+const talk = signal<{ who: 'me' | 'general'; text: string }[]>([]);
+
 function GeneralPanel({ v }: { v: PlayerView }) {
-  const [text, setText] = useState(v.me.policy.notes);
+  const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ summary: string; source: string } | null>(null);
+  const thread = useSig(talk);
   const p = v.me.policy;
   const submit = async () => {
-    setBusy(true);
-    const r = await submitDoctrine(text, lang.value);
+    const said = text.trim();
+    if (!said) return;
+    setBusy(true); setText('');
+    talk.value = [...talk.value.slice(-5), { who: 'me', text: said }];
+    const r = await submitDoctrine(said, lang.value);
     setBusy(false);
-    if (r) setResult(r);
+    talk.value = [...talk.value.slice(-5), { who: 'general', text: r ? r.reply : t('generalOffline') }];
   };
   return (
     <div>
       <h2>{t(v.me.persona as 'vane')}</h2>
       <p class="muted">{t('doctrineHint')}</p>
-      <textarea rows={4} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
-      <button class="primary" disabled={busy || text.trim().length < 3} onClick={() => void submit()}>{busy ? t('compiling') : t('apply')}</button>
-      {result && <p class="tag">{t('compiled')} · {result.source === 'llm' ? t('viaModel') : t('viaRules')}<br /><small>{result.summary}</small></p>}
+      <div class="talk">
+        {thread.length === 0 && <p class="bubble general">{t('generalHello')}</p>}
+        {thread.map((m, i) => <p key={i} class={`bubble ${m.who}`}>{m.text}</p>)}
+        {busy && <p class="bubble general muted">{t('compiling')}</p>}
+      </div>
+      <div class="say">
+        <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
+        <button class="primary" disabled={busy || text.trim().length < 2} onClick={() => void submit()}>{t('send')}</button>
+      </div>
+      {p.notes && <p class="muted small">{t('doctrine')} : {p.notes}</p>}
       <h3>{t('policy')}</h3>
       <p>{t('expansion')}: {(p.expansion * 100).toFixed(0)} % · {t('aggression')}: {(p.aggression * 100).toFixed(0)} %</p>
       <div class="row">
