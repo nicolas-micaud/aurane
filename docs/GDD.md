@@ -183,8 +183,8 @@ Chaque système offre 1 à 3 emplacements. Six bâtiments en Saison 0, tous comp
 | **Comptoir** | +1 région commerciale, frais réduits | Vivres, Métal |
 | **Amplificateur** | portée des relais partant d'ici +25 % | Énergie, Cristal |
 | **Antenne** | révèle les secteurs adjacents | Énergie |
-| **Raffinerie** | 6 Rium par Tirage, seulement en orbite d'une géante gazeuse | Métal, Énergie |
-| **Synthétiseur** | 8 Énergie + 4 Vivres → 4 Rium par Tirage | Métal, Cristal |
+| **Raffinerie** | 20 Rium par Tirage, seulement en orbite d'une géante gazeuse : position à tenir | Métal, Énergie |
+| **Synthétiseur** | 8 Énergie + 4 Vivres → 4 Rium par Tirage, partout, l'appoint sûr | Métal, Cristal |
 
 La capitale dispose de trois emplacements supplémentaires et d'un bâtiment unique, **l'Académie**, qui débloque les niveaux du Général (voir §9).
 

@@ -141,7 +141,9 @@ function expansionCandidates(ctx: Ctx): Candidate[] {
       seen.add(id);
       const b = opt.to;
       const kindBonus = b.kind === 'pulsar' ? 1.4 : b.kind === 'beacon' ? 2 : 1;
-      const score = (need[b.resource] * (1 + b.slots * 0.3) * kindBonus) / (1 + opt.verdict.cost.metal / 20);
+      // A gas giant is a refinery site: worth reaching for, more so when fuel is short and none is held yet.
+      const gasBonus = layoutOf(w.galaxy, id).pois.some((q) => q.kind === 'gas') ? (ctx.owned.some((o) => hasBuilding(w, o, 'refinery')) ? 1.15 : 1.4) : 1;
+      const score = (need[b.resource] * (1 + b.slots * 0.3) * kindBonus * gasBonus) / (1 + opt.verdict.cost.metal / 20);
       out.push({ a: from, b: id, score, cost: opt.verdict.cost, upkeep: opt.verdict.upkeep });
     }
   }

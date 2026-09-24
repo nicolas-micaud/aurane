@@ -125,8 +125,10 @@ export const OFF_NET_RIUM_PER_UNIT = 0.002;
 export const RIUM_OPS_PER_SHIP_PER_DRAW = 0.2;
 /** A fleet whose operations went unpaid at the last draw is dry: its guns fire at half strength. */
 export const DRY_DPS_MULT = 0.5;
-/** Refinery: Rium mined per draw in orbit of a gas giant. Synthesizer: converts local stock per draw. */
-export const RIUM_REFINERY_YIELD = 6;
+/** Refinery: Rium mined per draw in orbit of a gas giant. It pays five times a synthesizer because the
+ *  gas giant is a place to hold and defend; the synthesizer works anywhere, deep inside safe space,
+ *  but eats Energy and Food for a trickle. */
+export const RIUM_REFINERY_YIELD = 20;
 export const RIUM_SYNTH_INPUT = { energy: 8, food: 4 } as const;
 export const RIUM_SYNTH_OUTPUT = 4;
 export const CORSAIR_SHIP_COST_MULT = 0.85;
