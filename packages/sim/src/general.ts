@@ -185,7 +185,7 @@ function decideMilitary(ctx: Ctx, threatened: boolean): void {
   const capital = c.capital;
   const myStrength = fleetStrength(w, c.id);
   if (hasBuilding(w, capital, 'shipyard') && w.systems[capital]!.trainQueue.length === 0) {
-    const want = threatened ? 'frigate' : p.aggression > 0.3 ? 'corvette' : 'frigate';
+    const want = threatened ? 'frigate' : p.aggression >= 0.5 && ctx.rng.next() < 0.4 ? 'cruiser' : p.aggression > 0.3 ? 'corvette' : 'frigate';
     const cost = B.UNIT_COST[want];
     const batch = 4;
     const total: Partial<Stock> = {};
@@ -193,7 +193,13 @@ function decideMilitary(ctx: Ctx, threatened: boolean): void {
     if (myStrength < 12 + p.aggression * 30 && canAfford(ctx, total)) ctx.out.push({ type: 'train', system: capital, unit: want, count: batch });
   }
   const idle = Object.values(w.fleets).filter((f) => f.owner === c.id && f.at !== null && f.order.kind === 'idle');
+  const besieged = ctx.owned.find((id) => w.systems[id]!.blockade && !isAlly(w, w.systems[id]!.blockade!.by, c.id));
   for (const f of idle) {
+    if (besieged && fleetSize(f.units) >= 4) {
+      ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'defend', target: besieged });
+      ctx.notes.push('lift blockade');
+      continue;
+    }
     if (f.at !== capital && f.at !== null) {
       // Come home after a raid, or hold a defended system.
       if (!p.defendFirst.includes(f.at)) ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'return', target: capital });
@@ -204,6 +210,16 @@ function decideMilitary(ctx: Ctx, threatened: boolean): void {
     const targets = hostileNeighbours(ctx).filter((o) => fleetStrength(w, o.id) < fleetSize(f.units) && colonyScore(w, c) <= B.BULLY_SCORE_RATIO * Math.max(1, colonyScore(w, o)));
     if (!targets.length) continue;
     const victim = ctx.rng.pick(targets);
+    // Cruisers besiege; everything else cuts relays, bridges first.
+    if (f.units.cruiser >= 4 && ctx.rng.next() < 0.6) {
+      const prey = ownedSystems(w, victim.id).filter((id) => id !== victim.capital && !w.systems[id]!.blockade);
+      if (prey.length) {
+        const target = ctx.rng.pick(prey);
+        ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'blockade', target });
+        ctx.notes.push(`blockade ${victim.name}`);
+        continue;
+      }
+    }
     const bridges = findBridges(Object.values(w.relays), victim.id, w.time);
     const relays = colonyRelays(w, victim.id).filter((r) => relayActive(r, w.time));
     if (!relays.length) continue;

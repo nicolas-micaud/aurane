@@ -73,7 +73,17 @@ Le joueur choisit une allégeance à la création. Elle donne une couleur, un vo
 - Vocabulaire propre : Réseau, Signal, Tirage, Silence, Phares, Généraux, Colonies. Pas de « Fédération », pas d'« Empire », pas de « Force ».
 - Les noms d'étoiles et de secteurs sont générés à partir de racines inventées (voir le générateur du prototype) avec quelques noms « historiques » fixes pour les Sept Phares.
 
-### 2.4 Les Sept Phares
+### 2.4 Direction artistique (repères)
+
+Références de Nick, à digérer sans copier : la lisibilité tactique et les silhouettes franches de
+**StarCraft** pour l'interface et les icônes ; l'élégance chromée et organique de **Naboo** pour
+l'architecture des Anciens, les Phares et le Concordat ; le réalisme industriel de **Star Citizen**
+pour les vaisseaux (coques lisibles, tuyères, matériaux usés) ; la gravité militaire de
+**Battlestar Galactica** pour les rapports de bataille, les Bastions et la voix des Généraux en
+guerre. Palette : fonds profonds, relais lumineux, une couleur par faction, jamais de néon
+gratuit. La carte doit rester lisible sur un téléphone en plein soleil.
+
+### 2.5 Les Sept Phares
 
 Sept systèmes fixes, placés vers le cœur de l'Aurane, portant un nom et une légende chacun (exemple : **Ancre**, le premier phare, dit-on, à s'être tu). Rallumer un Phare exige de le relier à sa capitale et d'y consacrer une quantité massive de Cristal. Un Phare rallumé émet : les relais dans son rayon gagnent en portée, et il compte lourd au score. Les Sept Phares sont l'objectif partagé qui pousse toutes les Colonies vers le centre, donc vers le conflit et la diplomatie.
 
