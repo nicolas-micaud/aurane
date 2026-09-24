@@ -1,55 +1,70 @@
 {
   "px": 192,
   "frames": 16,
-  "elevation": 52,
   "models": {
     "corvette": {
-      "radius": 2.589497349797484
+      "radius": 2.589497349797484,
+      "elevation": 38
     },
     "frigate": {
-      "radius": 3.969258733360611
+      "radius": 3.969258733360611,
+      "elevation": 38
     },
     "cruiser": {
-      "radius": 7.261993126423913
+      "radius": 7.261993126423913,
+      "elevation": 38
     },
     "cargo": {
-      "radius": 3.7454958679172763
+      "radius": 3.7454958679172763,
+      "elevation": 38
     },
     "station": {
-      "radius": 11.426277197532707
+      "radius": 11.426277197532707,
+      "elevation": 55
     },
     "relay": {
-      "radius": 4.052160528959914
+      "radius": 4.052160528959914,
+      "elevation": 55
     },
     "turret_light": {
-      "radius": 2.3640468122417575
+      "radius": 2.3640468122417575,
+      "elevation": 55
     },
     "turret_heavy": {
-      "radius": 3.764599547705359
+      "radius": 3.764599547705359,
+      "elevation": 55
     },
     "launcher": {
-      "radius": 2.086516733608431
+      "radius": 2.086516733608431,
+      "elevation": 55
     },
     "bastion": {
-      "radius": 4.52791776640825
+      "radius": 4.52791776640825,
+      "elevation": 55
     },
     "extractor": {
-      "radius": 3.8920000100135805
+      "radius": 3.8920000100135805,
+      "elevation": 55
     },
     "warehouse": {
-      "radius": 3.3860325165847334
+      "radius": 3.3860325165847334,
+      "elevation": 55
     },
     "shipyard": {
-      "radius": 5.433238193713441
+      "radius": 5.433238193713441,
+      "elevation": 55
     },
     "antenna": {
-      "radius": 3.785599999666214
+      "radius": 3.785599999666214,
+      "elevation": 55
     },
     "amplifier": {
-      "radius": 2.755200000166893
+      "radius": 2.755200000166893,
+      "elevation": 55
     },
     "tradepost": {
-      "radius": 5.271959594928935
+      "radius": 5.271959594928935,
+      "elevation": 55
     }
   }
 }

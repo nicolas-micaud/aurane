@@ -20,7 +20,8 @@ export interface SceneCallbacks { onSelect(sel: SceneSelection): void }
 export interface SceneContext { me: string; allies: Set<string>; factionOf: Map<string, string> }
 
 interface FleetAnim { node: Container; fromX: number; fromY: number; toX: number; toY: number; t0: number }
-interface Shot { x1: number; y1: number; x2: number; y2: number; color: number; phase: number; heavy: boolean }
+interface Shot { x1: number; y1: number; x2: number; y2: number; color: number; phase: number; heavy: boolean; shielded: boolean }
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; ttl: number; size: number; color: number; kind: 'spark' | 'debris' | 'trail' | 'flash' }
 
 const SIGNAL = 0x7dd3fc;
 const DANGER = 0xff5252;
@@ -47,6 +48,8 @@ export class SystemScene {
   private anims = new Map<string, FleetAnim>();
   private labels: Text[] = [];
   private shots: Shot[] = [];
+  private particles: Particle[] = [];
+  private lastAnimPos = new Map<string, { x: number; y: number }>();
   private ready = false;
   private tex!: { glow: Texture; core: Texture; ship: Texture; cargo: Texture; station: Texture };
   private lastFrameAt = 0;
@@ -357,7 +360,11 @@ export class SystemScene {
       node.on('pointertap', () => this.cb.onSelect({ kind: 'fleet', id: f.id }));
       this.fleets.addChild(node);
     }
-    for (const id of [...this.anims.keys()]) if (!seen.has(id)) this.anims.delete(id);
+    for (const id of [...this.anims.keys()]) if (!seen.has(id)) {
+      const a = this.anims.get(id)!;
+      if (v.engaged) this.burst(a.node.position.x, a.node.position.y, 26, 0xffb060);
+      this.anims.delete(id);
+    }
     // Inbound fleets sit just outside the edge, on their approach bearing.
     for (const inb of v.inbound) {
       const mine = inb.owner === ctx.me;
@@ -398,6 +405,8 @@ export class SystemScene {
       return best;
     };
     const R = 1.7 * this.unit;
+    const bastions = v.shield ? v.structures.filter((s) => s.kind === 'bastion').map((s) => ({ p: this.xy(s.orbit, s.angle), r: (s.range ?? 2) * this.unit })) : [];
+    const shieldedAt = (p: { x: number; y: number }): boolean => bastions.some((b) => Math.hypot(p.x - b.p.x, p.y - b.p.y) <= b.r);
     for (const f of attackers) {
       const me = pos(f);
       const targets: { x: number; y: number }[] = [
@@ -406,19 +415,28 @@ export class SystemScene {
         ...(v.station && v.station.hp > 0 ? [this.stationXY()] : []),
       ];
       const t = nearest(me, targets, (p) => p, R);
-      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: colorOf(f.owner), phase: Math.random() * Math.PI * 2, heavy: f.size >= 6 });
+      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: colorOf(f.owner), phase: Math.random() * Math.PI * 2, heavy: f.size >= 6, shielded: shieldedAt(t) });
     }
     for (const f of defenders) {
       const me = pos(f);
       const t = nearest(me, attackers.map(pos), (p) => p, R);
-      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: colorOf(f.owner), phase: Math.random() * Math.PI * 2, heavy: f.size >= 6 });
+      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: colorOf(f.owner), phase: Math.random() * Math.PI * 2, heavy: f.size >= 6, shielded: false });
     }
     for (const s of v.structures) {
       if (!s.armed || !s.range) continue;
       const me = this.xy(s.orbit, s.angle);
       const t = nearest(me, attackers.map(pos), (p) => p, s.range * this.unit);
-      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: 0xffd166, phase: Math.random() * Math.PI * 2, heavy: s.kind === 'turret_heavy' });
+      if (t) this.shots.push({ x1: me.x, y1: me.y, x2: t.x, y2: t.y, color: 0xffd166, phase: Math.random() * Math.PI * 2, heavy: s.kind === 'turret_heavy', shielded: false });
     }
+  }
+
+  private spawn(p: Omit<Particle, 'life'>): void { if (this.particles.length < 600) this.particles.push({ ...p, life: 0 }); }
+  private burst(x: number, y: number, n: number, color: number): void {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = (0.02 + Math.random() * 0.08) * this.unit;
+      this.spawn({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, ttl: 500 + Math.random() * 700, size: 1.5 + Math.random() * 3, color: Math.random() < 0.5 ? color : 0x8a93a6, kind: Math.random() < 0.5 ? 'spark' : 'debris' });
+    }
+    this.spawn({ x, y, vx: 0, vy: 0, ttl: 260, size: this.unit * 0.5, color: 0xffffff, kind: 'flash' });
   }
 
   private animate(dtMs: number): void {
@@ -436,6 +454,18 @@ export class SystemScene {
       const e = 1 - (1 - t) * (1 - t);
       a.node.position.set(a.fromX + (a.toX - a.fromX) * e, a.fromY + (a.toY - a.fromY) * e);
     }
+    // Engine trails behind ships that are moving on the plateau.
+    for (const [id, a] of this.anims) {
+      const prev = this.lastAnimPos.get(id);
+      const cur = { x: a.node.position.x, y: a.node.position.y };
+      if (prev) {
+        const dx = cur.x - prev.x, dy = cur.y - prev.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.15 && Math.random() < 0.6) this.spawn({ x: cur.x - dx * 6, y: cur.y - dy * 6, vx: -dx * 0.15 + (Math.random() - 0.5) * 0.3, vy: -dy * 0.15 + (Math.random() - 0.5) * 0.3, ttl: 500, size: 2 + Math.random() * 2.5, color: 0x9fd8ff, kind: 'trail' });
+      }
+      this.lastAnimPos.set(id, cur);
+    }
+    for (const id of [...this.lastAnimPos.keys()]) if (!this.anims.has(id)) this.lastAnimPos.delete(id);
     // Fire.
     const g = this.fx;
     g.clear();
@@ -447,9 +477,27 @@ export class SystemScene {
         g.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2);
         g.stroke({ color: s.color, width: s.heavy ? 2.5 : 1.2, alpha: 0.25 + on * 0.6 });
         g.circle(s.x2, s.y2, 2 + on * 3); g.fill({ color: 0xffffff, alpha: on * 0.8 });
+        if (on > 0.92 && Math.random() < 0.5) {
+          const ang = Math.atan2(s.y1 - s.y2, s.x1 - s.x2) + (Math.random() - 0.5) * 1.6;
+          const sp = (0.03 + Math.random() * 0.06) * this.unit;
+          this.spawn({ x: s.x2, y: s.y2, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, ttl: 250 + Math.random() * 350, size: 1 + Math.random() * 2, color: s.heavy ? 0xffc27a : 0xffe9b0, kind: 'spark' });
+          if (s.shielded) this.spawn({ x: s.x2, y: s.y2, vx: 0, vy: 0, ttl: 220, size: this.unit * 0.42, color: SIGNAL, kind: 'flash' });
+        }
       }
-      if (now - this.lastFrameAt > 4000) { /* stale frame: keep drawing, the stream will resume */ }
     }
+    // Particles.
+    const alive: Particle[] = [];
+    for (const p of this.particles) {
+      p.life += dtMs;
+      if (p.life >= p.ttl) continue;
+      const k = p.life / p.ttl;
+      p.x += p.vx * dtMs / 16; p.y += p.vy * dtMs / 16;
+      if (p.kind === 'debris') { p.vx *= 0.985; p.vy *= 0.985; }
+      if (p.kind === 'flash') { g.circle(p.x, p.y, p.size * (0.6 + k * 0.6)); g.stroke({ color: p.color, width: 2, alpha: (1 - k) * 0.8 }); g.circle(p.x, p.y, p.size * 0.5 * (1 - k)); g.fill({ color: p.color, alpha: (1 - k) * 0.35 }); }
+      else { g.circle(p.x, p.y, p.size * (p.kind === 'trail' ? 1 - k * 0.6 : 1 - k * 0.4)); g.fill({ color: p.color, alpha: (1 - k) * (p.kind === 'trail' ? 0.35 : 0.9) }); }
+      alive.push(p);
+    }
+    this.particles = alive;
     // Selection reticle.
     this.reticle.clear();
     const sel = this.selection;

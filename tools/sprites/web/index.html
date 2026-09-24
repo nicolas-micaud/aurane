@@ -7,9 +7,24 @@
 import * as THREE from 'three';
 import { MODELS, TEAM_BASE } from './models.js';
 
-// Three-quarter top-down view, as StarCraft: the camera looks down at ELEVATION degrees.
-const ELEVATION = 52 * Math.PI / 180;
+// Three-quarter view, as StarCraft: structures are seen from higher up (their footprint reads),
+// ships from lower (their profile reads).
+const ELEVATION = { ship: 38, structure: 55 };
+const SHIPS = new Set(['corvette', 'frigate', 'cruiser', 'cargo']);
 const FRAMES = 16;
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const gltfLoader = new GLTFLoader();
+/** A sculpted glTF in tools/sprites/models/<kind>.glb replaces the procedural model; materials named
+ *  with "team" or "lights" carry the faction colour. Returns null when there is none. */
+async function loadGltf(kind) {
+  try {
+    const res = await fetch(`/models/${kind}.glb`, { method: 'HEAD' });
+    if (!res.ok) return null;
+    const gltf = await gltfLoader.loadAsync(`/models/${kind}.glb`);
+    gltf.scene.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; const n = (o.material?.name ?? '').toLowerCase(); o.userData.team = /team|lights/.test(n); } });
+    return gltf.scene;
+  } catch { return null; }
+}
 
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
@@ -37,8 +52,11 @@ scene.add(key, fill, rim, amb);
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
 const dist = 30;
-camera.position.set(0, Math.sin(ELEVATION) * dist, Math.cos(ELEVATION) * dist);
-camera.lookAt(0, 0, 0);
+function aim(elevationDeg) {
+  const e = elevationDeg * Math.PI / 180;
+  camera.position.set(0, Math.sin(e) * dist, Math.cos(e) * dist);
+  camera.lookAt(0, 0, 0);
+}
 
 const black = new THREE.MeshBasicMaterial({ color: 0x000000 });
 const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -54,8 +72,10 @@ function fit(group) {
 }
 
 /** Renders one model to two sheets (base, lights) of FRAMES frames of `px` pixels. Returns data URLs. */
-window.renderModel = function renderModel(kind, px) {
-  const group = MODELS[kind]();
+window.renderModel = async function renderModel(kind, px) {
+  const group = (await loadGltf(kind)) ?? MODELS[kind]();
+  const elevation = SHIPS.has(kind) ? ELEVATION.ship : ELEVATION.structure;
+  aim(elevation);
   const radius = fit(group);
   scene.add(group);
   camera.left = -radius; camera.right = radius; camera.top = radius; camera.bottom = -radius;
@@ -92,11 +112,11 @@ window.renderModel = function renderModel(kind, px) {
   }
   scene.remove(group);
   key.visible = fill.visible = rim.visible = amb.visible = true;
-  return { ...sheets, frames: FRAMES, px, radius };
+  return { ...sheets, frames: FRAMES, px, radius, elevation };
 };
 /** One large frame with the faction colour baked in, for icons and the showcase site. */
-window.renderIcon = function renderIcon(kind, px, teamHex, frame = 2) {
-  const r = window.renderModel(kind, px);
+window.renderIcon = async function renderIcon(kind, px, teamHex, frame = 2) {
+  const r = await window.renderModel(kind, px);
   return new Promise((resolve) => {
     const base = new Image(), lights = new Image();
     let n = 0;

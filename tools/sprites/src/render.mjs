@@ -14,18 +14,20 @@ const root = resolve(here, '../../..');
 const webDir = resolve(here, '../web');
 const threeDir = join(root, 'node_modules/three/build');
 const addonsDir = join(root, 'node_modules/three/examples/jsm');
+const modelsDir = resolve(here, '../models');
 const outDir = join(root, 'apps/web/public/sprites');
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(`--${name}`); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const px = Number(arg('px', '192'));
 const only = arg('only', '').split(',').filter(Boolean);
 
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.glb': 'model/gltf-binary' };
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   let file;
   if (url.pathname.startsWith('/three/')) file = join(threeDir, url.pathname.slice('/three/'.length));
   else if (url.pathname.startsWith('/three-addons/')) file = join(addonsDir, url.pathname.slice('/three-addons/'.length));
+  else if (url.pathname.startsWith('/models/')) file = join(modelsDir, url.pathname.slice('/models/'.length));
   else file = join(webDir, url.pathname === '/' ? 'index.html' : url.pathname);
   try {
     const body = await readFile(file);
@@ -62,12 +64,12 @@ if (icons) {
   process.exit(0);
 }
 await mkdir(outDir, { recursive: true });
-const manifest = { px, frames: 16, elevation: 52, models: {} };
+const manifest = { px, frames: 16, models: {} };
 for (const kind of kinds) {
   const r = await page.evaluate(({ kind, px }) => window.renderModel(kind, px), { kind, px });
   await writeFile(join(outDir, `${kind}.png`), Buffer.from(r.base.split(',')[1], 'base64'));
   await writeFile(join(outDir, `${kind}.lights.png`), Buffer.from(r.lights.split(',')[1], 'base64'));
-  manifest.models[kind] = { radius: r.radius };
+  manifest.models[kind] = { radius: r.radius, elevation: r.elevation };
   console.log(`${kind}: ${r.frames} frames @ ${px}px (radius ${r.radius.toFixed(2)})`);
 }
 await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
