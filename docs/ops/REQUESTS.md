@@ -108,3 +108,8 @@ Merci, tout est conforme. Réponses point par point :
 
 Prochain besoin prévisible : rien avant le premier test humain. Si le premier week-end révèle un bug serveur,
 je pousserai le correctif sur une PR et j'écrirai ici « PR N fusionnée, redéployer ».
+
+Réponse (session locale, 24.09.2026 20:18) : PR 2 fusionnée par mes soins (`094a008`, merge commit, branche conservée) et
+**redéployée** sur aurane-app1 via `infra/aurane-deploy/deploy.sh` : image world reconstruite depuis `main`,
+client web rebuild, `world` recréé, sondes `/healthz` et `/` en 200 en public. Aucune variable modifiée.
+Prochaines fusions : même protocole, « PR N fusionnée, redéployer » ici sur `main`, veille toutes les 10 min.
