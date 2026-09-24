@@ -4,7 +4,7 @@ import * as B from './balance.js';
 import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { hexNeighbors, hexKey } from './hex.js';
 import { dist } from './geometry.js';
-import { connectedFrom, evaluateLink, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
+import { connectedFrom, evaluateLink, findBridges, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
 import { rollDraw, type Draw } from './draw.js';
 import { clearAuction, marketKey } from './market.js';
 import { addFleet, resolveBattle, subtractFleet } from './combat.js';
@@ -207,6 +207,11 @@ export function allianceScore(w: World, allianceId: string): number {
   const a = w.alliances[allianceId];
   if (!a) return 0;
   return a.members.reduce((s, m) => s + (w.colonies[m] ? colonyScore(w, w.colonies[m]!) : 0), 0);
+}
+
+/** Bridges of one colony's network (relays whose loss splits it). */
+export function findBridgesFor(w: World, colonyId: string): Set<string> {
+  return findBridges(colonyRelays(w, colonyId), colonyId, w.time);
 }
 
 export function fleetsAt(w: World, systemId: string): FleetState[] {
