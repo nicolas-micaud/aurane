@@ -115,10 +115,10 @@ function generateLayout(g: Galaxy, sys: StarSystem): SystemLayout {
   const pois: Poi[] = [];
   let planetIdx = 0, beltIdx = 0, moonOf: string | null = null;
   const letters = 'bcdefgh';
-  const rings: Record<PoiKind, number> = { rocky: 2.6, gas: 4.4, moon: 0, belt: 5.6, ice: 6.6, nebula: 6.2, wreck: 4.0, derelict: 3.4, jump: 8.6 };
+  const rings: Record<PoiKind, number> = { rocky: 2.8, gas: 4.8, moon: 0, belt: 6.2, ice: 7.0, nebula: 6.6, wreck: 4.2, derelict: 3.6, jump: 8.8 };
   const angles: number[] = [];
   const angleFor = (): number => { // spread bodies around the star, never closer than 40°
-    for (let tries = 0; tries < 20; tries++) { const a = rng.next() * Math.PI * 2; if (angles.every((b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 0.7)) { angles.push(a); return a; } }
+    for (let tries = 0; tries < 20; tries++) { const a = rng.next() * Math.PI * 2; if (angles.every((b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 0.85)) { angles.push(a); return a; } }
     const a = rng.next() * Math.PI * 2; angles.push(a); return a;
   };
   kinds.forEach((kind, i) => {
@@ -130,7 +130,7 @@ function generateLayout(g: Galaxy, sys: StarSystem): SystemLayout {
     if (kind === 'moon' && moonOf) {
       const p = pois.find((q) => q.id === moonOf)!;
       const a = rng.next() * Math.PI * 2;
-      x = p.x + Math.cos(a) * 1.3; y = p.y + Math.sin(a) * 1.3; parent = p.id;
+      x = p.x + Math.cos(a) * 2.0; y = p.y + Math.sin(a) * 2.0; parent = p.id;
       designation = `${p.designation}-${pois.filter((q) => q.parent === p.id).length + 1}`;
     } else {
       const a = angleFor();

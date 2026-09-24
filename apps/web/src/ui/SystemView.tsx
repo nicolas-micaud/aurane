@@ -102,6 +102,7 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
           {sv?.ownerName && <small>· {sv.ownerName}</small>}
           {sv?.signature && <small class="bad">· {t('hiddenOwner')}</small>}
         </h2>
+        <button class="back recenter" title={t('recenter')} onClick={() => scene.current?.resetCamera()}>⌖</button>
         {sv && <SystemStatus sv={sv} />}
       </div>
       {sv && <Dock v={v} sv={sv} sel={sel} focus={fp} picked={picked} />}

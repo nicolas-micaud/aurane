@@ -71,6 +71,13 @@ export class SystemScene {
   private mapLayer = new Container();
   private mapFx = new Graphics();
   private mapPulse: Graphics[] = [];
+  // Camera: pan and zoom over the plateau or the map (pointer drag, wheel, pinch).
+  private zoom = 1;
+  private pan = { x: 0, y: 0 };
+  private pointers = new Map<number, { x: number; y: number }>();
+  private pinchDist = 0;
+  private dragMoved = false;
+  private centre = { x: 0, y: 0 };
 
   /** Orbit captions, set by the UI in the player's language. */
   orbitNames: string[] = ['I', 'II', 'III'];
@@ -86,7 +93,8 @@ export class SystemScene {
     this.app.stage.addChild(this.root);
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
-    this.app.stage.on('pointertap', (e) => { if (e.target === this.app.stage) this.cb.onSelect(null); });
+    this.app.stage.on('pointertap', (e) => { if (e.target === this.app.stage && !this.dragMoved) this.cb.onSelect(null); });
+    this.bindCamera(this.app.canvas);
     this.app.ticker.add((tk) => this.animate(tk.deltaMS));
     this.app.renderer.on('resize', () => this.layout());
     this.ready = true;
@@ -119,6 +127,7 @@ export class SystemScene {
   setFocus(poi: string | null): void {
     if (this.focus === poi) return;
     this.focus = poi;
+    this.resetCamera();
     this.anims.clear(); this.lastAnimPos.clear(); this.particles = []; this.shots = [];
     if (this.ready && this.view && this.ctx) this.render(this.view, this.ctx);
   }
@@ -142,7 +151,57 @@ export class SystemScene {
     const top = narrow ? 150 : 100; // the title bar overlays the top of the scene
     this.unit = Math.max(22, Math.min(w / 2 / 4.6, (h - top) / 2 / 4.5));
     this.mapUnit = Math.max(10, Math.min(w / 2 / 10.2, (h - top) / 2 / 10.2));
-    this.root.position.set(w / 2, top + (h - top) / 2);
+    this.centre = { x: w / 2, y: top + (h - top) / 2 };
+    this.applyCamera();
+  }
+
+  private applyCamera(): void {
+    this.root.scale.set(this.zoom);
+    this.root.position.set(this.centre.x + this.pan.x, this.centre.y + this.pan.y);
+  }
+
+  /** Back to the whole view, centred. */
+  resetCamera(): void { this.zoom = 1; this.pan = { x: 0, y: 0 }; this.applyCamera(); }
+
+  private zoomAt(cx: number, cy: number, factor: number): void {
+    const rect = this.app.canvas.getBoundingClientRect();
+    const sx = cx - rect.left, sy = cy - rect.top;
+    const k0 = this.zoom;
+    const k1 = Math.min(4, Math.max(0.6, k0 * factor));
+    // Keep the point under the cursor still.
+    const wx = (sx - this.root.position.x) / k0, wy = (sy - this.root.position.y) / k0;
+    this.zoom = k1;
+    this.pan = { x: sx - wx * k1 - this.centre.x, y: sy - wy * k1 - this.centre.y };
+    this.applyCamera();
+  }
+
+  private bindCamera(canvas: HTMLCanvasElement): void {
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', (e) => { this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); this.dragMoved = false; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointermove', (e) => {
+      const prev = this.pointers.get(e.pointerId);
+      if (!prev) return;
+      const cur = { x: e.clientX, y: e.clientY };
+      if (this.pointers.size === 1) {
+        const dx = cur.x - prev.x, dy = cur.y - prev.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) this.dragMoved = true;
+        if (this.dragMoved) { this.pan.x += dx; this.pan.y += dy; this.applyCamera(); }
+      } else if (this.pointers.size === 2) {
+        this.pointers.set(e.pointerId, cur);
+        const [p1, p2] = [...this.pointers.values()];
+        const d = Math.hypot(p1!.x - p2!.x, p1!.y - p2!.y);
+        if (this.pinchDist) this.zoomAt((p1!.x + p2!.x) / 2, (p1!.y + p2!.y) / 2, d / this.pinchDist);
+        this.pinchDist = d;
+        this.dragMoved = true;
+        return;
+      }
+      this.pointers.set(e.pointerId, cur);
+    });
+    const up = (e: PointerEvent): void => { this.pointers.delete(e.pointerId); if (this.pointers.size < 2) this.pinchDist = 0; };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+    canvas.addEventListener('dblclick', () => this.resetCamera());
   }
 
   /** The view narrowed to the focused point of interest, so the plateau code stays one-plateau. */
@@ -255,7 +314,7 @@ export class SystemScene {
       const node = new Container();
       const pos = this.mapXY(p);
       node.position.set(pos.x, pos.y);
-      const R = u * (p.kind === 'gas' ? 1.05 : p.kind === 'rocky' ? 0.75 : p.kind === 'moon' ? 0.42 : p.kind === 'derelict' ? 0.6 : 0.7) * (0.8 + p.size * 0.12);
+      const R = u * (p.kind === 'gas' ? 0.95 : p.kind === 'rocky' ? 0.7 : p.kind === 'moon' ? 0.36 : p.kind === 'derelict' ? 0.55 : 0.65) * (0.8 + p.size * 0.12);
       if (!p.known) {
         const q = new Graphics(); q.circle(0, 0, R * 0.9); q.stroke({ color: 0xffb060, width: 1.5, alpha: 0.7 });
         for (let i = 0; i < 8; i++) { const a0 = (i / 8) * Math.PI * 2; q.arc(0, 0, R * 1.25, a0, a0 + 0.35); q.stroke({ color: 0xffb060, width: 1.5, alpha: 0.5 }); }
@@ -314,7 +373,7 @@ export class SystemScene {
       if (this.selection?.kind === 'poi' && this.selection.id === p.id) { const r = new Graphics(); r.circle(0, 0, R * 1.9); r.stroke({ color: 0xffffff, width: 2 }); node.addChild(r); }
       node.eventMode = 'static'; node.cursor = 'pointer';
       node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= Math.max(R * 1.6, u * 0.9) };
-      node.on('pointertap', () => this.cb.onSelect({ kind: 'poi', id: p.id }));
+      node.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'poi', id: p.id }); });
       this.mapLayer.addChild(node);
     }
     // Fleets: clustered at their point of interest, or gliding along a lane.
@@ -358,7 +417,7 @@ export class SystemScene {
       if (this.selection?.kind === 'fleet' && this.selection.id === f.id) { const r = new Graphics(); r.circle(0, 0, size * 0.7); r.stroke({ color: 0xffffff, width: 2 }); node.addChild(r); }
       node.eventMode = 'static'; node.cursor = 'pointer';
       node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= size * 0.7 };
-      node.on('pointertap', () => this.cb.onSelect({ kind: 'fleet', id: f.id }));
+      node.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'fleet', id: f.id }); });
       if (lane) this.laneShips.push(lane);
       this.mapLayer.addChild(node);
     }
@@ -465,7 +524,7 @@ export class SystemScene {
         if (v.mine) {
           g.eventMode = 'static'; g.cursor = 'pointer';
           g.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= this.unit * 0.3 };
-          g.on('pointertap', () => this.cb.onSelect({ kind: 'slot', orbit: o, angle }));
+          g.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'slot', orbit: o, angle }); });
         }
         this.slots.addChild(g);
       }
@@ -514,7 +573,7 @@ export class SystemScene {
       if (s.hp < s.maxHp) node.addChild(this.hpBar(s.hp / s.maxHp, this.unit * 0.6, this.unit * 0.42));
       node.eventMode = 'static'; node.cursor = 'pointer';
       node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= this.unit * 0.46 };
-      node.on('pointertap', () => this.cb.onSelect({ kind: 'structure', id: s.id }));
+      node.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'structure', id: s.id }); });
       this.structures.addChild(node);
     }
   }
@@ -548,7 +607,7 @@ export class SystemScene {
     node.addChild(arc);
     node.eventMode = 'static'; node.cursor = 'pointer';
     node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= size * 0.5 };
-    node.on('pointertap', () => this.cb.onSelect({ kind: 'station' }));
+    node.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'station' }); });
     this.stationLayer.addChild(node);
   }
 
@@ -610,7 +669,7 @@ export class SystemScene {
       if (f.order === 'blockade' || f.order === 'raid' || f.order === 'ambush') { const r = new Graphics(); r.circle(0, 0, this.unit * 0.36); r.stroke({ color: DANGER, width: 1.5, alpha: 0.8 }); node.addChild(r); }
       node.eventMode = 'static'; node.cursor = 'pointer';
       node.hitArea = { contains: (x: number, y: number) => Math.hypot(x, y) <= this.unit * 0.45 };
-      node.on('pointertap', () => this.cb.onSelect({ kind: 'fleet', id: f.id }));
+      node.on('pointertap', () => { if (!this.dragMoved) this.cb.onSelect({ kind: 'fleet', id: f.id }); });
       this.fleets.addChild(node);
     }
     for (const id of [...this.anims.keys()]) if (!seen.has(id)) {
