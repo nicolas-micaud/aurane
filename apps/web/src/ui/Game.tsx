@@ -213,7 +213,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
       <div class="facts">
         <span><b class={`r-${s.resource}`}>{t(s.resource)}</b> · {t(`${s.resource}Desc`)}</span>
         <span>{t('band')} <b class={drawn ? 'ev-eruption' : ''}>{s.band}</b>{drawn ? ` ×3 ${t('yieldNow')}` : ''} · {t('slots')} <b>{totalSlots}</b> · {t('owner')}: <b>{ownerName}</b>{s.connected ? ' ●' : ''}</span>
-        <span>{t({ forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' }[s.template] ?? 'tplForge')} · <b>{s.pois}</b> {t('bodies')}{s.signature ? <> · <b class="bad">{t('hiddenOwner')}</b></> : null}</span>
+        <span>{t((({ forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' } as Record<string, 'tplForge'>)[s.template] ?? 'tplForge'))} · <b>{s.pois}</b> {t('bodies')}{s.signature ? <> · <b class="bad">{t('hiddenOwner')}</b></> : null}</span>
         {s.population !== null && <span>{t('population')} <b>{(s.population * 100).toFixed(0)} %</b></span>}
         {s.stationHp !== null && <span>{t('station')} <b>{Math.round(s.stationHp)}</b> / 300{s.engaged ? ` · ${t('underAttack')}` : ''}</span>}
         {s.stock && <span>{t('localStock')} : {(['metal', 'energy', 'food', 'crystal'] as const).map((r) => <b key={r} class={`r-${r}`}> {Math.round(s.stock![r])}</b>)} <small>/ {s.capacity}</small></span>}
