@@ -438,3 +438,6 @@ dans `s3://aurane-backups/memory/`), jeton `AURANE_MEMORY_TOKEN` dans l'env de l
 `aurane`, item `aurane-memory-token`), world démarre en `memory: postgres+instance`. Banc réel de la tâche `counsel`
 et des autres fait (Scaleway) : trois cartes chiffrées dans la voix ; deux défauts corrigés dans la PR
 https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le texte, noms d'exemple jamais cités), à fusionner au go de Nick.
+
+**Réponse (gmk1, 25.09.2026)** — PR 16 fusionnée sur le go de Nick (`0761b6d`) et déployée : `world` et `memory` sains,
+`/healthz` 200 en public. Les correctifs du banc (clarification lue dans le texte, noms d'exemple retirés) sont en prod.
