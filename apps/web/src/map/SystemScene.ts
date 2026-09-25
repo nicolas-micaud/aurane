@@ -149,14 +149,21 @@ export class SystemScene {
   }
 
   private topInset: number | null = null;
-  /** Height of the title bar that overlays the scene, measured by the view; the layout keeps it free. */
-  setTopInset(px: number): void { const v = Math.round(px) + 8; if (v !== this.topInset) { this.topInset = v; if (this.ready) this.layout(); } }
+  private bottomInset: number | null = null;
+  /** Heights of the title bar and of the dock that overlay the scene, measured by the view; the layout keeps them free
+   *  and the plateau grows when the dock is short. */
+  setInsets(top: number, bottom: number): void {
+    const t = Math.round(top) + 8, b = Math.round(bottom);
+    if (t === this.topInset && b === this.bottomInset) return;
+    this.topInset = t; this.bottomInset = b;
+    if (this.ready) this.layout();
+  }
 
   private layout(): void {
     const w = this.app.screen.width, h = this.app.screen.height;
     const narrow = w < 700;
     const top = this.topInset ?? (narrow ? 150 : 100); // the title bar overlays the top of the scene
-    const bottom = narrow ? h * 0.46 : 0; // on phones the dock overlays the bottom of the scene
+    const bottom = narrow ? this.bottomInset ?? h * 0.46 : 0; // on phones the dock overlays the bottom of the scene
     const free = h - top - bottom;
     this.unit = Math.max(22, Math.min(w / 2 / 4.6, free / 2 / 4.5));
     this.mapUnit = Math.max(10, Math.min(w / 2 / 10.2, free / 2 / 10.2));
