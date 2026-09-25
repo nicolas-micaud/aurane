@@ -124,7 +124,17 @@ Le bruit à cinq graines est d'environ ±7 % (la Guilde oscille entre −8 % et 
 leurs capitales sont **toutes** placées dans des systèmes « repaire » (50 sur 50 dans cinq graines, aucune autre
 faction), un biais de placement voulu pour la couverture, qui semble coûter en croissance.
 
-CORSAIRES_RESULTAT
+**Troisième banc : le biais de repaire** (`review.mjs corsairs`, 5 graines × 7 jours × 40 Colonies, rayon 6) :
+
+| `spawnLairBias` | Concordat | Guilde | Oracles | Corsaires |
+|---|---|---|---|---|
+| activé (prototype) | 29,1 (+7 %) | 30,2 (+11 %) | 26,3 (−3 %) | 23,1 (−15 %) |
+| désactivé | 24,5 (−10 %) | 26,2 (−3 %) | 27,9 (+3 %) | 29,7 (+10 %) |
+
+Le biais coûtait aux Corsaires 25 points d'écart (de −15 % à +10 %) ; sans lui, **les quatre factions tiennent dans
+±10 %**. Décision implémentée : `spawnLairBias: false` en Saison 0 (les repaires restent dans la galaxie, on ne les
+impose plus aux Corsaires ni ne les interdit aux autres) ; à réactiver quand le repaire donnera un avantage réel
+(couverture jouée) plutôt qu'un handicap de croissance.
 
 **Recommandation.** Garder la fenêtre des Oracles à 60 minutes (l'avantage est réel mais petit, +4 %, et c'est
 la saveur de la faction) ; le levier de repli `oracleHintMinutes = 15` reste disponible si des joueurs humains,
@@ -222,12 +232,13 @@ Aucune règle de simulation ne change avec le palier.
 ## Décisions qui reviennent à Nick
 
 1. **Fenêtre des Oracles** : 60 minutes (défaut) ou 15 ; voir le tableau des factions.
-2. **Plancher de la Renaissance** : 75 % (semaine 6) est la valeur demandée ; 66 % (fin de semaine 5) laisserait
+2. **Biais de repaire des Corsaires** : désactivé par défaut d'après la mesure ; si tu tiens à la saveur « les Corsaires nichent dans les repaires », il faut d'abord donner au repaire un avantage (production ou défense) qui compense.
+3. **Plancher de la Renaissance** : 75 % (semaine 6) est la valeur demandée ; 66 % (fin de semaine 5) laisserait
    une semaine de plus à la gloire. Paramètre `renaissanceEarliestFraction`.
-3. **Plafond par paire** : 600 de valeur par jour ; à relever pour des alliances qui jouent la logistique de
+4. **Plafond par paire** : 600 de valeur par jour ; à relever pour des alliances qui jouent la logistique de
    guerre (`pairTransferCapPerDay`), ou à lever entre alliés de plus de sept jours.
-4. **Croissance de la galaxie** : activée par défaut (rayon 6 → 12 au fil des inscriptions) ; le rayon de
+5. **Croissance de la galaxie** : activée par défaut (rayon 6 → 12 au fil des inscriptions) ; le rayon de
    départ reste `GALAXY_RADIUS`. Désactiver si tu préfères une carte fixe pour la bêta.
-5. **Empreinte d'origine par IP** : deux joueurs d'un même foyer ne pourront pas s'échanger de ressources en
+6. **Empreinte d'origine par IP** : deux joueurs d'un même foyer ne pourront pas s'échanger de ressources en
    Saison 0 ; alternative : ne poser l'empreinte qu'à partir de la troisième Colonie d'une même IP.
-6. **Onboarding** : la spécification attend ton feu vert avant l'interface (jalon M6).
+7. **Onboarding** : la spécification attend ton feu vert avant l'interface (jalon M6).

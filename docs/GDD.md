@@ -100,7 +100,7 @@ Sept systèmes fixes, placés vers le cœur de l'Aurane, portant un nom et une l
 
 ### 3.2 Placement des joueurs
 
-Les nouvelles Colonies apparaissent sur l'anneau extérieur, par faction, dans un secteur choisi par l'algorithme pour être calme (distance aux Colonies actives, richesse). Le cœur, où se trouvent les Phares, est vide de joueurs au départ et riche en Cristal : on y va parce que c'est là que tout se joue.
+Les nouvelles Colonies apparaissent sur l'anneau extérieur, par faction, dans un secteur choisi par l'algorithme pour être calme (distance aux Colonies actives, richesse). Le cœur, où se trouvent les Phares, est vide de joueurs au départ et riche en Cristal : on y va parce que c'est là que tout se joue. Le placement ne favorise plus les systèmes « repaire » pour les Corsaires (règle de saison `spawnLairBias`, désactivée : ce biais leur coûtait 25 points d'écart de score, revue S0 § 3).
 
 ### 3.3 Brouillard
 
