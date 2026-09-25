@@ -22,7 +22,7 @@ describe('doctrine', () => {
   });
 
   it('uses the model when it answers valid JSON, and falls back when it does not', async () => {
-    const good: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Sure:\n```json\n{"expansion":0.9,"aggression":0.2,"defendFirst":["S2","BOGUS"],"notes":"Grow, guard Amqua."}\n```', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) };
+    const good: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Sure:\n```json\n{"orders":{"expansion":0.9,"aggression":0.2,"defendFirst":["S2","BOGUS"],"notes":"Grow, guard Amqua."},"reply":"Grow, guard Amqua.","question":null}\n```', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) };
     const r = await compilePolicy('grow and guard Amqua', ctx, good);
     expect(r.source).toBe('llm');
     expect(r.policy.expansion).toBe(0.9);
@@ -31,6 +31,7 @@ describe('doctrine', () => {
     const r2 = await compilePolicy('grow', ctx, bad);
     expect(r2.source).toBe('heuristic');
     expect(r2.warnings.length).toBeGreaterThan(0);
+    expect(r2.policy.expansion).toBeGreaterThanOrEqual(0.7); // the heuristic read 'grow'
     const down: LlmClient = { ...good, chat: async () => { throw new Error('ECONNREFUSED'); } };
     expect((await compilePolicy('grow', ctx, down)).source).toBe('heuristic');
   });

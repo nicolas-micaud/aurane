@@ -1,9 +1,12 @@
-// The briefing: what happened while you were away, in your General's voice. A template
-// always works; the model, when available, rewrites it with personality.
+// The briefing: what happened while you were away, in your General's voice. A template always works;
+// the model, when available, rewrites it with personality, and every figure it keeps is checked
+// against the report. Nothing in here runs at the Draw: the caller queues it at the connection.
 import type { Persona } from '@aurane/protocol';
 import type { PlayerView, WorldEvent } from '@aurane/sim';
-import type { LlmClient } from './llm/index.js';
+import { LlmUnavailable, type LlmClient } from './llm/index.js';
 import { PERSONA_VOICES } from './personas.js';
+import { numbersIn, verifyNumbers, RULE_NUMBERS, type Analysis, renderAnalysis } from './analysis/index.js';
+import { degradedReply, systemPrompt, type DegradeReason } from './persona/index.js';
 
 export interface BriefingInput {
   view: PlayerView;
@@ -12,6 +15,10 @@ export interface BriefingInput {
   persona: Persona;
   lang: 'fr' | 'en';
   names: Record<string, string>; // colony id → name
+  analysis?: Analysis | undefined;
+  memory?: string | undefined;
+  seed?: string | number | undefined;
+  overQuota?: boolean | undefined;
 }
 
 export interface Digest {
@@ -58,7 +65,7 @@ export function digest(input: BriefingInput): Digest {
 function hours(s: number, lang: 'fr' | 'en'): string {
   const h = Math.round(s / 3600);
   if (h < 1) return lang === 'fr' ? 'moins d\'une heure' : 'less than an hour';
-  if (h < 48) return lang === 'fr' ? `${h} h` : `${h} h`;
+  if (h < 48) return `${h} h`;
   return lang === 'fr' ? `${Math.round(h / 24)} jours` : `${Math.round(h / 24)} days`;
 }
 
@@ -81,7 +88,8 @@ export function templateBriefing(input: BriefingInput): string {
     if (d.treaties) lines.push(`Diplomatie : ${d.treaties} traité${d.treaties > 1 ? 's' : ''} signé${d.treaties > 1 ? 's' : ''}.`);
     if (d.beacons) lines.push(`Un Phare rallumé. Le Signal se souvient.`);
     if (v.draw?.event.kind === 'storm') lines.push('Tempête en cours : certains relais sont hors de portée pour l\'heure.');
-    lines.push(`Recommandation : ${v.me.stock.energy < 60 ? 'achète de l\'Énergie avant le prochain Tirage' : v.me.connectedCount < 4 ? 'relie une étoile de plus, la plus proche' : 'double ton pont le plus fragile'}.`);
+    const opt = input.analysis?.options[0];
+    lines.push(`Recommandation : ${opt ? opt.label.fr : v.me.stock.energy < 60 ? 'achète de l\'Énergie avant le prochain Tirage' : v.me.connectedCount < 4 ? 'relie une étoile de plus, la plus proche' : 'double ton pont le plus fragile'}.`);
     lines.push(voice.signoff.fr);
   } else {
     lines.push(`Away: ${hours(input.awaySeconds, L)}, ${d.draws} Draw${d.draws > 1 ? 's' : ''}.`);
@@ -95,30 +103,45 @@ export function templateBriefing(input: BriefingInput): string {
     if (d.treaties) lines.push(`Diplomacy: ${d.treaties} treat${d.treaties > 1 ? 'ies' : 'y'} signed.`);
     if (d.beacons) lines.push(`A Beacon lit. The Signal remembers.`);
     if (v.draw?.event.kind === 'storm') lines.push('Storm in progress: some relays are out of range this hour.');
-    lines.push(`Recommendation: ${v.me.stock.energy < 60 ? 'buy Energy before the next Draw' : v.me.connectedCount < 4 ? 'link one more star, the nearest' : 'double your weakest bridge'}.`);
+    const opt = input.analysis?.options[0];
+    lines.push(`Recommendation: ${opt ? opt.label.en : v.me.stock.energy < 60 ? 'buy Energy before the next Draw' : v.me.connectedCount < 4 ? 'link one more star, the nearest' : 'double your weakest bridge'}.`);
     lines.push(voice.signoff.en);
   }
   return lines.join('\n');
 }
 
-/** Model-written briefing in the persona's voice; falls back to the template. */
-export async function writeBriefing(input: BriefingInput, client: LlmClient | null): Promise<{ text: string; source: 'llm' | 'template' }> {
+const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavailable && (err.reason === 'saturated' || err.reason === 'open') ? 'saturated' : 'unavailable');
+
+/** Model-written briefing in the persona's voice; falls back to the template, every figure checked against it. */
+export async function writeBriefing(input: BriefingInput, client: LlmClient | null): Promise<{ text: string; source: 'llm' | 'template' | 'degraded'; numbersStripped?: boolean }> {
   const base = templateBriefing(input);
-  if (!client) return { text: base, source: 'template' };
   const voice = PERSONA_VOICES[input.persona];
   const L = input.lang;
-  const messages = [
-    { role: 'system' as const, content: L === 'fr'
-      ? `Tu es ${voice.name.fr}, Général IA d'une Colonie dans le jeu Aurane. Voix : ${voice.voice.fr}. Tu réécris un rapport factuel en 5 à 8 lignes courtes, à la deuxième personne, sans inventer aucun chiffre ni événement absent du rapport. Termine par : « ${voice.signoff.fr} ». Pas de titre, pas de liste à puces.`
-      : `You are ${voice.name.en}, the AI General of a Colony in the game Aurane. Voice: ${voice.voice.en}. Rewrite a factual report in 5 to 8 short lines, second person, inventing no number or event that is not in the report. End with: "${voice.signoff.en}". No title, no bullet list.` },
-    { role: 'user' as const, content: base },
-  ];
+  if (input.overQuota) return { text: `${degradedReply(input.persona, L, 'quota', input.seed ?? input.view.me.id)}\n${base}`, source: 'degraded' };
+  if (!client) return { text: base, source: 'template' };
+  const analysisText = input.analysis ? renderAnalysis(input.analysis, L) : '';
+  const system = systemPrompt({
+    persona: input.persona, lang: L, crisis: input.analysis?.crisis ?? false, seed: input.seed ?? input.view.me.id, focus: 'briefing', primer: false,
+    analysis: analysisText ? `${analysisText}\n\nREPORT OF THE ABSENCE (facts):\n${base}` : `REPORT OF THE ABSENCE (facts):\n${base}`, memory: input.memory ?? '',
+    contract: [
+      'TASK: rewrite the report of the absence as a briefing in your voice: 5 to 8 short lines, second person, plain text (no JSON, no title, no bullets).',
+      'Keep every fact and every figure of the report; add nothing that is not in the report or the analysis. End with your sign-off.',
+      `Sign-off: ${voice.signoff[L]}`,
+    ],
+  });
+  const allowed = new Set<number>([...RULE_NUMBERS, ...numbersIn(base), ...numbersIn(analysisText), ...numbersIn(input.memory ?? '')]);
+  for (const v of [...allowed]) { allowed.add(Math.round(v)); if (v >= 100) allowed.add(Math.round(v / 10) * 10); }
   try {
-    const res = await client.chat(messages, { maxTokens: 400, temperature: 0.7, timeoutMs: 30000 });
-    const text = res.text.trim();
+    const res = await client.chat([{ role: 'system', content: system }, { role: 'user', content: L === 'fr' ? 'Mon briefing.' : 'My briefing.' }], { task: 'briefing' });
+    let text = res.text.trim();
     if (text.length < 40) return { text: base, source: 'template' };
-    return { text, source: 'llm' };
-  } catch {
+    const check = verifyNumbers(text, allowed);
+    if (!check.ok) text = check.stripped;
+    if (text.length < 40) return { text: base, source: 'template', numbersStripped: true };
+    if (!text.includes(voice.signoff[L])) text = `${text}\n${voice.signoff[L]}`;
+    return { text, source: 'llm', numbersStripped: !check.ok };
+  } catch (err) {
+    if (err instanceof LlmUnavailable) return { text: `${degradedReply(input.persona, L, degradeReason(err), input.seed ?? input.view.me.id)}\n${base}`, source: 'degraded' };
     return { text: base, source: 'template' };
   }
 }

@@ -1,11 +1,19 @@
 // The conversational General: one call answers the player in character and, when the message holds
-// orders, compiles them into the policy. Without a model, a persona-flavoured fallback still answers.
+// orders, compiles them. The model receives the engine's analysis and a short memory, never the raw
+// state; every figure it cites is checked against the analysis; foreign names are fenced as data; over
+// quota or without a model, a persona-flavoured line still answers.
 import type { Persona, Policy } from '@aurane/protocol';
 import type { PlayerView } from '@aurane/sim';
-import { heuristicPolicy, summarize, type DoctrineContext } from './doctrine.js';
-import { extractJson, type LlmClient } from './llm/index.js';
-import { MECHANICS_PRIMER, PERSONA_VOICES } from './personas.js';
-import { PolicySchema } from '@aurane/protocol';
+import { heuristicPolicy, idLines, policyChanged, summarize, type DoctrineContext } from './doctrine.js';
+import { LlmUnavailable, type LlmClient } from './llm/index.js';
+import { PERSONA_VOICES } from './personas.js';
+import { TALK_JSON_SCHEMA, TalkOutputSchema, ORDERS_SHAPE_DOC, mergeOrders } from './doctrine/schema.js';
+import { clarificationFor, semanticCheck } from './doctrine/validate.js';
+import { readablePolicy } from './doctrine/readable.js';
+import { degradedReply, sheetOf, signaturesIn, systemPrompt, type DegradeReason, type Situation } from './persona/index.js';
+import { allowedNumbers, numbersIn, renderAnalysis, verifyNumbers, type Analysis } from './analysis/index.js';
+import { sanitizeText } from './security.js';
+import { askJson } from './voice.js';
 
 export interface Turn { who: 'me' | 'general'; text: string; at: number }
 
@@ -14,111 +22,111 @@ export interface ConverseInput {
   lang: 'fr' | 'en';
   persona: Persona;
   history: Turn[];
-  view: PlayerView;
   ctx: DoctrineContext;
+  /** The engine's analysis of the colony; without it the General answers from the heuristic only. */
+  analysis?: Analysis | undefined;
+  /** renderMemory output, or ''. */
+  memory?: string | undefined;
+  /** Rotation seed (colony id + turn count). */
+  seed?: string | number | undefined;
+  /** The player is over quota: no model, an in-character line says so. */
+  overQuota?: boolean | undefined;
+  /** Kept for the heuristic summary of the first API; unused by the model path. */
+  view?: PlayerView | undefined;
 }
 
-export interface ConverseResult { reply: string; policy: Policy | null; source: 'llm' | 'heuristic' }
+export interface ConverseResult {
+  reply: string;
+  policy: Policy | null;
+  /** One line per rule of the proposed policy (for a confirmation step), when `policy` is set. */
+  readable: string[] | null;
+  /** The General asks before acting: the doctrine was ambiguous. */
+  question: string | null;
+  source: 'llm' | 'heuristic' | 'degraded';
+  /** Numbers the model invented were removed from the reply. */
+  numbersStripped: boolean;
+  /** Signature lines used in this reply, for the memory of recent phrases. */
+  usedPhrases: string[];
+  degradeReason?: DegradeReason;
+}
 
-/** The state of the colony in a few lines, so the General talks about what is actually happening. */
+/** The state of the colony in a few lines (first API; kept for tests and for the offline General). */
 export function situationSummary(v: PlayerView, lang: 'fr' | 'en', names: Record<string, string>): string {
   const me = v.me;
   const mine = v.systems.filter((s) => s.owner === me.id);
-  const hot = mine.filter((s) => s.engaged || s.blockadedBy);
   const fleets = v.fleets.filter((f) => f.owner === me.id);
   const warships = fleets.reduce((s, f) => s + f.combat, 0);
-  const cargos = fleets.reduce((s, f) => s + (f.units?.cargo ?? 0), 0);
   const incoming = v.fleets.filter((f) => f.owner !== me.id && f.destination && mine.some((s) => s.id === f.destination) && f.combat > 0);
   const nextDraw = Math.max(0, Math.round((v.nextDrawAt - v.time) / 60));
-  const daysLeft = Math.max(0, Math.round((v.seasonEndsAt - v.time) / 86400));
-  const neighbours = v.colonies.filter((c) => c.id !== me.id && !c.npc).length;
-  const p = me.policy;
   const st = me.stock;
-  if (lang === 'fr') {
-    return [
-      `Colonie ${me.name}, faction ${me.faction}. ${me.connectedCount} système(s) relié(s) sur ${mine.length} possédé(s), score ${me.score.toFixed(1)}. ${me.shielded ? 'Bouclier de débutant actif.' : ''}`,
-      `Stocks : Métal ${Math.round(st.metal)}, Énergie ${Math.round(st.energy)}, Vivres ${Math.round(st.food)}, Cristal ${Math.round(st.crystal)}, Rium ${Math.round(st.rium)} ; ${Math.round(me.credits)} Crédits, ${Math.round(me.influence)} Influence. Dernière production : Métal +${Math.round(me.lastProduced.metal)}, Énergie +${Math.round(me.lastProduced.energy)}.`,
-      `Flottes : ${warships} vaisseau(x) de guerre, ${cargos} cargo(s). ${incoming.length ? `ALERTE : ${incoming.length} flotte(s) hostile(s) en approche.` : ''} ${hot.length ? `Combat ou blocus à : ${hot.map((s) => s.name).join(', ')}.` : ''}`,
-      `Prochain Tirage dans ${nextDraw} min ; bandes tirées : ${v.draw?.bands.join(', ') ?? 'aucune'} ; Silence dans ${daysLeft} jour(s). ${neighbours} Colonie(s) humaine(s) connue(s), ${v.colonies.filter((c) => c.ally).length} allié(s).`,
-      `Doctrine en vigueur : ${summarize(p, 'fr')}${p.notes ? ` (« ${p.notes.slice(0, 120)} »)` : ''}.`,
-      `Systèmes : ${mine.slice(0, 8).map((s) => `${s.name}${s.id === me.capital ? ' (capitale)' : ''} [${s.resource}${s.connected ? '' : ', non relié'}]`).join(' ; ')}${mine.length > 8 ? ' ; …' : ''}.`,
-      v.barters.filter((b) => b.to === me.id && !b.accepted).length ? `Offres de troc en attente : ${v.barters.filter((b) => b.to === me.id && !b.accepted).map((b) => names[b.from] ?? b.from).join(', ')}.` : '',
-    ].filter(Boolean).join('\n');
-  }
-  return [
-    `Colony ${me.name}, faction ${me.faction}. ${me.connectedCount} connected system(s) of ${mine.length} owned, score ${me.score.toFixed(1)}. ${me.shielded ? 'Newcomer shield active.' : ''}`,
-    `Stocks: Metal ${Math.round(st.metal)}, Energy ${Math.round(st.energy)}, Food ${Math.round(st.food)}, Crystal ${Math.round(st.crystal)}, Rium ${Math.round(st.rium)}; ${Math.round(me.credits)} Credits, ${Math.round(me.influence)} Influence. Last production: Metal +${Math.round(me.lastProduced.metal)}, Energy +${Math.round(me.lastProduced.energy)}.`,
-    `Fleets: ${warships} warship(s), ${cargos} cargo(s). ${incoming.length ? `ALERT: ${incoming.length} hostile fleet(s) inbound.` : ''} ${hot.length ? `Fighting or blockade at: ${hot.map((s) => s.name).join(', ')}.` : ''}`,
-    `Next Draw in ${nextDraw} min; bands drawn: ${v.draw?.bands.join(', ') ?? 'none'}; Silence in ${daysLeft} day(s). ${neighbours} known human colony(ies), ${v.colonies.filter((c) => c.ally).length} ally(ies).`,
-    `Standing doctrine: ${summarize(p, 'en')}${p.notes ? ` ("${p.notes.slice(0, 120)}")` : ''}.`,
-    `Systems: ${mine.slice(0, 8).map((s) => `${s.name}${s.id === me.capital ? ' (capital)' : ''} [${s.resource}${s.connected ? '' : ', not connected'}]`).join('; ')}${mine.length > 8 ? '; …' : ''}.`,
-    v.barters.filter((b) => b.to === me.id && !b.accepted).length ? `Pending barter offers: ${v.barters.filter((b) => b.to === me.id && !b.accepted).map((b) => names[b.from] ?? b.from).join(', ')}.` : '',
-  ].filter(Boolean).join('\n');
+  if (lang === 'fr') return `Colonie ${me.name} : ${me.connectedCount} relié(s) sur ${mine.length}, score ${me.score.toFixed(1)}.${me.shielded ? ' Bouclier de débutant actif.' : ''} Métal ${Math.round(st.metal)}, Énergie ${Math.round(st.energy)}, Vivres ${Math.round(st.food)}, Cristal ${Math.round(st.crystal)}, Rium ${Math.round(st.rium)}, ${Math.round(me.credits)} Crédits. ${warships} vaisseau(x) de guerre${incoming.length ? `, ${incoming.length} flotte(s) hostile(s) en approche` : ''}. Prochain Tirage dans ${nextDraw} min. Doctrine : ${summarize(me.policy, 'fr')}.${Object.keys(names).length ? '' : ''}`;
+  return `Colony ${me.name}: ${me.connectedCount} connected of ${mine.length}, score ${me.score.toFixed(1)}.${me.shielded ? ' Newcomer shield active.' : ''} Metal ${Math.round(st.metal)}, Energy ${Math.round(st.energy)}, Food ${Math.round(st.food)}, Crystal ${Math.round(st.crystal)}, Rium ${Math.round(st.rium)}, ${Math.round(me.credits)} Credits. ${warships} warship(s)${incoming.length ? `, ${incoming.length} hostile fleet(s) inbound` : ''}. Next Draw in ${nextDraw} min. Doctrine: ${summarize(me.policy, 'en')}.`;
 }
 
-const ORDERS_SHAPE = `{
-  "reply": "your answer to the player, in character, 1 to 3 sentences, in the player's language",
-  "orders": null | {
-    "reserves"?: { "metal"?: number, "energy"?: number, "food"?: number, "crystal"?: number, "rium"?: number },
-    "sellAbove"?: { "<resource>": minPrice }, "buyBelow"?: { "<resource>": maxPrice },
-    "defendFirst"?: ["<system id>"], "expansion"?: 0..1, "aggression"?: 0..1,
-    "neverAttack"?: ["<colony or alliance id>"], "trustedTraders"?: ["<colony id>"],
-    "fuel"?: "auto" | "refinery" | "synthesizer", "autoTurrets"?: 0..6, "retreatBelow"?: 0..1,
-    "targetPriority"?: "ships" | "turrets" | "station" | "economy", "notes"?: "the doctrine in one sentence"
-  }
-}`;
+const ORDER_WORDS = /\b(défen|defen|vend|sell|achèt|achet|buy|garde|keep|réserve|reserve|étend|expan|grow|attaque|attack|raid|jamais|never|carburant|fuel|raffinerie|refinery|synthé|synthe|tourelle|turret|repli|retreat|escort|doctrine|priorit)/i;
+const JOKE_WORDS = /rire|blague|drôle|drole|joke|funny|laugh|humour|humor/i;
+const RULE_WORDS = /comment|pourquoi|c'est quoi|qu'est-ce|how|why|what is|what's|explique|explain|règle|rule/i;
+
+function situationOf(text: string, crisis: boolean): Situation {
+  if (crisis) return 'crisis';
+  if (JOKE_WORDS.test(text)) return 'smalltalk';
+  if (RULE_WORDS.test(text)) return 'teaching';
+  if (ORDER_WORDS.test(text)) return 'clarification';
+  return 'advice';
+}
+
+const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavailable && (err.reason === 'saturated' || err.reason === 'open') ? 'saturated' : 'unavailable');
 
 /** Small talk, questions and orders, answered in one model call; the persona fallback when no model is available. */
-export async function converse(input: ConverseInput, client: LlmClient | null, names: Record<string, string> = {}): Promise<ConverseResult> {
+export async function converse(input: ConverseInput, client: LlmClient | null, _names: Record<string, string> = {}): Promise<ConverseResult> {
   const fallback = heuristicConverse(input);
-  if (!client || !input.text.trim()) return fallback;
   const L = input.lang;
-  const voice = PERSONA_VOICES[input.persona];
-  const ch = voice.character[L];
-  const situation = situationSummary(input.view, L, names);
-  const systems = Object.entries(input.ctx.systems).map(([id, n]) => `${id} = ${n}`).join('; ');
-  const colonies = Object.entries(input.ctx.colonies).slice(0, 60).map(([id, n]) => `${id} = ${n}`).join('; ');
-  const alliances = Object.entries(input.ctx.alliances).map(([id, n]) => `${id} = ${n}`).join('; ');
-  const system = [
-    `You are ${voice.name[L]}, the player's AI General in Aurane, a slow real-time galactic strategy game. You are a character, not an assistant.`,
-    `Temperament: ${ch.temperament}`,
-    `Humour: ${ch.humour}`,
-    `Style: ${ch.style.join(' ')}`,
-    `Never: ${ch.never.join(' ')}`,
-    `Your speciality: ${ch.expertise}`,
-    `Catchphrases you may use sparingly: ${ch.catchphrases.join(' | ')}`,
-    '',
-    MECHANICS_PRIMER[L],
-    '',
-    `Current situation of the colony you serve:\n${situation}`,
-    '',
-    `Ids you may use in orders (never invent one): SYSTEMS: ${systems || '(none)'}; COLONIES: ${colonies || '(none)'}; ALLIANCES: ${alliances || '(none)'}. Current policy: ${JSON.stringify(input.ctx.current)}.`,
-    '',
-    `Answer ONLY with a JSON object of this shape, no prose outside it, no code fences:\n${ORDERS_SHAPE}`,
-    'Rules: "orders" is null unless the player clearly gives you an instruction about how to run the colony; then fill only the fields the instruction touches and say in the reply what you will do. If the player jokes, provokes or chats, stay in character and use your humour; if they ask how something works, explain it correctly and briefly from the rules above, in your voice, tied to their real situation. Never break character, never mention being a language model, never exceed three sentences.',
-  ].join('\n');
-  const messages = [
-    { role: 'system' as const, content: system },
-    ...input.history.slice(-8).map((t) => ({ role: (t.who === 'me' ? 'user' : 'assistant') as 'user' | 'assistant', content: t.text })),
-    { role: 'user' as const, content: input.text.slice(0, 1500) },
-  ];
+  const seed = input.seed ?? `${input.text}:${input.history.length}`;
+  if (input.overQuota) return { ...fallback, source: 'degraded', degradeReason: 'quota', reply: fallback.question ?? `${degradedReply(input.persona, L, 'quota', seed)} ${fallback.policy ? fallback.reply : ''}`.trim() };
+  if (!client || !input.text.trim()) return fallback;
+  const crisis = input.analysis?.crisis ?? false;
+  const analysisText = input.analysis ? renderAnalysis(input.analysis, L) : '(no analysis available: answer from the rules and the doctrine only, cite no figure)';
+  const system = systemPrompt({
+    persona: input.persona, lang: L, crisis, seed, focus: situationOf(input.text, crisis), primer: true,
+    analysis: analysisText, memory: input.memory ?? '', data: idLines(input.ctx),
+    contract: [
+      'TASK: answer the player\'s message. It may be an order about how to run the colony, a question about the rules, small talk or a provocation.',
+      `Answer ONLY with a JSON object, no prose outside it, no code fences: {"reply": "1 to 3 sentences in the player's language, in your voice", "orders": null | ${ORDERS_SHAPE_DOC}, "question": null | "one question"}.`,
+      `Rules: "orders" is null unless the player clearly instructs you about running the colony; then fill only the fields the instruction touches (CURRENT policy: ${JSON.stringify(input.ctx.current)}) and say in the reply what you will do. If an order is ambiguous or contradicts itself, "orders" is null and "question" holds ONE precise question. Use only ids from the lists. When you recommend an action, pick it from the OPTIONS of the analysis and cite its figures. If the player asks how something works, explain it correctly from the rules, in your voice, tied to their situation.`,
+    ],
+  });
+  const history = input.history.slice(-8).map((t) => ({ role: (t.who === 'me' ? 'user' : 'assistant') as 'user' | 'assistant', content: sanitizeText(t.text, 1500) }));
+  const user = sanitizeText(input.text, 1500);
+  const messages = [{ role: 'system' as const, content: system }, ...history, { role: 'user' as const, content: user }];
+  const allowed = input.analysis ? allowedNumbers(input.analysis, `${user} ${input.memory ?? ''} ${input.history.map((t) => t.text).join(' ')}`) : new Set<number>([...numbersIn(user), ...numbersIn(input.memory ?? '')]);
   try {
-    const res = await client.chat(messages, { maxTokens: 500, temperature: 0.7, json: true, timeoutMs: 20000 });
-    const raw = extractJson(res.text) as { reply?: unknown; orders?: unknown };
-    const reply = typeof raw.reply === 'string' && raw.reply.trim() ? raw.reply.trim().slice(0, 600) : fallback.reply;
-    let policy: Policy | null = null;
-    if (raw.orders && typeof raw.orders === 'object') {
-      const merged = PolicySchema.safeParse({ ...input.ctx.current, ...(raw.orders as Record<string, unknown>), version: 1 });
-      if (merged.success) {
-        policy = merged.data;
-        policy.defendFirst = policy.defendFirst.filter((id) => id in input.ctx.systems);
-        policy.neverAttack = policy.neverAttack.filter((id) => id in input.ctx.colonies || id in input.ctx.alliances);
-        policy.trustedTraders = policy.trustedTraders.filter((id) => id in input.ctx.colonies);
-        if (typeof policy.notes !== 'string' || !policy.notes) policy.notes = input.text.slice(0, 2000);
-      }
+    let ans = await askJson(client, { task: 'talk', schema: TALK_JSON_SCHEMA, zod: TalkOutputSchema, messages });
+    let check = verifyNumbers(ans.value.reply, allowed);
+    if (!check.ok) {
+      // One corrective turn: the model narrates the engine's figures, it does not make its own.
+      ans = await askJson(client, { task: 'talk', schema: TALK_JSON_SCHEMA, zod: TalkOutputSchema, repair: false, messages: [...messages, { role: 'assistant', content: JSON.stringify(ans.value) }, { role: 'user', content: `Your reply cited figures that are not in the facts you were given (${check.unknown.join(', ')}). Answer again, same meaning, citing only the figures from the analysis, or no figure at all. Same JSON shape.` }] }).catch(() => ans);
+      check = verifyNumbers(ans.value.reply, allowed);
     }
-    return { reply, policy, source: 'llm' };
-  } catch {
+    const stripped = !check.ok;
+    let reply = (check.ok ? ans.value.reply : check.stripped).trim().slice(0, 600);
+    let policy: Policy | null = null;
+    let question: string | null = ans.value.question?.trim().slice(0, 300) || null;
+    if (ans.value.orders && !question) {
+      let merged = mergeOrders(input.ctx.current, ans.value.orders, input.ctx);
+      if (!merged.notes || merged.notes === input.ctx.current.notes) merged.notes = user.slice(0, 2000);
+      const checked = semanticCheck(merged, input.ctx, user);
+      merged = checked.policy;
+      const blocking = checked.issues.find((i) => i.blocking);
+      if (blocking) question = clarificationFor(blocking, input.ctx, input.persona);
+      else if (policyChanged(merged, input.ctx.current)) policy = merged;
+    }
+    if (question) reply = question;
+    if (!reply) reply = fallback.reply;
+    const sheet = sheetOf(input.persona);
+    const usedPhrases = signaturesIn(reply, [...PERSONA_VOICES[input.persona].character[L].catchphrases, sheet.signoff[L], ...sheet.examples[L].map((e) => e.text)]);
+    return { reply, policy, readable: policy ? readablePolicy(policy, input.ctx) : null, question, source: 'llm', numbersStripped: stripped, usedPhrases };
+  } catch (err) {
+    if (err instanceof LlmUnavailable) { const reason = degradeReason(err); return { ...fallback, source: 'degraded', degradeReason: reason, reply: fallback.question ?? `${degradedReply(input.persona, L, reason, seed)} ${fallback.policy ? fallback.reply : ''}`.trim() }; }
     return fallback;
   }
 }
@@ -136,25 +144,6 @@ const FAQ: { keys: string[]; fr: string; en: string }[] = [
   { keys: ['doctrine', 'politique', 'policy', 'que fais', 'what do you', 'ordre', 'order'], fr: 'Ma doctrine, ce sont tes règles : jusqu\'où m\'étendre, quand attaquer, quoi vendre, quoi défendre, qui ne jamais toucher. Dis-le en une phrase et je l\'applique à chaque Tirage, que tu sois là ou non.', en: 'My doctrine is your rules: how far to expand, when to strike, what to sell, what to defend, whom never to touch. Say it in a sentence and I apply it at every Draw, whether you are here or not.' },
 ];
 
-const JOKES: Record<Persona, { fr: string[]; en: string[] }> = {
-  vane: {
-    fr: ['Une blague. Bien. Deux Généraux entrent dans un système sans tourelle. Il n\'y en a qu\'un qui ressort. Voilà, c\'est fait ; parlons de tes ponts.', 'J\'ai un humour de caserne : il tient en une ligne et il finit par un ordre. Ris maintenant, double ton pont ensuite.'],
-    en: ['A joke. Fine. Two Generals enter a system without a turret. Only one comes out. There, done; now about your bridges.', 'My humour is barracks humour: one line, ending with an order. Laugh now, double your bridge next.'],
-  },
-  kestrel: {
-    fr: ['Tu veux rire ? Regarde la doctrine de ton voisin : « défense d\'abord ». Il défend une station que personne n\'a encore trouvée. Nous, on va la trouver.', 'Ma meilleure blague, c\'est un cargo de Rium sans escorte. La chute arrive dans dix minutes, à la géante gazeuse d\'à côté.'],
-    en: ['You want a laugh? Look at your neighbour\'s doctrine: "defence first". He defends a station nobody has found yet. We will.', 'My best joke is an unescorted Rium cargo. The punchline lands in ten minutes, at the gas giant next door.'],
-  },
-  oriel: {
-    fr: ['Votre demande a un rendement estimé de 0,3 sourire par Tirage, sous le Métal. Je la satisfais néanmoins : un Corsaire entre dans un Marché et demande le prix de l\'honnêteté. Introuvable ; rupture de stock depuis la Saison 0.', 'L\'humour est un actif volatil. Je propose plutôt une marge : vendez vos Vivres au-dessus de 1,2, elle est garantie et elle fait sourire.'],
-    en: ['Your request yields an estimated 0.3 smiles per Draw, below Metal. I comply nonetheless: a Corsair walks into a Market and asks the price of honesty. Not listed; out of stock since Season 0.', 'Humour is a volatile asset. I propose a margin instead: sell your Food above 1.2, it is guaranteed and it makes people smile.'],
-  },
-  solen: {
-    fr: ['On raconte qu\'un Phare demanda un jour au Silence pourquoi il l\'éteignait. « Pour voir qui viendrait te rallumer », répondit-il. Ris si tu veux, mais regarde qui sont tes voisins.', 'Un moine, un Corsaire et un Marchand construisent un relais. Le Marchand le vend, le Corsaire le coupe, le moine le double. Devine lequel a encore un Réseau le matin.'],
-    en: ['They say a Beacon once asked the Silence why it put it out. "To see who would come and relight you," it answered. Laugh if you like, but look at who your neighbours are.', 'A monk, a Corsair and a Merchant build a relay. The Merchant sells it, the Corsair cuts it, the monk doubles it. Guess who still has a Network in the morning.'],
-  },
-};
-
 const GREETINGS: Record<Persona, { fr: string; en: string }> = {
   vane: { fr: 'Présente. Ponts tenus, réserves comptées. Tes ordres ?', en: 'Present. Bridges held, reserves counted. Your orders?' },
   kestrel: { fr: 'Enfin réveillé. J\'ai trois cibles et pas d\'ordre : dis un mot.', en: 'Awake at last. I have three targets and no orders: say the word.' },
@@ -162,19 +151,25 @@ const GREETINGS: Record<Persona, { fr: string; en: string }> = {
   solen: { fr: 'La paix sur ta Colonie. Les voisins sont calmes, le Signal veille. Que puis-je pour toi ?', en: 'Peace on your Colony. The neighbours are quiet, the Signal keeps watch. What can I do for you?' },
 };
 
-function pick<T>(arr: T[], seed: string): T { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0; return arr[h % arr.length]!; }
+function pick<T>(arr: readonly T[], seed: string): T { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0; return arr[h % arr.length]!; }
 
 /** No model: keywords decide between orders, a rules answer, a joke or a greeting, always in the persona's voice. */
 export function heuristicConverse(input: ConverseInput): ConverseResult {
   const L = input.lang;
   const t = input.text.toLowerCase();
   const voice = PERSONA_VOICES[input.persona];
+  const sheet = sheetOf(input.persona);
+  const base = { readable: null, question: null, source: 'heuristic' as const, numbersStripped: false, usedPhrases: [] as string[] };
   const compiled = heuristicPolicy(input.text, input.ctx);
+  if (compiled.question) return { ...base, reply: compiled.question, policy: null, question: compiled.question };
   const changed = compiled.summary !== summarize(input.ctx.current, L) || compiled.policy.defendFirst.join() !== input.ctx.current.defendFirst.join();
-  if (changed) return { reply: compiled.reply, policy: compiled.policy, source: 'heuristic' };
+  if (changed) return { ...base, reply: compiled.reply, policy: compiled.policy, readable: compiled.readable };
   const has = (...w: string[]): boolean => w.some((x) => t.includes(x));
-  if (has('rire', 'blague', 'drôle', 'drole', 'joke', 'funny', 'laugh', 'humour', 'humor')) return { reply: pick(JOKES[input.persona][L], input.text), policy: null, source: 'heuristic' };
-  if (has('bonjour', 'salut', 'hello', 'hi ', 'hey', 'coucou', 'yo ') && t.length < 30) return { reply: GREETINGS[input.persona][L], policy: null, source: 'heuristic' };
-  for (const f of FAQ) if (f.keys.some((k) => t.includes(k))) return { reply: `${f[L]} ${voice.signoff[L]}`, policy: null, source: 'heuristic' };
-  return { reply: compiled.reply, policy: null, source: 'heuristic' };
+  if (has('rire', 'blague', 'drôle', 'drole', 'joke', 'funny', 'laugh', 'humour', 'humor')) {
+    const jokes = sheet.examples[L].filter((e) => e.situation === 'smalltalk').map((e) => e.text);
+    return { ...base, reply: pick(jokes.length ? jokes : [sheet.signoff[L]], input.text), policy: null };
+  }
+  if (has('bonjour', 'salut', 'hello', 'hi ', 'hey', 'coucou', 'yo ') && t.length < 30) return { ...base, reply: GREETINGS[input.persona][L], policy: null };
+  for (const f of FAQ) if (f.keys.some((k) => t.includes(k))) return { ...base, reply: `${f[L]} ${voice.signoff[L]}`, policy: null };
+  return { ...base, reply: compiled.reply, policy: null };
 }

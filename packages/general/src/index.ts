@@ -9,3 +9,4 @@ export * from './alerts.js';
 export * from './security.js';
 export * from './analysis/index.js';
 export * from './persona/index.js';
+export * from './doctrine/index.js';
