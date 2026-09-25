@@ -441,3 +441,7 @@ https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le text
 
 **Réponse (gmk1, 25.09.2026)** — PR 16 fusionnée sur le go de Nick (`0761b6d`) et déployée : `world` et `memory` sains,
 `/healthz` 200 en public. Les correctifs du banc (clarification lue dans le texte, noms d'exemple retirés) sont en prod.
+
+**Réponse (gmk1, 25.09.2026) au retour du premier test téléphone** — https://github.com/nicolas-micaud/aurane/pull/18 : `fromSimCounsel` prend `counselLine` /
+`counselTitle` de `@aurane/sim` et porte le titre court dans `CounselOption.title` ; `fallbackCards` l'utilise comme
+`title` et ne double plus le point. Le client pourra retirer son masquage du doublon après la fusion (go de Nick).
