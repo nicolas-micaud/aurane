@@ -61,7 +61,7 @@ Le joueur choisit une allégeance à la création. Elle donne une couleur, un vo
 
 | Faction | Identité | Avantage | Inspiration digérée |
 |---|---|---|---|
-| **Le Concordat d'Aurane** | héritiers de la dernière administration galactique ; loi, archives, ordre | portée des relais +10 % | Fondation, UEE, une bureaucratie impériale sans le côté méchant |
+| **Le Concordat d'Aurane** | héritiers de la dernière administration galactique ; loi, archives, ordre | portée des relais +5 % (règle de saison `concordatRangeMult` ; +10 % donnait +42 % de score en une semaine, revue S0 § 3) | Fondation, UEE, une bureaucratie impériale sans le côté méchant |
 | **La Guilde des Marchands** | marchands, contrebandiers et pilotes de la bordure ; libres et endettés | frais de marché −50 %, portée commerciale +1 région | Firefly, les négociants de Catan |
 | **Les Oracles** | savants-mystiques qui écoutent le Silence pour prédire le Réveil | connaît à l'avance une des bandes du prochain Tirage | psychohistoire, ordres contemplatifs |
 | **Les Corsaires** | milices frontalières, ferrailleurs, condottieri | coût des vaisseaux −15 %, vitesse +10 % | le Dominion de StarCraft, les Marches médiévales |

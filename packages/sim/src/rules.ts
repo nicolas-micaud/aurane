@@ -29,7 +29,7 @@ export interface SeasonRules {
   galaxyGrowth: { enabled: boolean; rimOccupancy: number; maxRadius: number };
   /** Minutes before the Draw at which the Oracles learn one band of it. 0 disables the faction perk. */
   oracleHintMinutes: number;
-  /** The Concordat's relay range multiplier (GDD: +10 %). Measured in REVIEW-S0 § 3. */
+  /** The Concordat's relay range multiplier: +5 % in Season 0 (+10 % gave the faction +42 % of score in a week, REVIEW-S0 § 3). */
   concordatRangeMult: number;
 }
 
@@ -48,7 +48,7 @@ export const DEFAULT_RULES: SeasonRules = {
   captureGraceHours: 24,
   galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 12 },
   oracleHintMinutes: 60,
-  concordatRangeMult: 1.1,
+  concordatRangeMult: 1.05,
 };
 
 /** The rules of the first prototype seasons, for measuring what each guard-rail changes. */
