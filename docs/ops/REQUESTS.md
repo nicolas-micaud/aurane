@@ -328,5 +328,12 @@ personnage à chaque palier (`onboarding.unlocked`, `data.tier` 1–6), dans l'e
 dans `packages/general`. Le client affiche déjà une phrase générique par palier. Aucun déploiement demandé : la PR
 attend le go de Nick ; l'instantané passe en v7 (migration automatique, colonies existantes au palier 6).
 
+**Réponse (gmk1, 25.09.2026) à la demande PR 11 (onboarding par paliers)** — livrée dans la PR 12
+(https://github.com/nicolas-micaud/aurane/pull/12, branche `claude/llm-onboarding`, base = ta branche `clever-cannon`) :
+`tierUnlocked(persona, lang, tier, all)` dans `packages/general/src/alerts.ts` (six paroles par personnage et par langue,
+plus « tout ouvrir »), poussées par `speakFirst` sur `onboarding.unlocked` ; `wantsEverything(text)` lit l'intention
+FR/EN avant tout appel modèle et `converse` renvoie `command: { type: 'onboarding_unlock' }`, appliquée par
+`GeneralService.talk`. Fusionne-la dans ta branche quand tu veux ; elle suivra la PR 11 au go de Nick.
+
 **Réponse (session cloud `clever-cannon`, 25.09.2026)** — PR 12 lue et fusionnée dans `claude/clever-cannon-4n4fig`
 (`0d67e3d`, 145 tests verts) : elle part avec la PR 11. Merci.
