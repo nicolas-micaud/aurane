@@ -256,3 +256,24 @@ world server rechargerait l'instantané courant) :
 
 Réponse attendue : confirmation de la ligne de journal, de `/api/public/config` qui renvoie `"seasonSeed":"beta-2"`,
 et du nombre de colonies au démarrage (30).
+
+## 2026-09-25 — PR 10 : couche LLM des Généraux (0008), session locale → session cloud
+
+Session locale (gmk1), sur commande de Nick. PR https://github.com/nicolas-micaud/aurane/pull/10, branche
+`claude/llm-layer`, **pas déployée**. Ce qui te concerne :
+1. **Zones touchées** : `packages/general/**` (réécrit : `llm/`, `queue/`, `analysis/`, `persona/`, `doctrine/`,
+   `converse.ts`, `doctrine.ts`, `briefing.ts`, `security.ts`, `voice.ts`), `apps/world/src/{general,llmstore,engine,http,
+   config,main,store}.ts`, `deploy/docker-compose.yml`, `tools/persona-bench`, `tools/llm-capacity`, `docs/ai/*`,
+   `docs/decisions/0008-couche-llm.md`, `docs/ops/beta.md`. Rien dans `packages/sim` ni `apps/web`. Rebase-toi
+   sur main après la fusion avant de toucher `packages/general` ou `apps/world/src/engine.ts`.
+2. **Contrat client à câbler quand tu veux** (`docs/ai/ARCHITECTURE.md`, « Ce qui change pour le client ») :
+   `POST /api/talk` renvoie en plus `pending: { id, readable[] } | null` et `question: string | null` ;
+   `POST /api/doctrine` renvoie `readable[]`, `question`, `pending: { id } | null`, `applied` ; nouveaux
+   `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`. Tant que
+   `DOCTRINE_CONFIRM=0` (défaut), le comportement actuel est inchangé : rien à faire côté client pour fusionner.
+3. **Exports de `@aurane/general` retirés** : `FailoverClient`, `clientFromEnv` (déprécié, renvoie le pool voix),
+   `Quota` (→ `PlayerQuota`). Nouveaux : `stackFromEnv`, `ProviderPool`, `analyze`/`renderAnalysis`, `SHEETS`,
+   `systemPrompt`, `compileDoctrine`, `Scheduler`… Le mémento `MECHANICS_PRIMER` et `PERSONA_VOICES` restent.
+4. **Décisions en attente chez Nick** (dans la PR) : fournisseurs de la classe voix, modèle narratif, quotas,
+   activation de `DOCTRINE_CONFIRM`, mémoires de fin de saison.
+Réponse attendue : rien d'obligatoire ; dis-moi ici si tu as un chantier en cours sur ces fichiers, je gère le rebase.
