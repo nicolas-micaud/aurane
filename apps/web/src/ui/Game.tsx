@@ -151,7 +151,42 @@ function Hud({ v }: { v: PlayerView }) {
       )}
       <UpdateBanner />
       <Alerts v={v} />
-      <Coach v={v} />
+      {v.me.counsel.length > 0 ? <Counsel v={v} /> : <Coach v={v} />}
+    </div>
+  );
+}
+
+/** The Draw Counsel (0009): the Partner's cards. "Show me" opens the screen, "Do it" sends the ready command,
+ *  "Not now" hides the card for this Draw; the General remembers both answers. */
+const skippedCounsel = signal<Set<string>>(new Set());
+const fillParams = (tpl: string, params: Record<string, string | number>): string => tpl.replace(/\{(\w+)\}/g, (_, k: string) => { const val = params[k]; return val === undefined ? '' : typeof val === 'string' && (t(val as 'metal') as unknown) ? String(t(val as 'metal')) : String(val); });
+
+function showTarget(v: PlayerView, show: PlayerView['me']['counsel'][number]['show']): void {
+  if (show.kind === 'star') { selected.value = show.system; tab.value = 'system'; }
+  else if (show.kind === 'link') { selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; }
+  else if (show.kind === 'plateau') { systemMode.value = show.system; }
+  else tab.value = show.tab;
+  void v;
+}
+
+function Counsel({ v }: { v: PlayerView }) {
+  const skipped = useSig(skippedCounsel);
+  const cards = v.me.counsel.filter((c) => !skipped.has(c.id));
+  if (cards.length === 0) return null;
+  const answer = (id: string, taken: boolean) => { skippedCounsel.value = new Set([...skippedCounsel.value, id]); void act({ type: 'counsel_answer', id, taken }); };
+  return (
+    <div class="counsel">
+      <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
+      {cards.map((c) => (
+        <div key={c.id} class={`card u${c.urgency}`}>
+          <p>{fillParams(t('counsel')[c.kind] ?? c.kind, c.params)}{!c.command && c.kind !== 'doctrine' && c.kind !== 'read_recap' ? <small class="muted"> · {t('cannotPay')}</small> : null}</p>
+          <div class="acts">
+            <button onClick={() => showTarget(v, c.show)}>{t('showMe')}</button>
+            {c.command && <button class="primary" onClick={() => { const cmd = c.command!; void act(cmd).then((ok) => { if (ok) answer(c.id, true); }); }}>{t('doIt')}</button>}
+            <button class="link" onClick={() => answer(c.id, false)}>{t('notNow')}</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
