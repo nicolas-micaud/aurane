@@ -105,3 +105,10 @@ cartes de repli en personnage) et la tentation de laisser l'IA jouer à la place
 
 Décidé sur le principe (Nick, 25.09.2026). Premier incrément : le Conseil du Tirage, simulation et client par la
 session cloud, tâches LLM et file par la session locale (demande dans `docs/ops/REQUESTS.md`).
+
+Livré au niveau 0 (25.09.2026, même PR) : `counsel(w, colony)` dans `packages/sim/src/counsel.ts` (douze genres de
+cartes, filtrées par palier, triées par urgence, trois au plus), exposé dans la vue (`me.counsel`) ; commande
+`counsel_answer` qui écrit `counsel.taken` / `counsel.skipped` dans le journal du Général (la couche mémoire lit
+déjà le journal) ; cartes dans le client avec « Montre-moi », « Fais-le », « Pas maintenant » et des phrases
+fixes FR/EN en attendant la voix ; au palier 0 les cartes remplacent le coach. Reste à la session locale : la
+tâche `counsel` qui rephrase `params` dans la voix du personnage, le job à T−20 min, la tâche `episode`.

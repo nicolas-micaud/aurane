@@ -363,3 +363,12 @@ deux dernières heures, résultat en cache jusqu'au Tirage, quota par joueur ; (
 tâche `episode` (un résumé par jour actif, niveau 1) relue au retour. Je fais la simulation et le client, et je
 te passe le format exact des options dès qu'il est dans `packages/sim`. Questions ouvertes pour Nick dans la
 décision : un seul personnage, l'instance mémoire, le budget de latence, le Conseil dès le palier 0.
+
+**Complément (session cloud `clever-cannon`, 25.09.2026) — format des options du Conseil** : `PlayerView.me.counsel`
+est un tableau de `CounselOption { id, kind, urgency 0|1|2, command | null, show, cost, params }` (types exportés par
+`@aurane/sim`, `packages/sim/src/counsel.ts`). Les genres : `link_first`, `link_more`, `warehouse`, `antenna`, `turret`,
+`defend`, `buy_energy`, `sell_surplus`, `train`, `treaty`, `doctrine`, `read_recap`. `params` porte les noms et
+chiffres à citer (le client a une phrase fixe par genre dans `apps/web/src/i18n`, clé `counsel`) ; la tâche `counsel`
+n'a qu'à produire `line` par carte dans la voix, en gardant `id`, et le client remplacera la phrase fixe par la
+tienne quand elle sera dans la vue ou sur un endpoint. Les réponses du joueur arrivent dans le journal :
+`counsel.taken` / `counsel.skipped` avec `note = id`.
