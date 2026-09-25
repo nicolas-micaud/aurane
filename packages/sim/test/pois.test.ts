@@ -63,7 +63,7 @@ describe('system layouts', () => {
 
 describe('salvage', () => {
   it('a fleet holding a wreck recovers Metal and Crystal for its capital until the pool runs dry', () => {
-    const w = createWorld('salv', { radius: 5 });
+    const w = createWorld('salv', { radius: 5, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'S', faction: 'oracles', persona: 'solen' });
     const wreckSys = Object.keys(w.galaxy.systems).find((id) => layoutOf(w.galaxy, id).pois.some((p) => p.kind === 'wreck'))!;
     const wreck = layoutOf(w.galaxy, wreckSys).pois.find((p) => p.kind === 'wreck')!;
@@ -88,7 +88,7 @@ describe('salvage', () => {
 
 describe('fleets between points of interest', () => {
   it('crosses the lanes to a chosen point of interest and back to the station', () => {
-    const w = createWorld('hop1', { radius: 4 });
+    const w = createWorld('hop1', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'C', faction: 'guild', persona: 'oriel' });
     w.systems[c.capital]!.stock = { metal: 1e6, energy: 1e6, food: 1e6, crystal: 1e6, rium: 1e6 };
     expect(apply(w, c.id, { type: 'train', system: c.capital, unit: 'corvette', count: 2 }).ok).toBe(true);
@@ -114,7 +114,7 @@ describe('fleets between points of interest', () => {
   });
 
   it('a backup relay on another body keeps the system on the Network when the station falls', () => {
-    const w = createWorld('relay1', { radius: 4 });
+    const w = createWorld('relay1', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'C', faction: 'concordat', persona: 'vane' });
     c.createdAt = -1e9;
     const { a, b } = nearestBuildable(w, c);
@@ -136,7 +136,7 @@ describe('fleets between points of interest', () => {
   });
 
   it('a probe reveals covered points of interest, and a corsair lair stays hidden until then', () => {
-    const w = createWorld('probe1', { radius: 5 });
+    const w = createWorld('probe1', { radius: 5, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const corsair = spawnColony(w, { name: 'Kestrel', faction: 'corsairs', persona: 'kestrel' });
     // Find (or force) a system with a covered body, and make the corsair capital a lair.

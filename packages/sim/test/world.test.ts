@@ -23,7 +23,7 @@ function nearestBuildable(w: World, c: Colony): { a: string; b: string } {
 describe('world', () => {
   it('spawns colonies apart on the rim and runs a deterministic draw', () => {
     const mk = () => {
-      const w = createWorld('w1', { radius: 5 });
+      const w = createWorld('w1', { radius: 5, rules: { onboarding: false } });
       const a = spawnColony(w, { name: 'A', faction: 'concordat', persona: 'vane' });
       const b = spawnColony(w, { name: 'B', faction: 'guild', persona: 'oriel' });
       return { w, a, b };
@@ -41,7 +41,7 @@ describe('world', () => {
   });
 
   it('builds relays, claims systems, produces only when connected, and pays upkeep', () => {
-    const w = createWorld('w2', { radius: 5 });
+    const w = createWorld('w2', { radius: 5, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'C', faction: 'corsairs', persona: 'kestrel' });
     const { a, b } = nearestBuildable(w, c);
     const cap = w.systems[c.capital]!;
@@ -65,7 +65,7 @@ describe('world', () => {
   });
 
   it('refuses relays that are not anchored and buildings without slots', () => {
-    const w = createWorld('w3', { radius: 4 });
+    const w = createWorld('w3', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'C', faction: 'oracles', persona: 'solen' });
     const ids = Object.keys(w.systems).filter((id) => id !== c.capital);
     expect(apply(w, c.id, { type: 'build_relay', a: ids[0]!, b: ids[1]! })).toMatchObject({ ok: false, reason: 'not connected to your network' });
@@ -84,7 +84,7 @@ describe('world', () => {
     const filled = Object.fromEntries(res.fills.map((f) => [f.colony, f.qty]));
     expect(filled).toEqual({ a: 50, b: 10, c: 60 });
 
-    const w = createWorld('w4', { radius: 4 });
+    const w = createWorld('w4', { radius: 4, rules: { onboarding: false } });
     const seller = spawnColony(w, { name: 'S', faction: 'guild', persona: 'oriel' });
     const buyer = spawnColony(w, { name: 'B', faction: 'guild', persona: 'oriel' });
     // Move the buyer's capital into the seller's region so they share a market.
@@ -105,7 +105,7 @@ describe('world', () => {
   });
 
   it('the market maker backstops a colony alone in its region: energy at a premium, surplus at a discount', () => {
-    const w = createWorld('w4m', { radius: 4 });
+    const w = createWorld('w4m', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'Alone', faction: 'concordat', persona: 'vane' });
     const region = w.galaxy.systems[c.capital]!.region;
     const cap = w.systems[c.capital]!;
@@ -135,7 +135,7 @@ describe('world', () => {
   });
 
   it('trains fleets, moves them and raids a station, which darkens its relays', () => {
-    const w = createWorld('w5', { radius: 4 });
+    const w = createWorld('w5', { radius: 4, rules: { onboarding: false } });
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     const vic = spawnColony(w, { name: 'Vic', faction: 'concordat', persona: 'vane' });
     // Skip newcomer shields for the test.
@@ -173,7 +173,7 @@ describe('world', () => {
   });
 
   it('ends the season at the Silence with a winner', () => {
-    const w = createWorld('w6', { radius: 3, seasonDays: 1 });
+    const w = createWorld('w6', { radius: 3, seasonDays: 1, rules: { onboarding: false } });
     spawnColony(w, { name: 'A', faction: 'guild', persona: 'oriel' });
     spawnColony(w, { name: 'B', faction: 'oracles', persona: 'solen' });
     tick(w, 86400 + 10);

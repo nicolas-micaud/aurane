@@ -6,7 +6,7 @@ import * as B from '../src/balance.js';
 /** A colony whose capital layout holds a gas giant with a free industry slot. */
 function withGasGiant(seed: string): { w: World; c: ReturnType<typeof spawnColony>; gas: string } {
   for (let i = 0; i < 40; i++) {
-    const w = createWorld(`${seed}${i}`, { radius: 4 });
+    const w = createWorld(`${seed}${i}`, { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'guild', persona: 'oriel' });
     c.createdAt = -1e9;
     const gas = layoutOf(w.galaxy, c.capital).pois.find((p) => p.kind === 'gas' && p.orbitSlots[1] > 0);
@@ -17,7 +17,7 @@ function withGasGiant(seed: string): { w: World; c: ReturnType<typeof spawnColon
 
 describe('rium', () => {
   it('is part of every stock and the capital starts with a fuel allowance', () => {
-    const w = createWorld('rium0', { radius: 4 });
+    const w = createWorld('rium0', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'concordat', persona: 'vane' });
     expect(w.systems[c.capital]!.stock.rium).toBe(B.STARTING_STOCK.rium);
     expect(B.RESOURCE_LIST).toContain('rium');
@@ -88,7 +88,7 @@ describe('rium', () => {
   });
 
   it('the fuel doctrine is compiled from the persona and steers the General', () => {
-    const w = createWorld('rium8', { radius: 4 });
+    const w = createWorld('rium8', { radius: 4, rules: { onboarding: false } });
     const vane = spawnColony(w, { name: 'V', faction: 'concordat', persona: 'vane' });
     const kestrel = spawnColony(w, { name: 'K', faction: 'corsairs', persona: 'kestrel' });
     expect(vane.policy.fuel).toBe('synthesizer');
@@ -96,7 +96,7 @@ describe('rium', () => {
   });
 
   it('a synthesizer turns Energy and Food into Rium at the draw, and idles when the stock is short', () => {
-    const w = createWorld('rium2', { radius: 4 });
+    const w = createWorld('rium2', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'oracles', persona: 'solen' });
     c.createdAt = -1e9;
     const cap = w.systems[c.capital]!;
@@ -115,7 +115,7 @@ describe('rium', () => {
   });
 
   it('off-network departures burn Rium, not Energy, and a fleet without fuel stays put', () => {
-    const w = createWorld('rium3', { radius: 4 });
+    const w = createWorld('rium3', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'corsairs', persona: 'kestrel' });
     c.createdAt = -1e9;
     const cap = w.systems[c.capital]!;
@@ -134,7 +134,7 @@ describe('rium', () => {
   });
 
   it('fleets deployed in foreign space cost Rium at every draw and run dry when the capital cannot pay', () => {
-    const w = createWorld('rium4', { radius: 4 });
+    const w = createWorld('rium4', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'concordat', persona: 'vane' });
     c.createdAt = -1e9;
     const cap = w.systems[c.capital]!;
@@ -156,7 +156,7 @@ describe('rium', () => {
   });
 
   it('Rium trades on the market like any other resource', () => {
-    const w = createWorld('rium5', { radius: 4 });
+    const w = createWorld('rium5', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'R', faction: 'guild', persona: 'oriel' });
     const region = w.galaxy.sectors[w.galaxy.systems[c.capital]!.sector]!.region;
     expect(apply(w, c.id, { type: 'market_order', region, resource: 'rium', side: 'sell', qty: 10, price: 3 }).ok).toBe(true);

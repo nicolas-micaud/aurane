@@ -37,7 +37,12 @@ export interface Colony {
   origin?: string;
   /** Sim time of the last Night Watch change (cooldown, REVIEW-S0). */
   watchChangedAt?: number;
+  /** Progressive onboarding tier (docs/design/ONBOARDING-S0.md); NPCs and veterans sit at the last tier. */
+  onboarding: Onboarding;
 }
+
+/** Onboarding tier and when each tier opened (index = tier). */
+export interface Onboarding { tier: number; unlockedAt: number[] }
 
 /** One line of the General's journal: a structured note the client translates. */
 export interface JournalEntry { at: number; kind: string; system?: string; colony?: string }

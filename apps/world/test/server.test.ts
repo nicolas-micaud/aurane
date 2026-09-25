@@ -47,9 +47,9 @@ describe('world server', () => {
 
     const bad = await fetch(`${base}/api/cmd`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ type: 'nope' }) });
     expect(bad.status).toBe(400);
-    const ok = await (await fetch(`${base}/api/cmd`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ type: 'set_watch', startHour: 22 }) })).json() as { ok: boolean };
+    const ok = await (await fetch(`${base}/api/cmd`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ type: 'onboarding_unlock' }) })).json() as { ok: boolean };
     expect(ok.ok).toBe(true);
-    expect(engine.world.colonies[colonyId]!.watchStartHour).toBe(22);
+    expect(engine.world.colonies[colonyId]!.onboarding.tier).toBe(6);
 
     // Doctrine compiles without an LLM (heuristic) and the briefing always answers.
     const doc = await (await fetch(`${base}/api/doctrine`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ text: 'Défends la capitale, ne déclenche jamais la guerre sans moi.', lang: 'fr' }) })).json() as { source: string; policy: { aggression: number; defendFirst: string[] } };
@@ -127,7 +127,7 @@ describe('world server', () => {
     const ws = new WebSocket(`${base.replace('http', 'ws')}/ws?token=${token}`);
     const messages: { type: string; result?: { ok: boolean }; view?: { me: { name: string } } }[] = [];
     await new Promise<void>((resolve, reject) => {
-      ws.on('open', () => ws.send(JSON.stringify({ id: '1', command: { type: 'set_watch', startHour: 5 } })));
+      ws.on('open', () => ws.send(JSON.stringify({ id: '1', command: { type: 'onboarding_unlock' } })));
       ws.on('message', (raw) => {
         messages.push(JSON.parse(raw.toString()));
         if (messages.some((m) => m.type === 'result')) resolve();

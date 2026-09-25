@@ -5,16 +5,17 @@ import { layoutOf } from './pois.js';
 import type { Colony, Structure, SystemState, World } from './state.js';
 import { emptyDamage, emptyFleet } from './state.js';
 import { mergeRules } from './rules.js';
+import { ONBOARDING_MAX_TIER } from './onboarding.js';
 
-export interface WorldSnapshot { version: 6; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
+export interface WorldSnapshot { version: 7; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
 /** v2: one plateau per system (0002). v1: one stock per colony, buildings as a list of kinds. */
-interface WorldSnapshotOld { version: 1 | 2 | 3 | 4 | 5; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
+interface WorldSnapshotOld { version: 1 | 2 | 3 | 4 | 5 | 6; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
 
 /** The galaxy is deterministic from the seed and its options (kept in the world: it may have grown), so a snapshot stores only the mutable state. */
 export function snapshotWorld(w: World, galaxyOptions?: GalaxyOptions): WorldSnapshot {
   const state: Partial<World> = { ...w };
   delete state.galaxy;
-  return { version: 6, galaxyOptions: w.galaxyOptions ?? galaxyOptions ?? { radius: w.galaxy.radius }, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
+  return { version: 7, galaxyOptions: w.galaxyOptions ?? galaxyOptions ?? { radius: w.galaxy.radius }, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
 }
 
 export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
@@ -24,6 +25,7 @@ export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
   if (snap.version < 4) state = migrateV3(state);
   if (snap.version < 5) state = migrateV4(state);
   if (snap.version < 6) state = migrateV5(state, snap.galaxyOptions);
+  if (snap.version < 7) state = migrateV6(state);
   return { ...state, galaxy };
 }
 
@@ -100,6 +102,12 @@ function migrateV3(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
     if (cap && cap.stock.rium === 0) cap.stock.rium = B.STARTING_STOCK.rium;
   }
   s.depots ??= {};
+  return s;
+}
+
+/** v6 → v7: onboarding tiers; colonies that predate them are veterans and keep everything open. */
+function migrateV6(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
+  for (const c of Object.values(s.colonies)) c.onboarding ??= { tier: ONBOARDING_MAX_TIER, unlockedAt: [] };
   return s;
 }
 

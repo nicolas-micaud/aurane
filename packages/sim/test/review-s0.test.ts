@@ -12,7 +12,7 @@ const old = (c: Colony): void => { c.createdAt = -1e9; };
 
 /** An alliance of `n` colonies owning and having lit all Seven Beacons, connected by fiat. */
 function beaconBloc(seed: string, n: number, rules: Partial<typeof LEGACY_RULES>): { w: World; members: Colony[] } {
-  const w = createWorld(seed, { radius: 4, seasonDays: 56, rules });
+  const w = createWorld(seed, { radius: 4, seasonDays: 56, rules: { onboarding: false, ...rules } });
   const members: Colony[] = [];
   for (let i = 0; i < n; i++) { const c = spawnColony(w, { name: `M${i}`, faction: 'concordat', persona: 'vane', npc: true }); old(c); members.push(c); }
   const lead = members[0]!;
@@ -86,7 +86,7 @@ describe('R1 · premature Renaissance', () => {
 
 describe('R2 · throwaway colonies feeding a main one', () => {
   function pair(seed: string, rules: Partial<typeof LEGACY_RULES>): { w: World; main: Colony; alt: Colony } {
-    const w = createWorld(seed, { radius: 4, rules });
+    const w = createWorld(seed, { radius: 4, rules: { onboarding: false, ...rules } });
     const main = spawnColony(w, { name: 'Main', faction: 'guild', persona: 'oriel', origin: 'device-A' });
     const alt = spawnColony(w, { name: 'Alt', faction: 'guild', persona: 'oriel', origin: 'device-B' });
     return { w, main, alt };
@@ -137,7 +137,7 @@ describe('R2 · throwaway colonies feeding a main one', () => {
   });
 
   it('a young colony lends its relays to nobody: no throwaway bridges through an alliance', () => {
-    const w = createWorld('r2-transit', { radius: 4 });
+    const w = createWorld('r2-transit', { radius: 4, rules: { onboarding: false } });
     const main = spawnColony(w, { name: 'Main', faction: 'guild', persona: 'oriel' });
     const alt = spawnColony(w, { name: 'Alt', faction: 'guild', persona: 'oriel' });
     old(main); main.influence = 1e6;
@@ -165,7 +165,7 @@ describe('R4 · a galaxy that grows with its population', () => {
     for (const [id, sys] of Object.entries(g4.systems)) expect(JSON.stringify(g5.systems[id])).toBe(JSON.stringify(sys));
     expect(Object.keys(g5.sectors).length - Object.keys(g4.sectors).length).toBe(6 * 5);
     // Restoring a grown world regenerates the same galaxy.
-    const w = createWorld('grow', { radius: 4 });
+    const w = createWorld('grow', { radius: 4, rules: { onboarding: false } });
     w.galaxy = g5; w.galaxyOptions = { radius: 5, baseRadius: 4 };
     for (const id of Object.keys(g5.systems)) if (!w.systems[id]) w.systems[id] = { owner: null, mainPoi: '', structures: [], stationHp: 0, stock: B.emptyStock(), population: 0, buildQueue: [], trainQueue: [], blockade: null, engaged: false, engagedPois: [] };
     const back = restoreWorld(JSON.parse(JSON.stringify(snapshotWorld(w))) as ReturnType<typeof snapshotWorld>);
@@ -174,7 +174,7 @@ describe('R4 · a galaxy that grows with its population', () => {
   });
 
   it('the world opens a ring when the rim is half occupied, and newcomers spawn on it', () => {
-    const w = createWorld('grow2', { radius: 3, rules: { galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 4 } } });
+    const w = createWorld('grow2', { radius: 3, rules: { onboarding: false,  galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 4 } } });
     const rim = Object.values(w.galaxy.sectors).filter((s) => s.ring >= 1).length;
     let n = 0;
     while (n < rim) { try { spawnColony(w, { name: `c${n}`, faction: 'guild', persona: 'oriel', npc: true }); n++; } catch { break; } }
@@ -191,7 +191,7 @@ describe('R4 · a galaxy that grows with its population', () => {
 
 describe('R5 · rule holes', () => {
   it('the Night Watch window changes at most once a day', () => {
-    const w = createWorld('r5-watch', { radius: 4 });
+    const w = createWorld('r5-watch', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'W', faction: 'guild', persona: 'oriel' });
     expect(apply(w, c.id, { type: 'set_watch', startHour: 22 }).ok).toBe(true);
     expect(apply(w, c.id, { type: 'set_watch', startHour: 6 })).toMatchObject({ ok: false, reason: 'watch changed recently' });
@@ -201,7 +201,7 @@ describe('R5 · rule holes', () => {
   });
 
   it('a captured system its captor never connects falls neutral after the grace period', () => {
-    const w = createWorld('r5-grace', { radius: 4 });
+    const w = createWorld('r5-grace', { radius: 4, rules: { onboarding: false } });
     const a = spawnColony(w, { name: 'A', faction: 'guild', persona: 'oriel' });
     const b = spawnColony(w, { name: 'B', faction: 'corsairs', persona: 'kestrel' });
     old(a); old(b);
@@ -219,7 +219,7 @@ describe('R5 · rule holes', () => {
   });
 
   it('a fleet already under way keeps its arrival time when a relay behind it falls', () => {
-    const w = createWorld('r5-transit', { radius: 4 });
+    const w = createWorld('r5-transit', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'C', faction: 'guild', persona: 'oriel' });
     old(c); rich(w, c);
     apply(w, c.id, { type: 'train', system: c.capital, unit: 'corvette', count: 2 });
@@ -234,10 +234,10 @@ describe('R5 · rule holes', () => {
   });
 
   it('snapshots carry the season rules and legacy snapshots get the defaults', () => {
-    const w = createWorld('r5-snap', { radius: 4, rules: { pairTransferCapPerDay: 123 } });
+    const w = createWorld('r5-snap', { radius: 4, rules: { onboarding: false,  pairTransferCapPerDay: 123 } });
     spawnColony(w, { name: 'S', faction: 'guild', persona: 'oriel' });
     const snap = snapshotWorld(w);
-    expect(snap.version).toBe(6);
+    expect(snap.version).toBe(7);
     expect(restoreWorld(JSON.parse(JSON.stringify(snap)) as typeof snap).rules.pairTransferCapPerDay).toBe(123);
     const oldSnap = JSON.parse(JSON.stringify(snap)) as { version: number; state: Record<string, unknown> };
     oldSnap.version = 5;

@@ -112,5 +112,7 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alliance_leave') }),
   z.object({ type: z.literal('set_policy'), policy: PolicySchema }),
   z.object({ type: z.literal('decree'), kind: z.enum(DECREES) }),
+  /** "Show me everything": a veteran opens every onboarding tier at once. */
+  z.object({ type: z.literal('onboarding_unlock') }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;

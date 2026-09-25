@@ -19,6 +19,8 @@ export interface SeasonRules {
   giftRatioMax: number;
   /** Total barter value (base prices) two colonies may exchange per day, in either direction. 0 disables the cap. */
   pairTransferCapPerDay: number;
+  /** Progressive onboarding (docs/design/ONBOARDING-S0.md): human colonies start at tier 0 and unlock commands by game facts. */
+  onboarding: boolean;
   /** Whether colonies created from the same origin (device or address hash, set by the server) may trade or share transit. */
   sameOriginTrade: boolean;
   /** Hours between two changes of the Night Watch window. */
@@ -46,6 +48,7 @@ export const DEFAULT_RULES: SeasonRules = {
   giftRatioMax: 1.25,
   pairTransferCapPerDay: 600,
   sameOriginTrade: false,
+  onboarding: true,
   watchChangeCooldownHours: 24,
   captureGraceHours: 24,
   galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 12 },
@@ -66,6 +69,7 @@ export const LEGACY_RULES: SeasonRules = {
   giftRatioMax: Infinity,
   pairTransferCapPerDay: 0,
   sameOriginTrade: true,
+  onboarding: false,
   watchChangeCooldownHours: 0,
   captureGraceHours: 0,
   galaxyGrowth: { enabled: false, rimOccupancy: 1, maxRadius: 12 },

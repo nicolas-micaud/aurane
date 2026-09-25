@@ -3,6 +3,7 @@ import { COMBAT_UNITS, DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@a
 import * as B from './balance.js';
 import { expandGalaxy, generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { mergeRules, type SeasonRules } from './rules.js';
+import { advanceOnboarding, freshOnboarding, lockedReason, unlockAll } from './onboarding.js';
 import { hexNeighbors, hexKey } from './hex.js';
 import { dist } from './geometry.js';
 import { connectedFrom, evaluateLink, findBridges, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
@@ -375,6 +376,7 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
     capital: best.id, marketSystem: best.id, credits: 300, influence: B.STARTING_INFLUENCE,
     createdAt: w.time, watchStartHour: 0, policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...PERSONA_DEFAULTS[opts.persona] }),
     alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastOverflow: B.emptyStock(), lastSeenAt: w.time, journal: [], decrees: [],
+    onboarding: freshOnboarding(w, opts.npc ?? false),
   };
   if (opts.origin) colony.origin = opts.origin;
   w.colonies[id] = colony;
@@ -411,6 +413,18 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
   if (!colony) return { ok: false, reason: 'no such colony' };
   if (w.ended) return { ok: false, reason: 'season over' };
   colony.lastSeenAt = w.time;
+  // Progressive onboarding: facts since the last look may open a tier; a command above the tier is refused
+  // with `locked:<tier>` and the General says why (docs/design/ONBOARDING-S0.md).
+  advanceOnboarding(w, colony);
+  if (cmd.type === 'onboarding_unlock') { unlockAll(w, colony); return { ok: true }; }
+  const locked = lockedReason(colony, cmd);
+  if (locked) return { ok: false, reason: locked };
+  const result = dispatch(w, colony, cmd);
+  if (result.ok) advanceOnboarding(w, colony);
+  return result;
+}
+
+function dispatch(w: World, colony: Colony, cmd: Exclude<Command, { type: 'onboarding_unlock' }>): ApplyResult {
   switch (cmd.type) {
     case 'build_relay': return buildRelay(w, colony, cmd.a, cmd.b);
     case 'remove_relay': {
@@ -1461,6 +1475,7 @@ function runDraw(w: World): void {
       logEvent(w, 'draw.recap', [colony.id], { index: draw.index, produced: round(produced), overflow: Math.round(B.RESOURCE_LIST.reduce((s, r) => s + overflow[r], 0)), credits: productive.length * B.CREDITS_PER_SYSTEM_PER_DRAW, productive: productive.length, drawn: drawnMine, unpowered });
     }
     colony.decrees = colony.decrees.filter((d) => d.until > w.time);
+    advanceOnboarding(w, colony);
   }
 
   lapseCaptures(w);
