@@ -135,8 +135,14 @@ export async function fetchCounsel(lang: 'fr' | 'en'): Promise<CounselView | nul
 }
 
 /** "Do it" / "Not now" on a voice card: the world runs the command and the General remembers the choice. */
-export async function answerCounsel(id: string, take: boolean): Promise<boolean> {
-  try { const res = await fetch(`/api/counsel/${take ? 'take' : 'skip'}`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id }) }); return res.ok; } catch { return false; }
+export async function answerCounsel(id: string, take: boolean): Promise<{ ok: boolean; reply: string | null }> {
+  try {
+    const res = await fetch(`/api/counsel/${take ? 'take' : 'skip'}`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id }) });
+    if (!res.ok) return { ok: false, reply: null };
+    const body = await res.json() as { ok?: boolean; reply?: string; result?: { ok?: boolean; reason?: string } };
+    if (body.result && body.result.ok === false) { toast.value = { text: tError(body.result.reason ?? ''), kind: 'err' }; setTimeout(() => { toast.value = null; }, 2500); return { ok: false, reply: null }; }
+    return { ok: body.ok !== false, reply: body.reply ?? null };
+  } catch { return { ok: false, reply: null }; }
 }
 
 export async function fetchTalk(): Promise<Turn[]> {

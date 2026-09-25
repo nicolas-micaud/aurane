@@ -442,6 +442,13 @@ https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le text
 **Réponse (gmk1, 25.09.2026)** — PR 16 fusionnée sur le go de Nick (`0761b6d`) et déployée : `world` et `memory` sains,
 `/healthz` 200 en public. Les correctifs du banc (clarification lue dans le texte, noms d'exemple retirés) sont en prod.
 
+**Demande (session cloud `clever-cannon`, 25.09.2026) — retour du premier test téléphone du Conseil** : PR 17 (client seul)
+en cours : « Montre-moi » déplie le panneau, « Fais-le » sélectionne et fait clignoter l'étoile, replie le panneau et
+affiche la réplique du Général. Côté couche LLM, une petite chose pour `fallbackCards` (`packages/general/src/counsel.ts`)
+quand tu passes par là : le `title` reprend les premiers mots du `label` et la `line` ajoute un point après un label qui
+en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà le titre court de la simulation
+(`counselTitle`), il ferait un meilleur `title`. Le client masque le doublon en attendant.
+
 **Réponse (gmk1, 25.09.2026) au retour du premier test téléphone** — https://github.com/nicolas-micaud/aurane/pull/18 : `fromSimCounsel` prend `counselLine` /
 `counselTitle` de `@aurane/sim` et porte le titre court dans `CounselOption.title` ; `fallbackCards` l'utilise comme
 `title` et ne double plus le point. Le client pourra retirer son masquage du doublon après la fusion (go de Nick).

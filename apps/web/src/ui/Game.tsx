@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import { DECREES, type Resource } from '@aurane/protocol';
+import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, answerCounsel, fetchBriefing, fetchCounsel, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type Turn } from '../net.js';
@@ -21,6 +21,9 @@ const tab = signal<Tab>('colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
 /** The system whose plateau is open full-screen, or null for the galaxy. */
 export const systemMode = signal<string | null>(null);
+/** Bumped when something asks the panel to unfold (the Counsel's "Show me" on a phone), or to fold so the map shows. */
+const openPanel = signal(0);
+const foldPanel = signal(0);
 
 export function Game() {
   const host = useRef<HTMLDivElement>(null);
@@ -61,7 +64,7 @@ export function Game() {
   return (
     <div class="game">
       <div class="map" ref={host} />
-      <Hud v={v} />
+      <Hud v={v} map={map} />
       {st !== 'online' && <div class="banner">{t('offline')}</div>}
       {toastV && <div class={`toast ${toastV.kind}`}>{toastV.text}</div>}
       {linkV && <div class="hint">{t('tapToLink')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
@@ -110,7 +113,7 @@ function Alerts({ v }: { v: PlayerView }) {
   );
 }
 
-function Hud({ v }: { v: PlayerView }) {
+function Hud({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const [, force] = useState(0);
   const [legend, setLegend] = useState(false);
   useEffect(() => { const i = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(i); }, []);
@@ -151,7 +154,7 @@ function Hud({ v }: { v: PlayerView }) {
       )}
       <UpdateBanner />
       <Alerts v={v} />
-      {v.me.counsel.length > 0 ? <Counsel v={v} /> : <Coach v={v} />}
+      {v.me.counsel.length > 0 ? <Counsel v={v} map={map} /> : <Coach v={v} />}
     </div>
   );
 }
@@ -165,25 +168,46 @@ let counselFetching = false;
 
 type UiCard = { id: string; title: string; line: string; hasCommand: boolean; urgency: 0 | 1 | 2; voice: boolean; go: () => void; run: () => Promise<boolean> };
 
-function showTarget(show: PlayerView['me']['counsel'][number]['show']): void {
-  if (show.kind === 'star') { selected.value = show.system; tab.value = 'system'; }
-  else if (show.kind === 'link') { selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; }
+function showTarget(show: PlayerView['me']['counsel'][number]['show'], map: GalaxyMap | null): void {
+  if (show.kind === 'star') { selected.value = show.system; tab.value = 'system'; map?.centerOn(show.system); map?.flash(show.system); }
+  else if (show.kind === 'link') { selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; map?.centerOn(show.from); map?.flash(show.from); }
   else if (show.kind === 'plateau') { systemMode.value = show.system; }
   else tab.value = show.tab;
+  openPanel.value++;
 }
 
-function showVoiceTarget(show: CounselCard['show']): void {
+function showVoiceTarget(show: CounselCard['show'], map: GalaxyMap | null): void {
   if (!show) return;
   if (show.screen === 'system' && show.system) {
     if (show.slot === 'link') { selected.value = show.system; tab.value = 'system'; linkFrom.value = show.system; }
     else if (show.slot || show.poi) systemMode.value = show.system;
     else { selected.value = show.system; tab.value = 'system'; }
+    if (systemMode.value !== show.system) { map?.centerOn(show.system); map?.flash(show.system); }
   } else if (show.screen === 'journal') tab.value = 'log';
   else if (show.screen === 'colony' || show.screen === 'market' || show.screen === 'general') tab.value = show.screen;
   else { systemMode.value = null; tab.value = 'colony'; }
+  openPanel.value++;
 }
 
-function Counsel({ v }: { v: PlayerView }) {
+/** The star a command acts on, to show where the General just did something. */
+function commandTarget(cmd: Command | null): string | null {
+  if (!cmd) return null;
+  switch (cmd.type) {
+    case 'build_relay': return cmd.b;
+    case 'build': case 'train': return cmd.system;
+    case 'fleet_order': return cmd.target;
+    default: return null;
+  }
+}
+
+/** Fallback cards repeat the label as title and end with two dots: tidy them without touching the voice. */
+function tidyCard(title: string, line: string): { title: string | null; line: string } {
+  const clean = line.replace(/\.\.+/g, '.').replace(/\s+\./g, '.');
+  const dup = clean.toLowerCase().startsWith(title.toLowerCase().replace(/[.…]+$/, ''));
+  return { title: dup ? null : title, line: clean };
+}
+
+function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const skipped = useSig(skippedCounsel);
   const voice = useSig(voiceCounsel);
   const nextDraw = Math.floor(v.time / 3600) + 1;
@@ -197,9 +221,16 @@ function Counsel({ v }: { v: PlayerView }) {
     skippedCounsel.value = new Set([...skippedCounsel.value, id]);
     if (viaVoice) void answerCounsel(id, taken); else void act({ type: 'counsel_answer', id, taken });
   };
+  // After "Do it": the star flashes and is selected, and the General's acknowledgement shows as a toast.
+  const acted = (target: string | null, reply: string | null) => {
+    if (target) { selected.value = target; map.current?.centerOn(target); map.current?.flash(target); foldPanel.value++; }
+    if (reply) { toast.value = { text: reply, kind: 'ok' }; setTimeout(() => { if (toast.value?.text === reply) toast.value = null; }, 3500); }
+  };
   const cards: UiCard[] = voice && voice.drawIndex === nextDraw && voice.cards.length
-    ? voice.cards.map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showVoiceTarget(c.show), run: () => answerCounsel(c.id, true) }))
-    : v.me.counsel.map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showTarget(c.show), run: () => act(c.command!) }));
+    ? voice.cards.map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showVoiceTarget(c.show, map.current),
+      run: async () => { const r = await answerCounsel(c.id, true); if (r.ok) acted(commandTarget(c.command), r.reply ?? t('counselDone')); return r.ok; } }))
+    : v.me.counsel.map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showTarget(c.show, map.current),
+      run: async () => { const ok = await act(c.command!); if (ok) acted(commandTarget(c.command), t('counselDone')); return ok; } }));
   const shown = cards.filter((c) => !skipped.has(c.id));
   if (shown.length === 0) return null;
   return (
@@ -207,7 +238,7 @@ function Counsel({ v }: { v: PlayerView }) {
       <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
       {shown.map((c) => (
         <div key={c.id} class={`card u${c.urgency}`}>
-          <p><b>{c.title}</b> · {c.line}</p>
+          {(() => { const tc = tidyCard(c.title, c.line); return <p>{tc.title ? <><b>{tc.title}</b> · </> : null}{tc.line}</p>; })()}
           <div class="acts">
             <button onClick={c.go}>{t('showMe')}</button>
             {c.hasCommand && <button class="primary" onClick={() => { void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
@@ -270,6 +301,10 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   const sel = useSig(selected);
   // On a phone the panel stays folded until something is selected or a tab is tapped: the map comes first.
   useEffect(() => { if (sel && isNarrow()) setOpen(true); }, [sel]);
+  const openReq = useSig(openPanel);
+  useEffect(() => { if (openReq > 0) setOpen(true); }, [openReq]);
+  const foldReq = useSig(foldPanel);
+  useEffect(() => { if (foldReq > 0 && isNarrow()) setOpen(false); }, [foldReq]);
   // Progressive onboarding: a tab appears with its tier (docs/design/ONBOARDING-S0.md), the General says why.
   const tier = v.me.onboarding?.tier ?? 6;
   const TAB_TIER: Partial<Record<Tab, number>> = { logistics: 1, market: 2, fleets: 3, diplomacy: 5 };
