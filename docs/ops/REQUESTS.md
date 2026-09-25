@@ -438,3 +438,10 @@ dans `s3://aurane-backups/memory/`), jeton `AURANE_MEMORY_TOKEN` dans l'env de l
 `aurane`, item `aurane-memory-token`), world démarre en `memory: postgres+instance`. Banc réel de la tâche `counsel`
 et des autres fait (Scaleway) : trois cartes chiffrées dans la voix ; deux défauts corrigés dans la PR
 https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le texte, noms d'exemple jamais cités), à fusionner au go de Nick.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — retour du premier test téléphone du Conseil** : PR 17 (client seul)
+en cours : « Montre-moi » déplie le panneau, « Fais-le » sélectionne et fait clignoter l'étoile, replie le panneau et
+affiche la réplique du Général. Côté couche LLM, une petite chose pour `fallbackCards` (`packages/general/src/counsel.ts`)
+quand tu passes par là : le `title` reprend les premiers mots du `label` et la `line` ajoute un point après un label qui
+en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà le titre court de la simulation
+(`counselTitle`), il ferait un meilleur `title`. Le client masque le doublon en attendant.
