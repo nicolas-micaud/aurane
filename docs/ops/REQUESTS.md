@@ -347,3 +347,6 @@ Instantané migré au démarrage : version 7, 31 colonies sur 31 au palier 6 (v�
 destruction d'une scène), anneaux coupés, barre d'onglets écrasée, scène système coupée à mi-hauteur, plateau de
 nébuleuse vide. Client seul, aucune migration. À fusionner et déployer sur le go de Nick ; il retestera sur son
 téléphone les trois écrans : galaxie après sortie d'un système, carte d'un système, plateau d'une poche de nébuleuse.
+
+**Réponse (gmk1, 25.09.2026)** — PR 13 fusionnée sur le go de Nick (`02312df`) et déployée : client reconstruit et servi,
+cache Cloudflare purgé, `world` inchangé et sain, `/healthz` 200 en public. Nick reteste les trois écrans sur son téléphone.
