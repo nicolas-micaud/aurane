@@ -124,8 +124,9 @@ describe('the Generals behind the queue', () => {
     expect(mem.record.notes.some((n) => n.kind === 'counsel.taken' && n.text === card.id)).toBe(true);
     expect(mem.rendered).toContain('a suivi');
     expect(engine.history(colonyId).at(-1)!.text).toBe(took.reply);
-    const erased = await (await fetch(`${base}/api/memory`, { method: 'DELETE', headers: auth() })).json() as { ok: boolean };
+    const erased = await (await fetch(`${base}/api/memory`, { method: 'DELETE', headers: auth() })).json() as { ok: boolean; mirror: boolean | null };
     expect(erased.ok).toBe(true);
+    expect(erased.mirror).toBeNull(); // no long-memory instance configured in this test
     const after = await (await fetch(`${base}/api/memory`, { headers: auth() })).json() as { record: { notes: unknown[] } };
     expect(after.record.notes.length).toBe(0);
   });
@@ -145,5 +146,23 @@ describe('the Generals behind the queue', () => {
     for (let i = 0; i < 40 && !(await engine.general.exportMemory(colonyId))!.record.notes.some((n) => n.kind === 'episode'); i++) await new Promise((r) => setTimeout(r, 100));
     const mem = await engine.general.exportMemory(colonyId);
     expect(mem!.record.notes.some((n) => n.kind === 'episode' && n.text.startsWith('J1 '))).toBe(true);
+  });
+
+  it('degrades every task in character once the month\'s budget is reached, and reports the spend', async () => {
+    metrics.budget = { eurPerMonth: 0.001, alertRatio: 0.8 };
+    metrics.price('scripted', { inPerM: 1000, outPerM: 1000 }); // 100 tokens → 0.1 EUR: the cap is passed on the first call
+    (voice as unknown as { chat: LlmClient['chat'] }).chat = scripted([() => JSON.stringify({ reply: 'Oui.', orders: null, question: null }), () => JSON.stringify({ reply: 'Encore.', orders: null, question: null })]).chat;
+    engine.world.time += 3600 * 24; // a new quota day for the colony
+    const first = await (await post('/api/talk', { text: 'Un mot ?', lang: 'fr' })).json() as { source: string };
+    void first; // may or may not reach the model depending on the quota state; the spend is what matters
+    metrics.record({ cls: 'voice', provider: 'scripted', task: 'talk', ok: true, ms: 1, inputTokens: 100, outputTokens: 100 });
+    expect(metrics.overBudget()).toBe(true);
+    const capped = await (await post('/api/talk', { text: 'Et là ?', lang: 'fr' })).json() as { source: string; reply: string };
+    expect(capped.source).toBe('degraded');
+    expect(capped.reply.length).toBeGreaterThan(10);
+    const snap = await (await fetch(`${base}/api/admin/llm/metrics`, { headers: { 'x-admin-token': 'adm' } })).json() as { llm: { spend: { overBudget: boolean; ratio: number }; degradations: { reason: string }[] } };
+    expect(snap.llm.spend.overBudget).toBe(true);
+    expect(snap.llm.degradations.some((d) => d.reason === 'budget')).toBe(true);
+    metrics.budget = null;
   });
 });

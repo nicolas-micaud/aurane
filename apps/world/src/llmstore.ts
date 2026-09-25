@@ -109,4 +109,29 @@ export class PgMemoryStore implements MemoryStore {
   }
 }
 
+/** The month's LLM spend, persisted so a restart does not reset the cap (decision 0009: 100 EUR per month). */
+export interface BudgetStore { load(month: string): Promise<number>; save(month: string, eur: number): Promise<void> }
+
+export class FileBudgetStore implements BudgetStore {
+  constructor(private readonly dir: string) {}
+  private file(): string { return join(this.dir, 'llm-budget.json'); }
+  async load(month: string): Promise<number> {
+    try { const all = JSON.parse(await readFile(this.file(), 'utf8')) as Record<string, number>; return all[month] ?? 0; } catch { return 0; }
+  }
+  async save(month: string, eur: number): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    let all: Record<string, number> = {};
+    try { all = JSON.parse(await readFile(this.file(), 'utf8')) as Record<string, number>; } catch { /* first run */ }
+    all[month] = eur;
+    await writeFile(this.file(), JSON.stringify(all));
+  }
+}
+
+export class PgBudgetStore implements BudgetStore {
+  constructor(private readonly pool: pg.Pool) {}
+  static async migrate(pool: pg.Pool): Promise<void> { await pool.query('create table if not exists llm_budget (month text primary key, eur double precision not null default 0, updated_at timestamptz not null default now())'); }
+  async load(month: string): Promise<number> { const r = await this.pool.query<{ eur: number }>('select eur from llm_budget where month = $1', [month]); return Number(r.rows[0]?.eur ?? 0); }
+  async save(month: string, eur: number): Promise<void> { await this.pool.query('insert into llm_budget (month, eur, updated_at) values ($1, $2, now()) on conflict (month) do update set eur = greatest(llm_budget.eur, excluded.eur), updated_at = now()', [month, eur]); }
+}
+
 export { emptyMemory };

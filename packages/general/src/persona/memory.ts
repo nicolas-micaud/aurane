@@ -24,6 +24,53 @@ export interface MemoryStore {
   save(colonyId: string, m: MemoryRecord): Promise<void>;
 }
 
+/**
+ * The dedicated long memory of Aurane (decision 0009, Nick 25.09: a sokkan-memory/corthexis instance of its own,
+ * player data kept apart from ninabot's). Contract, deliberately small: PUT /memory/{colony} with the record as JSON,
+ * GET /memory/{colony}, DELETE /memory/{colony}; Bearer token. Postgres stays the working copy: the world never waits.
+ */
+export class HttpMemoryStore implements MemoryStore {
+  constructor(private readonly baseUrl: string, private readonly token: string, private readonly fetchFn: typeof fetch = (i, o) => fetch(i, o), private readonly timeoutMs = 4000) {}
+  private url(colonyId: string): string { return `${this.baseUrl.replace(/\/$/, '')}/memory/${encodeURIComponent(colonyId)}`; }
+  private async call(method: string, colonyId: string, body?: unknown): Promise<Response> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      return await this.fetchFn(this.url(colonyId), { method, headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: ctrl.signal });
+    } finally { clearTimeout(timer); }
+  }
+  async load(colonyId: string): Promise<MemoryRecord | null> {
+    const r = await this.call('GET', colonyId);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(`memory instance: HTTP ${r.status}`);
+    return await r.json() as MemoryRecord;
+  }
+  async save(colonyId: string, m: MemoryRecord): Promise<void> { const r = await this.call('PUT', colonyId, m); if (!r.ok) throw new Error(`memory instance: HTTP ${r.status}`); }
+  async erase(colonyId: string): Promise<void> { const r = await this.call('DELETE', colonyId); if (!r.ok && r.status !== 404) throw new Error(`memory instance: HTTP ${r.status}`); }
+}
+
+/** Working copy first (Postgres), long memory mirrored in the background; a mirror failure never stalls the world. */
+export class MirroredMemoryStore implements MemoryStore {
+  private failures = 0;
+  constructor(private readonly primary: MemoryStore, private readonly mirror: HttpMemoryStore, private readonly onError: (err: Error) => void = () => undefined) {}
+  async load(colonyId: string): Promise<MemoryRecord | null> {
+    const local = await this.primary.load(colonyId);
+    if (local) return local;
+    try { const remote = await this.mirror.load(colonyId); if (remote) { await this.primary.save(colonyId, remote); return remote; } } catch (err) { this.onError(err as Error); }
+    return null;
+  }
+  async save(colonyId: string, m: MemoryRecord): Promise<void> {
+    await this.primary.save(colonyId, m);
+    void this.mirror.save(colonyId, m).then(() => { this.failures = 0; }).catch((err: Error) => { this.failures++; this.onError(err); });
+  }
+  /** Erase both: the world's copy at once, the long memory before returning (the player asked; we say if it failed). */
+  async erase(colonyId: string): Promise<{ primary: true; mirror: boolean }> {
+    await this.primary.save(colonyId, emptyMemory());
+    try { await this.mirror.erase(colonyId); return { primary: true, mirror: true }; } catch (err) { this.onError(err as Error); return { primary: true, mirror: false }; }
+  }
+  get mirrorFailures(): number { return this.failures; }
+}
+
 export class InMemoryMemoryStore implements MemoryStore {
   private map = new Map<string, MemoryRecord>();
   async load(colonyId: string): Promise<MemoryRecord | null> { const m = this.map.get(colonyId); return m ? structuredClone(m) : null; }

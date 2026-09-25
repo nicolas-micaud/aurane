@@ -18,6 +18,7 @@ const { values: a } = parseArgs({ options: {
   'price-in': { type: 'string', default: '0.15' }, 'price-out': { type: 'string', default: '0.35' }, // EUR per M tokens
   'peak-share': { type: 'string', default: '0.25' }, // share of the day's calls that land in the busiest hour
   'peak-minutes': { type: 'string', default: '15' }, // and within that hour, the minutes that carry half of them (post-Draw wave)
+  budget: { type: 'string' },                   // EUR per month: also print how many active players it carries at these figures
   json: { type: 'boolean', default: false },
 } });
 
@@ -64,6 +65,7 @@ const out = {
   tokensPerCall: { in: Math.round(tokIn), out: Math.round(tokOut) }, tokensPerDay: Math.round(callsPerDay * (tokIn + tokOut)),
   costEurPerDay: round(costPerDay), costEurPerActivePlayerPerDay: round(costPerDay / players, 4),
   narrativeCallsPerDay: Math.round(narrativeCallsPerDay),
+  ...(a.budget ? { budgetEurPerMonth: Number(a.budget), costEurPerMonth: round(costPerDay * 30), playersWithinBudget: Math.floor(Number(a.budget) / 30 / Math.max(1e-9, costPerDay / players)) } : {}),
   note: 'concurrency = calls/s × p95 (Little); size the sum of LLM_PROVIDER_*_CONCURRENCY of the voice class to the burst figure, the queue absorbs the rest with the talk deadline.',
 };
 function round(x, d = 2) { return Math.round(x * 10 ** d) / 10 ** d; }
@@ -74,5 +76,6 @@ else {
   console.log(`Peak hour: ${out.peakHourCalls} calls; post-Draw burst ${out.burstCallsPerSecond} calls/s, steady ${out.steadyCallsPerSecond} calls/s; p95 ${out.p95Ms} ms`);
   console.log(`Voice concurrency needed: ${out.voiceConcurrencyNeeded.burst} in the burst, ${out.voiceConcurrencyNeeded.steady} steady`);
   console.log(`Cost: ${out.costEurPerDay} EUR/day, ${out.costEurPerActivePlayerPerDay} EUR per active player per day; narrative: ${out.narrativeCallsPerDay} calls/day`);
+  if (out.budgetEurPerMonth) console.log(`Budget ${out.budgetEurPerMonth} EUR/month: ${out.costEurPerMonth} EUR/month at ${out.players} players; ${out.playersWithinBudget} active players fit at these figures`);
   console.log(out.note);
 }

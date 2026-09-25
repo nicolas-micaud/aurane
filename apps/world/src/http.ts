@@ -150,7 +150,7 @@ export function createHttpServer(engine: Engine): Server {
       }
       // What my General knows about me: readable, exportable, erasable (LPD/RGPD).
       if (req.method === 'GET' && url.pathname === '/api/memory') return json(res, 200, await engine.general.exportMemory(colony.id));
-      if (req.method === 'DELETE' && url.pathname === '/api/memory') return json(res, 200, { ok: await engine.general.eraseMemory(colony.id) });
+      if (req.method === 'DELETE' && url.pathname === '/api/memory') return json(res, 200, await engine.general.eraseMemory(colony.id));
       if (req.method === 'POST' && url.pathname === '/api/cmd') {
         const parsed = CommandSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid command', issues: parsed.error.issues });
