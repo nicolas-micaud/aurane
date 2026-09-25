@@ -135,7 +135,7 @@ if(!f.elements.email.value||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(f.elements.em
 if(!f.elements.consent.checked){say('consentRequired');f.elements.consent.focus();return}
 btn.disabled=true;st.className='status';st.textContent=M.sending;
 fetch(f.action,{method:'POST',body:new FormData(f)}).then(function(r){return r.json().catch(function(){return{}})}).then(function(j){
-if(j.ok){say('ok',true);f.reset()}else{say(j.error||'err')}
+if(j.ok){say('ok',true);f.reset()}else{say(j.error==='consent'?'consentRequired':(j.error||'err'))}
 if(window.turnstile){try{window.turnstile.reset()}catch(_){}}
 }).catch(function(){say('err')}).then(function(){btn.disabled=false});
 });
