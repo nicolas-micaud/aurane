@@ -126,6 +126,19 @@ export async function talk(text: string, lang: 'fr' | 'en'): Promise<{ reply: st
     return res.ok ? (await res.json() as { reply: string; source: string; policyChanged: boolean; history: Turn[] }) : null;
   } catch { return null; }
 }
+/** A card of the Draw Counsel in the General's voice (LLM layer, decision 0009). */
+export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: { screen: 'galaxy' | 'system' | 'colony' | 'market' | 'general' | 'journal'; system?: string; poi?: string; slot?: string } | null }
+export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
+
+export async function fetchCounsel(lang: 'fr' | 'en'): Promise<CounselView | null> {
+  try { const res = await fetch(`/api/counsel?lang=${lang}`, { headers: authHeaders() }); return res.ok ? (await res.json() as CounselView) : null; } catch { return null; }
+}
+
+/** "Do it" / "Not now" on a voice card: the world runs the command and the General remembers the choice. */
+export async function answerCounsel(id: string, take: boolean): Promise<boolean> {
+  try { const res = await fetch(`/api/counsel/${take ? 'take' : 'skip'}`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id }) }); return res.ok; } catch { return false; }
+}
+
 export async function fetchTalk(): Promise<Turn[]> {
   try { const res = await fetch('/api/talk', { headers: authHeaders() }); return res.ok ? ((await res.json() as { history: Turn[] }).history) : []; } catch { return []; }
 }

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { DECREES, type Resource } from '@aurane/protocol';
-import { AGENT_COST_INFLUENCE, DECREE_COST_CREDITS, DECREE_HOURS, type PlayerView, type SystemView } from '@aurane/sim';
+import { AGENT_COST_INFLUENCE, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, fetchBriefing, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type Turn } from '../net.js';
+import { act, answerCounsel, fetchBriefing, fetchCounsel, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type Turn } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -151,7 +151,70 @@ function Hud({ v }: { v: PlayerView }) {
       )}
       <UpdateBanner />
       <Alerts v={v} />
-      <Coach v={v} />
+      {v.me.counsel.length > 0 ? <Counsel v={v} /> : <Coach v={v} />}
+    </div>
+  );
+}
+
+/** The Draw Counsel (0009): the Partner's cards. In the General's voice when the LLM layer wrote them (one fetch
+ *  per Draw), else the simulation's cards with fixed lines. "Show me" opens the screen, "Do it" runs the ready
+ *  command, "Not now" hides the card for this Draw; the General remembers both answers. */
+const skippedCounsel = signal<Set<string>>(new Set());
+const voiceCounsel = signal<CounselView | null>(null);
+let counselFetching = false;
+
+type UiCard = { id: string; title: string; line: string; hasCommand: boolean; urgency: 0 | 1 | 2; voice: boolean; go: () => void; run: () => Promise<boolean> };
+
+function showTarget(show: PlayerView['me']['counsel'][number]['show']): void {
+  if (show.kind === 'star') { selected.value = show.system; tab.value = 'system'; }
+  else if (show.kind === 'link') { selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; }
+  else if (show.kind === 'plateau') { systemMode.value = show.system; }
+  else tab.value = show.tab;
+}
+
+function showVoiceTarget(show: CounselCard['show']): void {
+  if (!show) return;
+  if (show.screen === 'system' && show.system) {
+    if (show.slot === 'link') { selected.value = show.system; tab.value = 'system'; linkFrom.value = show.system; }
+    else if (show.slot || show.poi) systemMode.value = show.system;
+    else { selected.value = show.system; tab.value = 'system'; }
+  } else if (show.screen === 'journal') tab.value = 'log';
+  else if (show.screen === 'colony' || show.screen === 'market' || show.screen === 'general') tab.value = show.screen;
+  else { systemMode.value = null; tab.value = 'colony'; }
+}
+
+function Counsel({ v }: { v: PlayerView }) {
+  const skipped = useSig(skippedCounsel);
+  const voice = useSig(voiceCounsel);
+  const nextDraw = Math.floor(v.time / 3600) + 1;
+  // One fetch per Draw: the voice cards are cached server-side until the Draw.
+  useEffect(() => {
+    if (counselFetching || (voice && voice.drawIndex === nextDraw)) return;
+    counselFetching = true;
+    void fetchCounsel(lang.value).then((c) => { if (c && c.cards.length) voiceCounsel.value = c; }).finally(() => { counselFetching = false; });
+  }, [nextDraw]);
+  const answer = (id: string, taken: boolean, viaVoice: boolean) => {
+    skippedCounsel.value = new Set([...skippedCounsel.value, id]);
+    if (viaVoice) void answerCounsel(id, taken); else void act({ type: 'counsel_answer', id, taken });
+  };
+  const cards: UiCard[] = voice && voice.drawIndex === nextDraw && voice.cards.length
+    ? voice.cards.map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showVoiceTarget(c.show), run: () => answerCounsel(c.id, true) }))
+    : v.me.counsel.map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showTarget(c.show), run: () => act(c.command!) }));
+  const shown = cards.filter((c) => !skipped.has(c.id));
+  if (shown.length === 0) return null;
+  return (
+    <div class="counsel">
+      <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
+      {shown.map((c) => (
+        <div key={c.id} class={`card u${c.urgency}`}>
+          <p><b>{c.title}</b> · {c.line}</p>
+          <div class="acts">
+            <button onClick={c.go}>{t('showMe')}</button>
+            {c.hasCommand && <button class="primary" onClick={() => { void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
+            <button class="link" onClick={() => answer(c.id, false, c.voice)}>{t('notNow')}</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

@@ -10,3 +10,6 @@ export * from './security.js';
 export * from './analysis/index.js';
 export * from './persona/index.js';
 export * from './doctrine/index.js';
+export * from './counsel.js';
+export * from './episode.js';
+export * from './counsel-sim.js';

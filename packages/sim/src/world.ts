@@ -417,6 +417,11 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
   // with `locked:<tier>` and the General says why (docs/design/ONBOARDING-S0.md).
   advanceOnboarding(w, colony);
   if (cmd.type === 'onboarding_unlock') { unlockAll(w, colony); return { ok: true }; }
+  if (cmd.type === 'counsel_answer') {
+    colony.journal.push({ at: w.time, kind: cmd.taken ? 'counsel.taken' : 'counsel.skipped', note: cmd.id });
+    if (colony.journal.length > B.JOURNAL_MAX) colony.journal.splice(0, colony.journal.length - B.JOURNAL_MAX);
+    return { ok: true };
+  }
   const locked = lockedReason(colony, cmd);
   if (locked) return { ok: false, reason: locked };
   const result = dispatch(w, colony, cmd);
@@ -424,7 +429,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
   return result;
 }
 
-function dispatch(w: World, colony: Colony, cmd: Exclude<Command, { type: 'onboarding_unlock' }>): ApplyResult {
+function dispatch(w: World, colony: Colony, cmd: Exclude<Command, { type: 'onboarding_unlock' } | { type: 'counsel_answer' }>): ApplyResult {
   switch (cmd.type) {
     case 'build_relay': return buildRelay(w, colony, cmd.a, cmd.b);
     case 'remove_relay': {

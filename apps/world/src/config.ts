@@ -36,6 +36,19 @@ export interface Config {
   llmWorkers: number;
   /** Per-player LLM quotas (LLM_QUOTA_*). */
   quotas: QuotaLimits;
+  /** The Draw Counsel is written this many minutes before each Draw (decision 0009). */
+  counselLeadMin: number;
+  /** Budget of a live counsel request before the fallback cards answer. */
+  counselDeadlineMs: number;
+  /** Daily episodes are written over this many minutes after the day turns. */
+  episodeSpreadMin: number;
+  /** Monthly LLM budget, EUR, models and memory included (decision 0009: 100); 0 disables the cap. */
+  budgetEurMonth: number;
+  /** Share of the budget at which the alert fires (0.8). */
+  budgetAlertRatio: number;
+  /** The dedicated long-memory instance of Aurane (PUT/GET/DELETE /memory/{colony}, Bearer); absent = Postgres only. */
+  memoryUrl: string | null;
+  memoryToken: string | null;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -64,5 +77,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gazetteSpreadMin: num(env.LLM_GAZETTE_SPREAD_MIN, 40),
     llmWorkers: num(env.LLM_WORKERS, 4),
     quotas: limitsFromEnv(env),
+    counselLeadMin: num(env.LLM_COUNSEL_LEAD_MIN, 20),
+    counselDeadlineMs: num(env.LLM_COUNSEL_DEADLINE_MS, 3000),
+    episodeSpreadMin: num(env.LLM_EPISODE_SPREAD_MIN, 30),
+    budgetEurMonth: num(env.LLM_BUDGET_EUR_MONTH, 100),
+    budgetAlertRatio: num(env.LLM_BUDGET_ALERT_RATIO, 0.8),
+    memoryUrl: env.AURANE_MEMORY_URL || null,
+    memoryToken: env.AURANE_MEMORY_TOKEN || null,
   };
 }

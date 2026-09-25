@@ -167,3 +167,27 @@ describe('configuration', () => {
     expect(stackFromEnv({}).voice).toBeNull();
   });
 });
+
+describe('monthly budget', () => {
+  it('tracks the month\'s spend, fires the alert once at 80 % and the cap once, and resets when the month turns', () => {
+    const m = new LlmMetrics();
+    m.budget = { eurPerMonth: 10, alertRatio: 0.8 };
+    m.price('p', { inPerM: 1e6, outPerM: 0 }); // 1 token = 1 EUR
+    const events: string[] = [];
+    m.onAlert = (kind) => events.push(kind);
+    const saved: number[] = [];
+    m.onSpend = (_month, eur) => saved.push(eur);
+    const call = (tokens: number): void => m.record({ cls: 'voice', provider: 'p', task: 'talk', ok: true, ms: 1, inputTokens: tokens, outputTokens: 0 });
+    call(5); expect(m.overBudget()).toBe(false); expect(events).toEqual([]);
+    call(3); expect(events).toEqual(['alert']);
+    call(1); expect(events).toEqual(['alert']); // no second alert
+    call(2); expect(events).toEqual(['alert', 'cap']); expect(m.overBudget()).toBe(true);
+    call(1); expect(events).toEqual(['alert', 'cap']); // no second cap
+    expect(saved.at(-1)).toBe(12);
+    expect(m.spend()).toMatchObject({ eur: 12, budgetEur: 10, ratio: 1.2, overBudget: true });
+    m.seedSpend('1999-01', 12); // another month's figure: the current month starts at zero again
+    expect(m.spend().eur).toBe(0);
+    expect(m.overBudget()).toBe(false);
+    expect(m.prometheus()).toContain('aurane_llm_over_budget 0');
+  });
+});

@@ -114,5 +114,7 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decree'), kind: z.enum(DECREES) }),
   /** "Show me everything": a veteran opens every onboarding tier at once. */
   z.object({ type: z.literal('onboarding_unlock') }),
+  /** The player took or skipped a Draw Counsel card: the General remembers (journal note). */
+  z.object({ type: z.literal('counsel_answer'), id: z.string().max(80), taken: z.boolean() }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;

@@ -4,11 +4,12 @@
 import type { Policy } from '@aurane/protocol';
 import { apply, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, degradedReply, emptyMemory, factsFrom,
-  metrics as globalMetrics, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeGazette,
-  type Analysis, type CompiledDoctrine, type ConverseResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
+  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom, fromSimCounsel,
+  metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
+  type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
 } from '@aurane/general';
 import type { Config } from './config.js';
+import type { BudgetStore } from './llmstore.js';
 
 export interface GeneralDeps {
   world: () => World;
@@ -16,6 +17,7 @@ export interface GeneralDeps {
   dirty: (colonyId: string) => void;
   jobStore?: JobStore | undefined;
   memoryStore?: MemoryStore | undefined;
+  budgetStore?: BudgetStore | undefined;
   stack?: LlmStack | undefined;
   metrics?: LlmMetrics | undefined;
   env?: NodeJS.ProcessEnv | undefined;
@@ -29,6 +31,13 @@ export interface DoctrineResponse { policy: Policy; summary: string; readable: s
 interface TalkJob { colonyId: string; text: string; lang: 'fr' | 'en'; seed: string }
 interface BriefingJob { colonyId: string; lang: 'fr' | 'en'; since: number; awaySeconds: number }
 interface GazetteJob { day: number; lang: 'fr' | 'en' }
+interface CounselJob { colonyId: string; lang: 'fr' | 'en'; drawIndex: number }
+interface EpisodeJob { colonyId: string; lang: 'fr' | 'en'; day: number }
+
+export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
+
+/** Where the simulation's counsel comes from; `buildOptions` of the analysis until `counsel(w, colony, tier)` lands in packages/sim. */
+export type CounselSource = (w: World, c: Colony) => { tier: number; options: CounselOption[] };
 
 const ABSENT_AFTER_S = 1800;
 
@@ -38,20 +47,41 @@ export class GeneralService {
   readonly metrics: LlmMetrics;
   readonly quota: PlayerQuota;
   private readonly memoryStore: MemoryStore;
+  private readonly mirror: MirroredMemoryStore | null = null;
+  private readonly budgetStore: BudgetStore | null;
+  private lastBudgetSave = 0;
   private talks = new Map<string, Turn[]>();
   private langs = new Map<string, 'fr' | 'en'>();
   private pending = new Map<string, PendingDoctrine>();
   private lastBriefedAt = new Map<string, number>();
   private briefings = new Map<string, { text: string; source: string; eventMark: number; awaySeconds: number }>();
   private gazettes = new Map<string, GazetteIssue>();
+  private counsels = new Map<string, CounselView>();
+  private lastCounselDraw = -1;
+  private lastEpisodeDay = -1;
   private seq = 0;
+  /** The simulation's Counsel (`PlayerView.me.counsel`, 0009) when the sim carries it, else the analysis' options. Overridable. */
+  counselSource: CounselSource = (w, c) => {
+    const tier = (c as Colony & { onboarding?: { tier: number } }).onboarding?.tier ?? 6;
+    const me = viewFor(w, c).me as { counsel?: Parameters<typeof fromSimCounsel>[0] };
+    if (Array.isArray(me.counsel)) return { tier, options: fromSimCounsel(me.counsel) };
+    return { tier, options: analyze(w, c).options };
+  };
 
   constructor(readonly cfg: Config, private readonly deps: GeneralDeps) {
     this.metrics = deps.metrics ?? globalMetrics;
     this.stack = deps.stack ?? stackFromEnv(deps.env ?? process.env, this.metrics);
     for (const w of this.stack.warnings) console.warn(JSON.stringify({ msg: 'llm config', warning: w }));
     this.quota = new PlayerQuota(cfg.quotas);
-    this.memoryStore = deps.memoryStore ?? new InMemoryMemoryStore();
+    const primary = deps.memoryStore ?? new InMemoryMemoryStore();
+    if (cfg.memoryUrl && cfg.memoryToken) {
+      this.mirror = new MirroredMemoryStore(primary, new HttpMemoryStore(cfg.memoryUrl, cfg.memoryToken), (err) => console.warn(JSON.stringify({ msg: 'memory instance', error: err.message })));
+      this.memoryStore = this.mirror;
+    } else this.memoryStore = primary;
+    this.budgetStore = deps.budgetStore ?? null;
+    if (cfg.budgetEurMonth > 0) this.metrics.budget = { eurPerMonth: cfg.budgetEurMonth, alertRatio: cfg.budgetAlertRatio };
+    this.metrics.onSpend = (month, eur) => { const now = Date.now(); if (now - this.lastBudgetSave < 10000) return; this.lastBudgetSave = now; void this.budgetStore?.save(month, eur).catch((err: Error) => console.warn(JSON.stringify({ msg: 'budget save', error: err.message }))); };
+    this.metrics.onAlert = (kind, month, eur, budget) => console.warn(JSON.stringify({ msg: kind === 'cap' ? 'LLM BUDGET REACHED: every task degrades in character until the month turns' : 'LLM budget alert', month, eur: Math.round(eur * 100) / 100, budgetEur: budget.eurPerMonth, ratio: Math.round((eur / budget.eurPerMonth) * 100) / 100 }));
     this.scheduler = new Scheduler(deps.jobStore ?? new MemoryJobStore(), undefined, {
       concurrency: cfg.llmWorkers,
       onEvent: (e) => { if (e.kind !== 'enqueued') this.metrics.job(e.kind); else this.metrics.job('enqueued'); },
@@ -60,6 +90,22 @@ export class GeneralService {
     this.scheduler.handle<TalkJob, CompiledDoctrine>('doctrine', (job) => this.runDoctrine(job.payload));
     this.scheduler.handle<BriefingJob, { text: string; source: string }>('briefing', (job) => this.runBriefing(job.payload));
     this.scheduler.handle<GazetteJob, GazetteIssue>('gazette', (job) => this.runGazette(job.payload));
+    this.scheduler.handle<CounselJob, CounselView>('counsel', (job) => this.runCounsel(job.payload));
+    this.scheduler.handle<EpisodeJob, string>('episode', (job) => this.runEpisode(job.payload));
+  }
+
+  /** Restore the month's spend so the cap survives a restart. */
+  async init(): Promise<void> {
+    if (!this.budgetStore) return;
+    const month = LlmMetrics.monthKey();
+    try { this.metrics.seedSpend(month, await this.budgetStore.load(month)); } catch (err) { console.warn(JSON.stringify({ msg: 'budget load', error: (err as Error).message })); }
+  }
+
+  /** The month's cap is reached: no model for anyone, in-character lines everywhere (decision 0009: never a silence). */
+  private capped(task: 'talk' | 'doctrine' | 'briefing' | 'counsel' | 'episode' | 'gazette'): boolean {
+    if (!this.metrics.overBudget()) return false;
+    this.metrics.degradation(task === 'gazette' ? 'narrative' : 'voice', task, 'budget');
+    return true;
   }
 
   start(): void { this.scheduler.start(); }
@@ -81,7 +127,7 @@ export class GeneralService {
   }
 
   private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string }> {
-    const record = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    const record = withJournalChoices((await this.memoryStore.load(c.id)) ?? emptyMemory(), c);
     return { record, text: renderMemory(factsFrom(this.deps.world(), c), record, lang) };
   }
 
@@ -128,11 +174,11 @@ export class GeneralService {
     const history = this.history(c.id);
     const seed = `${c.id}:${history.length}:${Date.now()}`;
     let res: ConverseResult;
-    const overQuota = !this.quota.take(c.id, 'talk');
+    const overQuota = this.capped('talk') || !this.quota.take(c.id, 'talk');
     if (!overQuota && this.stack.voice && !this.scheduler.active) res = await this.runTalk({ colonyId: c.id, text, lang, seed });
     else if (overQuota || !this.stack.voice) {
       res = await converse({ text, lang, persona: c.persona, history, ctx: this.context(c, lang), analysis: this.analysisOf(c), seed, overQuota }, null);
-      if (overQuota) this.metrics.degradation('voice', 'talk', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'talk', 'quota');
     } else {
       const fallback = (): ConverseResult => {
         this.metrics.degradation('voice', 'talk', 'deadline');
@@ -171,11 +217,11 @@ export class GeneralService {
     this.langs.set(c.id, lang);
     const seed = `${c.id}:doctrine:${Date.now()}`;
     let compiled: CompiledDoctrine;
-    const overQuota = !this.quota.take(c.id, 'doctrine');
+    const overQuota = this.capped('doctrine') || !this.quota.take(c.id, 'doctrine');
     if (!overQuota && this.stack.voice && !this.scheduler.active) compiled = await this.runDoctrine({ colonyId: c.id, text, lang, seed });
     else if (overQuota || !this.stack.voice) {
       compiled = await compileDoctrine(text, this.context(c, lang), null, { overQuota, seed });
-      if (overQuota) this.metrics.degradation('voice', 'doctrine', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'doctrine', 'quota');
     } else {
       const fallback = (): CompiledDoctrine => { this.metrics.degradation('voice', 'doctrine', 'deadline'); return { ...heuristicSync(text, lang, c, this.context(c, lang)), source: 'degraded' }; };
       compiled = (await this.scheduler.enqueueWithDeadline<TalkJob, CompiledDoctrine>('doctrine', 'doctrine', { colonyId: c.id, text, lang, seed }, this.cfg.talkDeadlineMs, fallback, { colony: c.id, ttlMs: 120000 })).result;
@@ -244,12 +290,12 @@ export class GeneralService {
     const cached = this.briefings.get(`${c.id}:${lang}`);
     if (cached && cached.eventMark === this.eventMark(c, since)) return { text: cached.text, source: cached.source, awaySeconds: cached.awaySeconds };
     const worth = awaySeconds >= ABSENT_AFTER_S;
-    const overQuota = worth && !this.quota.take(c.id, 'briefing');
+    const overQuota = worth && (this.capped('briefing') || !this.quota.take(c.id, 'briefing'));
     let out: { text: string; source: string };
     if (worth && !overQuota && this.stack.voice && !this.scheduler.active) out = await this.runBriefing({ colonyId: c.id, lang, since, awaySeconds });
     else if (!worth || overQuota || !this.stack.voice) {
       out = await writeBriefing({ ...this.briefingInput(c, lang, since, awaySeconds), overQuota }, null);
-      if (overQuota) this.metrics.degradation('voice', 'briefing', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'briefing', 'quota');
     } else {
       const input = this.briefingInput(c, lang, since, awaySeconds);
       const template = (): { text: string; source: string } => { this.metrics.degradation('voice', 'briefing', 'deadline'); return writeBriefingSync(input); };
@@ -263,7 +309,7 @@ export class GeneralService {
   // --- gazette -------------------------------------------------------------------
 
   private async runGazette(p: GazetteJob): Promise<GazetteIssue> {
-    const issue = await writeGazette(this.deps.world(), p.day, p.lang, this.stack.narrative ?? this.stack.voice);
+    const issue = await writeGazette(this.deps.world(), p.day, p.lang, this.capped('gazette') ? null : (this.stack.narrative ?? this.stack.voice));
     this.gazettes.set(`${p.day}:${p.lang}`, issue);
     return issue;
   }
@@ -292,10 +338,130 @@ export class GeneralService {
     return out.result;
   }
 
+  // --- the Draw Counsel (decision 0009) -------------------------------------------
+
+  private drawIndexNow(): number { return Math.floor(this.deps.world().time / 3600); }
+  private minutesToDraw(): number { return Math.max(0, Math.round(((this.drawIndexNow() + 1) * 3600 - this.deps.world().time) / 60)); }
+
+  private async runCounsel(p: CounselJob): Promise<CounselView> {
+    const c = this.colony(p.colonyId);
+    if (!c) throw new Error('colony gone');
+    const w = this.deps.world();
+    const mem = await this.memoryOf(c, p.lang);
+    const src = this.counselSource(w, c);
+    const a = this.analysisOf(c);
+    const r: CounselResult = await writeCounsel({ persona: c.persona, lang: p.lang, tier: src.tier, options: src.options, analysis: renderAnalysisSafe(a, p.lang), memory: mem.text, crisis: a.crisis, minutesToDraw: this.minutesToDraw(), seed: `${c.id}:${p.drawIndex}`, skipped: choicesOf(mem.record).skipped.slice(-6) }, this.stack.voice);
+    if (r.source === 'degraded' && r.degradeReason) this.metrics.degradation('voice', 'counsel', r.degradeReason);
+    const view: CounselView = { drawIndex: p.drawIndex, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: w.time };
+    this.counsels.set(`${c.id}:${p.lang}`, view);
+    return view;
+  }
+
+  /** Called every step by the engine: T−lead minutes before the Draw, one counsel job per colony seen in the last two hours. */
+  scheduleCounsel(): void {
+    const w = this.deps.world();
+    const next = this.drawIndexNow() + 1;
+    if (this.lastCounselDraw === next || this.minutesToDraw() > this.cfg.counselLeadMin) return;
+    this.lastCounselDraw = next;
+    if (this.capped('counsel')) return; // the live request serves the fallback cards
+    for (const c of Object.values(w.colonies)) {
+      if (c.npc || w.time - c.lastSeenAt > 2 * 3600) continue;
+      if (!this.quota.take(c.id, 'counsel')) { this.metrics.degradation('voice', 'counsel', 'quota'); continue; }
+      const lang = this.langOf(c.id);
+      void this.scheduler.enqueue<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, spreadMs: Math.max(0, (this.cfg.counselLeadMin - 5) * 60000), ttlMs: this.cfg.counselLeadMin * 60000 })
+        .then((j) => j.result.catch(() => undefined));
+    }
+  }
+
+  /** The counsel for the coming Draw: cached when written ahead, else written now within the budget (fallback cards past it). */
+  async counsel(colonyId: string, lang: 'fr' | 'en'): Promise<CounselView | null> {
+    const c = this.colony(colonyId);
+    if (!c) return null;
+    this.langs.set(c.id, lang);
+    const next = this.drawIndexNow() + 1;
+    const hit = this.counsels.get(`${c.id}:${lang}`);
+    if (hit && hit.drawIndex === next) return { ...hit, minutesToDraw: this.minutesToDraw() };
+    const src = this.counselSource(this.deps.world(), c);
+    const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time }; };
+    if (!this.stack.voice || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
+    if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
+    const template = await fallback();
+    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, ttlMs: 3600000 });
+    if (out.timedOut) this.counsels.set(`${c.id}:${lang}`, out.result);
+    return out.result;
+  }
+
+  /** "Do it" / "Not now": the choice enters the memory; a taken card runs its command through the world. */
+  async decideCounsel(colonyId: string, cardId: string, take: boolean): Promise<{ ok: true; reply: string; result: unknown } | { ok: false; reason: string }> {
+    const c = this.colony(colonyId);
+    if (!c) return { ok: false, reason: 'no such colony' };
+    const lang = this.langOf(c.id);
+    const view = this.counsels.get(`${c.id}:${lang}`) ?? this.counsels.get(`${c.id}:${lang === 'fr' ? 'en' : 'fr'}`);
+    const card = view?.cards.find((x) => x.id === cardId);
+    if (!card) return { ok: false, reason: 'no such card' };
+    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    await this.memoryStore.save(c.id, recordChoice(mem, take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    let result: unknown = null;
+    if (take && card.command) { result = apply(this.deps.world(), c.id, card.command); this.deps.dirty(c.id); }
+    if (view) view.cards = view.cards.filter((x) => x.id !== card.id);
+    const reply = counselAck(c.persona, lang, take, `${c.id}:${card.id}`);
+    this.pushLine(c.id, reply);
+    return { ok: true, reply, result };
+  }
+
+  // --- episodes (memory, level 1) -------------------------------------------------
+
+  private async runEpisode(p: EpisodeJob): Promise<string> {
+    const c = this.colony(p.colonyId);
+    if (!c) throw new Error('colony gone');
+    const w = this.deps.world();
+    const since = (p.day - 1) * 86400, until = p.day * 86400;
+    const events = w.events.filter((e) => e.at >= since && e.at < until && (e.actors.includes(c.id) || e.kind === 'draw'));
+    const names: Record<string, string> = {}; for (const o of Object.values(w.colonies)) names[o.id] = o.name;
+    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    const choices = choicesOf(mem);
+    const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).join(', ')}.`) : ''].filter(Boolean).join('\n');
+    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.voice);
+    await this.memoryStore.save(c.id, recordEpisode(mem, p.day, r.text, Date.now()));
+    return r.text;
+  }
+
+  /** Called by the engine when the season day turns: one episode per colony seen during the day that ended. */
+  scheduleEpisodes(day: number): void {
+    if (day < 1 || this.lastEpisodeDay === day) return;
+    this.lastEpisodeDay = day;
+    const w = this.deps.world();
+    for (const c of Object.values(w.colonies)) {
+      if (c.npc || c.lastSeenAt < (day - 1) * 86400) continue;
+      void this.scheduler.enqueue<EpisodeJob, string>('episode', 'episode', { colonyId: c.id, lang: this.langOf(c.id), day }, { colony: c.id, key: `episode:${c.id}:${day}`, spreadMs: this.cfg.episodeSpreadMin * 60000, ttlMs: 12 * 3600000 }).then((j) => j.result.catch(() => undefined));
+    }
+  }
+
+  // --- the player's memory: theirs to read and to erase -----------------------------
+
+  async exportMemory(colonyId: string): Promise<{ facts: ReturnType<typeof factsFrom>; record: MemoryRecord; rendered: string; stores: string[] } | null> {
+    const c = this.colony(colonyId);
+    if (!c) return null;
+    const mem = await this.memoryOf(c, this.langOf(c.id));
+    return { facts: factsFrom(this.deps.world(), c), record: mem.record, rendered: mem.text, stores: this.mirror ? ['postgres', 'instance'] : ['postgres'] };
+  }
+
+  /** Erase everywhere: the world's copy and the long-memory instance; `mirror` says whether the instance confirmed. */
+  async eraseMemory(colonyId: string): Promise<{ ok: boolean; mirror: boolean | null }> {
+    const c = this.colony(colonyId);
+    if (!c) return { ok: false, mirror: null };
+    let mirror: boolean | null = null;
+    if (this.mirror) mirror = (await this.mirror.erase(c.id)).mirror;
+    else await this.memoryStore.save(c.id, emptyMemory());
+    this.talks.delete(c.id);
+    for (const lang of ['fr', 'en'] as const) { this.briefings.delete(`${c.id}:${lang}`); this.counsels.delete(`${c.id}:${lang}`); }
+    return { ok: true, mirror };
+  }
+
   // --- observability -----------------------------------------------------------
 
-  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null } }> {
-    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null } };
+  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null }; memory: { stores: string[]; mirrorFailures: number } }> {
+    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: { stores: this.mirror ? ['postgres', 'instance'] : ['postgres'], mirrorFailures: this.mirror?.mirrorFailures ?? 0 } };
   }
 
   prometheus(): string { return this.metrics.prometheus(); }
@@ -304,6 +470,15 @@ export class GeneralService {
 // --- synchronous fallbacks (no model, no await on the queue) --------------------
 
 import { heuristicConverse, heuristicPolicy, renderAnalysis, templateBriefing, templateGazette, dayFacts } from '@aurane/general';
+
+/** The client answers a card through the simulation (`counsel_answer` → journal `counsel.taken` / `counsel.skipped`, note = id): those choices join the memory's *choices* layer. */
+function withJournalChoices(record: MemoryRecord, c: Colony): MemoryRecord {
+  const fromJournal = (c.journal as { at: number; kind: string; note?: string }[]).filter((j) => (j.kind === 'counsel.taken' || j.kind === 'counsel.skipped') && j.note);
+  if (!fromJournal.length) return record;
+  const seen = new Set(record.notes.map((n) => `${n.kind}|${n.text}|${n.at}`));
+  const extra = fromJournal.map((j) => ({ at: Math.round(j.at * 1000), kind: j.kind, text: j.note! })).filter((n) => !seen.has(`${n.kind}|${n.text}|${n.at}`));
+  return { ...record, notes: [...record.notes, ...extra].sort((a, b) => a.at - b.at).slice(-80) };
+}
 
 function converseSync(text: string, lang: 'fr' | 'en', c: Colony, ctx: DoctrineContext): ConverseResult {
   return heuristicConverse({ text, lang, persona: c.persona, history: [], ctx });

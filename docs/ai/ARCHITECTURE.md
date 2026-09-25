@@ -127,11 +127,71 @@ disjoncteur, profondeur de file ; dégradations par raison ; compteurs de jobs. 
 un scrape. `tools/llm-capacity/project.mjs` projette joueurs/jour → appels/jour → pointe → concurrence →
 coût à partir de ces métriques (ou d'hypothèses).
 
+## Le Partenaire (décision 0009) : le Conseil du Tirage, les épisodes, la mémoire du joueur
+
+- **Tâche `counsel`** (classe `voice`, budget 3 s) : `writeCounsel` reçoit 3 à 5 options légales et chiffrées de la
+  simulation (`counselSource`, aujourd'hui `buildOptions` de l'analyse ; demain `counsel(w, colony, tier)` de
+  `packages/sim`) et rend `{ cards: [{ id, title, line }] }` dans la voix, ids et commandes conservés, chiffres
+  vérifiés, carte de repli en personnage pour toute option que le modèle oublie ou hors budget. Au palier 0 sans
+  option : les trois cartes fixes (« touche ton étoile », « relie ta voisine », « regarde ton entrepôt »).
+- **Planification** : `scheduleCounsel()` est appelé à chaque pas du moteur mais ne fait qu'enfiler : à
+  `LLM_COUNSEL_LEAD_MIN` (20) minutes du Tirage, un job par colonie humaine vue dans les deux dernières heures,
+  étalé sur la fenêtre, quota `LLM_QUOTA_COUNSEL_DAY` (30). `GET /api/counsel` sert le cache jusqu'au Tirage ;
+  sans cache, écriture immédiate dans `LLM_COUNSEL_DEADLINE_MS` (3 s), cartes de repli au-delà.
+- **« Fais-le » / « Pas maintenant »** : `POST /api/counsel/take|skip { id }`. Prendre exécute la commande de la carte
+  par `apply` du monde (mêmes validations qu'une commande du joueur) ; les deux écrivent la couche *choix*
+  (`counsel.taken` / `counsel.skipped`) ; le Général accuse réception dans la conversation, sans modèle. Le Général
+  ne décide jamais : une carte sans « Fais-le » ne change rien.
+- **Épisodes** : au changement de jour, `scheduleEpisodes(day)` enfile une tâche `episode` par colonie vue dans la
+  journée ; `writeEpisode` résume en une à trois phrases (chiffres du gabarit seulement), `recordEpisode` garde
+  quatorze jours ; `renderMemory` relit les trois derniers au retour.
+- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`.
+  Postgres seul (table `general_memory`) tant qu'un besoin de recherche sémantique n'apparaît pas.
+
+## Budget : 100 EUR par mois, modèles et mémoire compris (décision 0009, Nick 25.09)
+
+- **Mesure** : chaque appel est valorisé avec `LLM_PROVIDER_<NOM>_PRICE_IN/_OUT` (EUR par million de jetons) ;
+  la dépense du mois civil (UTC) est persistée (`llm_budget` en Postgres, fichier en dev) pour survivre aux
+  redémarrages, et exposée dans les métriques (`aurane_llm_spend_eur`, `aurane_llm_budget_ratio`,
+  `aurane_llm_over_budget`).
+- **Alerte** à `LLM_BUDGET_ALERT_RATIO` (80 %) : une ligne de journal une seule fois par mois (à relayer par une
+  règle Grafana sur la jauge) ; **plafond** `LLM_BUDGET_EUR_MONTH` (100) : une ligne au passage, puis **toutes les
+  tâches se dégradent en personnage** (raison `budget`, lignes du registre « quota » : « je reprends au Tirage »),
+  jamais un silence, jusqu'au mois suivant. Le Conseil sert ses cartes de repli, la Gazette son gabarit.
+- **Quotas par joueur** réglés pour ~200 joueurs actifs par jour à ce plafond, aux tarifs Scaleway de Mistral
+  Small 3.2 (0,15 / 0,35 EUR par million, ~2 800 jetons entrants et ~160 sortants par appel, soit ~0,00048 EUR
+  l'appel) : Conseil 8 par jour (il n'est écrit que pour les joueurs vus dans les deux dernières heures),
+  dialogue 10 par jour et 6 par heure, doctrine 6, briefing 4, épisode 1. Au maximum des quotas :
+  200 × 29 appels × 30 jours ≈ 174 000 appels ≈ 84 EUR ; en usage réel (un joueur n'épuise pas ses quotas) la
+  moitié. `node tools/llm-capacity/project.mjs --players 200 --calls-per-player 29` donne la projection ;
+  `--budget 100` le nombre de joueurs tenable.
+- **La mémoire longue** compte dans le plafond : une instance dédiée à Aurane (voir ci-dessous) est comptée
+  au forfait de son hébergement, pas au jeton.
+
+## La mémoire longue : une instance dédiée à Aurane (décision 0009, Nick 25.09)
+
+Nick a tranché pour une instance de mémoire propre à Aurane dès maintenant (données de joueurs, séparées de la
+mémoire ninabot) pour les couches *choix*, *épisodes* et *saisons* ; Postgres reste la copie de travail, le
+monde n'attend jamais la mémoire. Côté couche LLM :
+
+- `HttpMemoryStore` parle à l'instance sur un contrat volontairement petit : `PUT /memory/{colony}` (le
+  `MemoryRecord` en JSON), `GET /memory/{colony}`, `DELETE /memory/{colony}`, jeton Bearer
+  (`AURANE_MEMORY_URL`, `AURANE_MEMORY_TOKEN`, valeurs dans Vaultwarden collection `aurane`).
+- `MirroredMemoryStore` : Postgres d'abord, miroir en arrière-plan (un échec du miroir est journalisé et compté
+  dans les métriques, jamais bloquant) ; lecture à froid depuis l'instance quand Postgres ne connaît pas la
+  Colonie (retour d'une saison à l'autre) ; `DELETE /api/memory` efface les deux et dit si l'instance a confirmé.
+- **Reste à provisionner** (infra, avec le go de Nick dans son canal) : le service lui-même. Proposition :
+  `aurane-memory` sur la VM `aurane-app1` (les données de joueurs ne quittent pas l'hôte du monde, Exoscale
+  ch-gva-2), même image de base que sokkan-memory (notes + embeddings pour la recherche sémantique), jeton en
+  Vaultwarden, aucune exposition publique (loopback + réseau Compose).
+
 ## Ce qui change pour le client (`apps/web`, session cloud)
 
 - `POST /api/talk` renvoie en plus `pending: { id, readable[] } | null` et `question: string | null`.
 - `POST /api/doctrine` renvoie `readable[]`, `question`, `pending: { id } | null`, `applied`.
 - Nouveaux : `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`.
+- Conseil (0009) : `GET /api/counsel?lang=` → `{ drawIndex, minutesToDraw, cards: [{ id, title, line, command, show }], source }` ;
+  `POST /api/counsel/take { id }` / `POST /api/counsel/skip { id }` → `{ ok, reply }` ; `GET|DELETE /api/memory`.
 - Tant que `DOCTRINE_CONFIRM` vaut 0, rien ne change pour le client actuel.
 
 ## Limites connues

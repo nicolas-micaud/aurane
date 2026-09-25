@@ -38,10 +38,10 @@ export interface LlmClient {
 
 /** Usage classes: `voice` is the General speaking (identical model everywhere); `narrative` is long-form prose. */
 export type LlmClass = 'voice' | 'narrative';
-export type LlmTask = 'talk' | 'doctrine' | 'briefing' | 'reaction' | 'gazette' | 'memoir';
+export type LlmTask = 'talk' | 'doctrine' | 'briefing' | 'reaction' | 'counsel' | 'episode' | 'gazette' | 'memoir';
 
 export const TASK_CLASS: Record<LlmTask, LlmClass> = {
-  talk: 'voice', doctrine: 'voice', briefing: 'voice', reaction: 'voice',
+  talk: 'voice', doctrine: 'voice', briefing: 'voice', reaction: 'voice', counsel: 'voice', episode: 'voice',
   gazette: 'narrative', memoir: 'narrative',
 };
 
@@ -52,6 +52,8 @@ export const TASK_PARAMS: Record<LlmTask, TaskParams> = {
   doctrine: { temperature: 0.2, topP: 0.9, maxTokens: 700, timeoutMs: 20000, json: true },
   briefing: { temperature: 0.6, topP: 0.9, maxTokens: 400, timeoutMs: 20000, json: false },
   reaction: { temperature: 0.7, topP: 0.9, maxTokens: 200, timeoutMs: 15000, json: false },
+  counsel:  { temperature: 0.6, topP: 0.9, maxTokens: 450, timeoutMs: 3000, json: true },
+  episode:  { temperature: 0.6, topP: 0.9, maxTokens: 220, timeoutMs: 15000, json: false },
   gazette:  { temperature: 0.6, topP: 0.95, maxTokens: 900, timeoutMs: 60000, json: true },
   memoir:   { temperature: 0.8, topP: 0.95, maxTokens: 1200, timeoutMs: 90000, json: false },
 };

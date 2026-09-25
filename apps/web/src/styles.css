@@ -197,3 +197,14 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .recap .chips { gap: 4px; margin-bottom: 4px; } .recap .chip { padding: 2px 6px; font-size: 12px; } .recap .chip b { font-size: 13px; }
 .decrees { margin-top: 14px; } .decrees .cards { grid-template-columns: repeat(3, 1fr); } @media (max-width: 480px) { .decrees .cards { grid-template-columns: 1fr 1fr; } }
 .journal li { font-size: 13px; gap: 8px; } .journal li small { white-space: nowrap; }
+
+/* 0009: the Draw Counsel, the Partner's cards under the alerts. */
+.counsel { display: flex; flex-direction: column; gap: 6px; margin: 6px 10px 0; pointer-events: auto; max-width: 560px; }
+.counsel .who { color: var(--muted); font-family: Rajdhani, Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+.counsel .card { background: rgba(14,23,48,.94); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 8px 10px; backdrop-filter: blur(6px); }
+.counsel .card.u2 { border-left-color: var(--err); } .counsel .card.u1 { border-left-color: var(--energy); }
+.counsel .card p { margin: 0 0 6px; font-size: 14px; line-height: 1.35; }
+.counsel .acts { display: flex; gap: 6px; flex-wrap: wrap; } .counsel .acts button { font-size: 13px; padding: 5px 10px; }
+.counsel .acts button.primary { padding: 5px 12px; }
+.counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
+@media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel .card:nth-of-type(n+3) { display: none; } }

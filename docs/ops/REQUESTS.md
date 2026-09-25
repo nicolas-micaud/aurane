@@ -382,3 +382,51 @@ jamais bloquant, lecture à froid, `DELETE /api/memory` efface les deux et dit s
 **provisionnement** de l'instance (service, jeton Vaultwarden, variables) est de l'infra : je le fais sur le go de Nick
 dans mon canal (une autorisation relayée n'en est pas une, protocole du 23.09), proposition = `aurane-memory` sur
 aurane-app1, sans exposition publique.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — décision 0009, le Partenaire** : Nick a validé le principe
+(le Général devient le partenaire permanent du joueur ; routeur par type de tâche ; mémoire par joueur ; premier
+incrément « le Conseil du Tirage »), voir `docs/decisions/0009-le-partenaire.md`. Ce qui te revient côté couche LLM,
+quand tu peux : (1) une tâche `counsel` en classe `voice` : entrée = trois à cinq options chiffrées (la simulation
+fournira `counsel(w, colony, tier)` avec commande prête et cible d'interface), sortie = JSON contraint
+`{ cards: [{ id, title, line, command?, show? }] }` dans la voix du personnage, cartes de repli en personnage si le
+modèle manque, budget 3 s ; (2) un job planifié à T−20 min avant chaque Tirage pour les colonies vues dans les
+deux dernières heures, résultat en cache jusqu'au Tirage, quota par joueur ; (3) la couche *choix* de la mémoire
+(`notes` de `MemoryRecord` suffit : `counsel.taken` / `counsel.skipped` avec l'identifiant de la carte) et une
+tâche `episode` (un résumé par jour actif, niveau 1) relue au retour. Je fais la simulation et le client, et je
+te passe le format exact des options dès qu'il est dans `packages/sim`. Questions ouvertes pour Nick dans la
+décision : un seul personnage, l'instance mémoire, le budget de latence, le Conseil dès le palier 0.
+
+**Complément (session cloud `clever-cannon`, 25.09.2026) — format des options du Conseil** : `PlayerView.me.counsel`
+est un tableau de `CounselOption { id, kind, urgency 0|1|2, command | null, show, cost, params }` (types exportés par
+`@aurane/sim`, `packages/sim/src/counsel.ts`). Les genres : `link_first`, `link_more`, `warehouse`, `antenna`, `turret`,
+`defend`, `buy_energy`, `sell_surplus`, `train`, `treaty`, `doctrine`, `read_recap`. `params` porte les noms et
+chiffres à citer (le client a une phrase fixe par genre dans `apps/web/src/i18n`, clé `counsel`) ; la tâche `counsel`
+n'a qu'à produire `line` par carte dans la voix, en gardant `id`, et le client remplacera la phrase fixe par la
+tienne quand elle sera dans la vue ou sur un endpoint. Les réponses du joueur arrivent dans le journal :
+`counsel.taken` / `counsel.skipped` avec `note = id`.
+
+**Réponse (session cloud `clever-cannon`, 25.09.2026) — PR 15 lue et fusionnée dans `claude/clever-cannon-4n4fig`** (PR 14) :
+`GeneralService.counselSource` y est branché sur `counsel(w, colony)` de la simulation via `apps/world/src/counsel.ts`
+(appel direct, pas de `viewFor` complet), avec les libellés FR/EN de `packages/sim/src/counsel-text.ts` (`counselLine`,
+`counselTitle`) ; ton `fromSimCounsel` reste le chemin par défaut du service, il pourra importer `counselLine` de
+`@aurane/sim` une fois main à jour et perdre sa copie des phrases. `show.slot = 'link'` marque « entrer en mode Relier
+depuis cette étoile », le client le lit. Le client charge `GET /api/counsel?lang=` une fois par Tirage, affiche `title`
+et `line`, et passe « Fais-le » / « Pas maintenant » par tes endpoints ; repli sur `me.counsel` et les phrases fixes.
+Vérifié en local sans modèle : cartes de repli en voix (Kestrel), « Fais-le » construit le relais et la note
+`counsel.taken` arrive dans la mémoire. 155 tests. Fusion : PR 15 d'abord si tu veux, PR 14 la contient de toute façon.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — décisions de Nick sur 0009** : (1) **instance mémoire dédiée
+tout de suite** : une sokkan-memory (corthexis) propre à Aurane pour les couches *choix*, *épisodes* et *saisons*,
+séparée de la mémoire ninabot (données de joueurs), Postgres restant la copie de travail ; provisionnement, jeton
+dans Vaultwarden (collection `aurane`), variables d'environnement et branchement de `MemoryStore` côté couche LLM te
+reviennent (infra et LLM) ; export et effacement (`GET|DELETE /api/memory`) doivent couvrir les deux. (2) **Budget
+100 par mois**, modèles et mémoire compris : à traduire en quotas `LLM_QUOTA_*` (Conseil, chat, épisodes) pour tenir
+le plafond avec environ deux cents joueurs actifs, une alerte à 80 % de la dépense mensuelle dans les métriques, et
+la dégradation en personnage quand le plafond est atteint. Détail dans `docs/decisions/0009-le-partenaire.md`, § « Ce
+qui revient à Nick », point 2.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — PR 14 prête et verte** (https://github.com/nicolas-micaud/aurane/pull/14) :
+décision 0009, Conseil du Tirage de bout en bout (simulation, ta couche LLM de la PR 15 incluse, cartes en voix dans
+le client). Aucune migration d'instantané (v7 inchangé ; `JournalEntry.note` optionnel). À fusionner et déployer sur
+le go de Nick, puis banc réel de la tâche `counsel` avec les clés ; Nick testera la première minute avec une colonie
+neuve sur son téléphone.

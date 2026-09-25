@@ -10,6 +10,7 @@ import { inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aur
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
+import { simCounselSource } from './counsel.js';
 
 const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
@@ -40,6 +41,7 @@ export class Engine {
 
   constructor(readonly cfg: Config, private readonly store: Store, generalDeps: Partial<GeneralDeps> = {}) {
     this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, ...generalDeps });
+    this.general.counselSource = simCounselSource; // the simulation's counsel (0009), not the analysis' options
   }
 
   async init(): Promise<void> {
@@ -105,7 +107,8 @@ export class Engine {
     }
     // A new season day: yesterday's Gazette is queued (spread over the off-peak window), never written here.
     const day = Math.floor(this.world.time / 86400);
-    if (day !== this.lastDaySeen) { this.lastDaySeen = day; this.general.scheduleDailyGazette(day); }
+    if (day !== this.lastDaySeen) { this.lastDaySeen = day; this.general.scheduleDailyGazette(day); this.general.scheduleEpisodes(day); }
+    this.general.scheduleCounsel(); // T−20 min before the Draw: queued, never written here
     this.flush();
     if (now - this.lastSnapshot >= this.cfg.snapshotEverySeconds * 1000) {
       this.lastSnapshot = now;

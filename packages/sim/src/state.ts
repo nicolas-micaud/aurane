@@ -45,7 +45,7 @@ export interface Colony {
 export interface Onboarding { tier: number; unlockedAt: number[] }
 
 /** One line of the General's journal: a structured note the client translates. */
-export interface JournalEntry { at: number; kind: string; system?: string; colony?: string }
+export interface JournalEntry { at: number; kind: string; system?: string; colony?: string; /** Free detail, e.g. the Counsel card taken or skipped. */ note?: string }
 export interface ActiveDecree { kind: Decree; until: number }
 
 export interface BuildJob { building: Building; orbit: Orbit; readyAt: number; poi: string }
