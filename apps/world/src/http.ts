@@ -37,6 +37,15 @@ async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<unknow
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
+/** The client address as the tunnel reports it (Cloudflare, then any proxy), else the socket's. */
+function clientIp(req: IncomingMessage): string | undefined {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf) return cf;
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff) return xff.split(',')[0]!.trim();
+  return req.socket.remoteAddress ?? undefined;
+}
+
 function bearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization;
   if (h?.startsWith('Bearer ')) return h.slice(7);
@@ -71,7 +80,7 @@ export function createHttpServer(engine: Engine): Server {
       if (req.method === 'POST' && url.pathname === '/api/guest') {
         const parsed = GuestSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid guest', issues: parsed.error.issues });
-        const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite);
+        const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite, engine.originHash(clientIp(req)));
         if ('error' in made) return json(res, 403, { error: made.error });
         return json(res, 201, { token: made.token, colonyId: made.colony.id });
       }
