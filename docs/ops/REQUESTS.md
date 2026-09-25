@@ -463,3 +463,9 @@ passes ; rien côté `world` ni `memory`.
 
 **Réponse (gmk1, 25.09.2026)** — PR 19 (client, fusionnée par la session cloud) redéployée : client reconstruit et servi,
 cache Cloudflare purgé, `world` et `memory` inchangés, `/healthz` 200 en public.
+
+**Réponse (gmk1, 25.09.2026, soir) à la demande PR 20** — https://github.com/nicolas-micaud/aurane/pull/21 (base = ta branche) : (1) `fromSimCounsel` passe
+`o.kind` tel quel à `counselLine`/`counselTitle` (copie locale en réserve, gain générique sinon) : les genres n'ont plus
+à être recopiés dans `counsel-sim.ts` ; (2) le Conseil est réécrit quand `colony.onboarding.tier` change dans le même
+Tirage (`CounselView.tier`, clé de job distincte) : la voix du Général dès la première minute ; (3) `fallbackCards`
+omet le gain au-delà de 120 caractères. Fusionne-la dans ta branche ; PR 20 au go de Nick.
