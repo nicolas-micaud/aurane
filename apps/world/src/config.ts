@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { limitsFromEnv, type QuotaLimits } from '@aurane/general';
 
 export interface Config {
   port: number;
@@ -24,6 +25,17 @@ export interface Config {
   authSecret: string;
   /** Public origin used in device links, e.g. https://play.playaurane.com. */
   publicOrigin: string;
+  /** A compiled doctrine waits for the player's confirmation before it is active (DOCTRINE_CONFIRM=1). */
+  doctrineConfirm: boolean;
+  /** How long a live request waits for the model before the General answers in character without it. */
+  talkDeadlineMs: number;
+  briefingDeadlineMs: number;
+  /** The daily Gazette is written in batch, spread over this many minutes after the day turns. */
+  gazetteSpreadMin: number;
+  /** Jobs the scheduler runs at once (the providers bound their own concurrency). */
+  llmWorkers: number;
+  /** Per-player LLM quotas (LLM_QUOTA_*). */
+  quotas: QuotaLimits;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -46,5 +58,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminToken: env.ADMIN_TOKEN || null,
     authSecret: env.AUTH_SECRET || randomBytes(32).toString('hex'),
     publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
+    doctrineConfirm: env.DOCTRINE_CONFIRM === '1' || env.DOCTRINE_CONFIRM === 'true',
+    talkDeadlineMs: num(env.LLM_TALK_DEADLINE_MS, 25000),
+    briefingDeadlineMs: num(env.LLM_BRIEFING_DEADLINE_MS, 8000),
+    gazetteSpreadMin: num(env.LLM_GAZETTE_SPREAD_MIN, 40),
+    llmWorkers: num(env.LLM_WORKERS, 4),
+    quotas: limitsFromEnv(env),
   };
 }

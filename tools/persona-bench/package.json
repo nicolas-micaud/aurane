@@ -1,0 +1,8 @@
+{
+  "name": "@aurane/persona-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -b", "start": "node dist/main.js" },
+  "dependencies": { "@aurane/general": "0.1.0", "@aurane/protocol": "0.1.0", "@aurane/sim": "0.1.0" }
+}

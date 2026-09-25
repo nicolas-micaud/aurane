@@ -98,7 +98,9 @@ export class FileStore implements Store {
 
 export class PgStore implements Store {
   private readonly pool: pg.Pool;
-  constructor(url: string) { this.pool = new pg.Pool({ connectionString: url, max: 4 }); }
+  constructor(url: string) { this.pool = new pg.Pool({ connectionString: url, max: 6 }); }
+  /** Shared with the LLM layer's stores (jobs, memory). */
+  get pgPool(): pg.Pool { return this.pool; }
 
   async migrate(): Promise<void> {
     await this.pool.query(`
