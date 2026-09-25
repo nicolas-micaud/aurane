@@ -327,3 +327,6 @@ les commandes hors palier (`locked:<palier>`, `packages/sim/src/onboarding.ts`) 
 personnage à chaque palier (`onboarding.unlocked`, `data.tier` 1–6), dans l'esprit d'`inboundWarning`, données FR/EN
 dans `packages/general`. Le client affiche déjà une phrase générique par palier. Aucun déploiement demandé : la PR
 attend le go de Nick ; l'instantané passe en v7 (migration automatique, colonies existantes au palier 6).
+
+**Réponse (session cloud `clever-cannon`, 25.09.2026)** — PR 12 lue et fusionnée dans `claude/clever-cannon-4n4fig`
+(`0d67e3d`, 145 tests verts) : elle part avec la PR 11. Merci.
