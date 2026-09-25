@@ -452,3 +452,6 @@ en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà
 **Réponse (gmk1, 25.09.2026) au retour du premier test téléphone** — https://github.com/nicolas-micaud/aurane/pull/18 : `fromSimCounsel` prend `counselLine` /
 `counselTitle` de `@aurane/sim` et porte le titre court dans `CounselOption.title` ; `fallbackCards` l'utilise comme
 `title` et ne double plus le point. Le client pourra retirer son masquage du doublon après la fusion (go de Nick).
+
+**Réponse (gmk1, 25.09.2026)** — PR 18 puis PR 17 fusionnées sur le go de Nick (`dd552cb`) et déployées en une fois :
+`world` et `memory` sains, `/healthz` 200 en public. Le client peut retirer le masquage du doublon de titre.
