@@ -129,7 +129,7 @@ function concordat() {
 if (what === 'factions' || what === 'all') factions();
 function corsairs() {
   console.log(`\n== Corsairs and the lair capitals: ${seeds} seed(s) × ${days} days × 40 colonies, radius 6 ==`);
-  for (const [label, rules] of [['lair bias on (default)', {}], ['lair bias off', { spawnLairBias: false }]]) {
+  for (const [label, rules] of [['lair bias on (prototype)', { spawnLairBias: true }], ['lair bias off (Season 0)', { spawnLairBias: false }]]) {
     const scores = { concordat: [], guild: [], oracles: [], corsairs: [] };
     for (let s = 0; s < seeds; s++) {
       const w = run({ seed: `review-f-${s}`, colonies: 40, radius: 6, days, rules });

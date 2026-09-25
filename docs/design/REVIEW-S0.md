@@ -129,10 +129,12 @@ faction), un biais de placement voulu pour la couverture, qui semble coûter en 
 | `spawnLairBias` | Concordat | Guilde | Oracles | Corsaires |
 |---|---|---|---|---|
 | activé (prototype) | 29,1 (+7 %) | 30,2 (+11 %) | 26,3 (−3 %) | 23,1 (−15 %) |
-| désactivé | 24,5 (−10 %) | 26,2 (−3 %) | 27,9 (+3 %) | 29,7 (+10 %) |
+| désactivé, repaires à poids neutre | 24,5 (−10 %) | 26,2 (−3 %) | 27,9 (+3 %) | 29,7 (+10 %) |
+| **désactivé, aucune capitale en repaire (Saison 0)** | 28,4 (+1 %) | 26,5 (−5 %) | 27,2 (−3 %) | 30,0 (+7 %) |
 
 Le biais coûtait aux Corsaires 25 points d'écart (de −15 % à +10 %) ; sans lui, **les quatre factions tiennent dans
-±10 %**. Décision implémentée : `spawnLairBias: false` en Saison 0 (les repaires restent dans la galaxie, mais aucune
+±10 %**, et la configuration finale de la Saison 0 (portée du Concordat +5 %, aucune capitale en repaire) donne
++1 %, −5 %, −3 %, +7 %. Décision implémentée : `spawnLairBias: false` en Saison 0 (les repaires restent dans la galaxie, mais aucune
 capitale n'y démarre : ni imposés aux Corsaires, ni cachette gratuite pour un nouveau venu) ; à réactiver quand le repaire donnera un avantage réel
 (couverture jouée) plutôt qu'un handicap de croissance.
 
