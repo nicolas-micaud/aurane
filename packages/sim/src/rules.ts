@@ -31,7 +31,7 @@ export interface SeasonRules {
   oracleHintMinutes: number;
   /** The Concordat's relay range multiplier: +5 % in Season 0 (+10 % gave the faction +42 % of score in a week, REVIEW-S0 § 3). */
   concordatRangeMult: number;
-  /** Corsair capitals prefer lair systems (hidden main body); others avoid them. Off in Season 0: it cost the Corsairs 25 points of score swing (REVIEW-S0 § 3). */
+  /** Corsair capitals prefer lair systems (hidden main body) and others avoid them. Off in Season 0 (nobody starts in a lair): the bias cost the Corsairs 25 points of score swing (REVIEW-S0 § 3). */
   spawnLairBias: boolean;
 }
 

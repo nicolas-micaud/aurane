@@ -355,7 +355,11 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
       if (w.systems[id]!.owner || sys.kind === 'beacon' || sys.slots < 2) continue;
       if (countLinkable(w, sys, opts.faction) < 2) continue; // a capital with nothing in range is a dead start
       const d = capitals.length ? Math.min(...capitals.map((c) => dist(c, sys))) : 1e9;
-      const lair = w.rules.spawnLairBias && layoutOf(w.galaxy, id).template === 'lair' ? (opts.faction === 'corsairs' ? 1.35 : 0.4) : 1;
+      // Lairs (covered main body): a capital there hides its owner from strangers. With the bias on, Corsairs seek them and
+      // others shun them; with it off (Season 0) nobody starts in one: a newcomer's capital is not a hiding place.
+      const isLair = layoutOf(w.galaxy, id).template === 'lair';
+      if (isLair && !w.rules.spawnLairBias) continue;
+      const lair = isLair ? (opts.faction === 'corsairs' ? 1.35 : 0.4) : 1;
       const score = Math.min(d, 6000) * rng.range(0.9, 1) * lair;
       if (score > bestScore) { bestScore = score; best = sys; }
     }

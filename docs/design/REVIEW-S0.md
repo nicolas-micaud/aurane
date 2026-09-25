@@ -132,8 +132,8 @@ faction), un biais de placement voulu pour la couverture, qui semble coûter en 
 | désactivé | 24,5 (−10 %) | 26,2 (−3 %) | 27,9 (+3 %) | 29,7 (+10 %) |
 
 Le biais coûtait aux Corsaires 25 points d'écart (de −15 % à +10 %) ; sans lui, **les quatre factions tiennent dans
-±10 %**. Décision implémentée : `spawnLairBias: false` en Saison 0 (les repaires restent dans la galaxie, on ne les
-impose plus aux Corsaires ni ne les interdit aux autres) ; à réactiver quand le repaire donnera un avantage réel
+±10 %**. Décision implémentée : `spawnLairBias: false` en Saison 0 (les repaires restent dans la galaxie, mais aucune
+capitale n'y démarre : ni imposés aux Corsaires, ni cachette gratuite pour un nouveau venu) ; à réactiver quand le repaire donnera un avantage réel
 (couverture jouée) plutôt qu'un handicap de croissance.
 
 **Recommandation.** Garder la fenêtre des Oracles à 60 minutes (l'avantage est réel mais petit, +4 %, et c'est
