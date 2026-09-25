@@ -14,7 +14,7 @@
 <meta property="og:site_name" content="Aurane">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:locale:alternate" content="en_GB">
-<meta property="og:url" content="https://playaurane.com/">
+<meta property="og:url" content="https://playaurane.com/fr/">
 <meta property="og:title" content="Aurane — jeu de stratégie spatiale gratuit dans le navigateur">
 <meta property="og:description" content="Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.">
 <meta property="og:image" content="https://playaurane.com/og.png">
@@ -195,8 +195,7 @@ footer a{color:var(--muted)}
 var L="fr";
 try{
 var saved=localStorage.getItem('aurane.lang');
-if(!saved&&(navigator.language||'').toLowerCase().indexOf('fr')!==0){location.replace('/en/'+location.search+location.hash);return;}
-if(saved==='en'){location.replace('/en/'+location.search+location.hash);return;}
+
 document.querySelectorAll('[data-setlang]').forEach(function(a){a.addEventListener('click',function(){try{localStorage.setItem('aurane.lang',a.getAttribute('data-setlang'))}catch(e){}})});
 }catch(e){}
 var f=document.getElementById('waitlist');if(!f)return;

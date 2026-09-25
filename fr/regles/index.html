@@ -3,27 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aurane — jeu de stratégie spatiale gratuit dans le navigateur</title>
-<meta name="description" content="Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.">
-<link rel="canonical" href="https://playaurane.com/fr/">
-<link rel="alternate" hreflang="fr" href="https://playaurane.com/fr/">
-<link rel="alternate" hreflang="en" href="https://playaurane.com/en/">
-<link rel="alternate" hreflang="x-default" href="https://playaurane.com/">
+<title>Les règles d'Aurane — Saison 0</title>
+<meta name="description" content="Les règles complètes d'Aurane pour la Saison 0 : relier, le Tirage et les ressources, le Marché, construire, combattre, la diplomatie et les Sept Phares.">
+<link rel="canonical" href="https://playaurane.com/fr/regles/">
+<link rel="alternate" hreflang="fr" href="https://playaurane.com/fr/regles/">
+<link rel="alternate" hreflang="en" href="https://playaurane.com/en/rules/">
+<link rel="alternate" hreflang="x-default" href="https://playaurane.com/fr/regles/">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Aurane">
 <meta property="og:locale" content="fr_FR">
 <meta property="og:locale:alternate" content="en_GB">
-<meta property="og:url" content="https://playaurane.com/">
-<meta property="og:title" content="Aurane — jeu de stratégie spatiale gratuit dans le navigateur">
-<meta property="og:description" content="Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.">
+<meta property="og:url" content="https://playaurane.com/fr/regles/">
+<meta property="og:title" content="Les règles d'Aurane — Saison 0">
+<meta property="og:description" content="Les règles complètes d'Aurane pour la Saison 0 : relier, le Tirage et les ressources, le Marché, construire, combattre, la diplomatie et les Sept Phares.">
 <meta property="og:image" content="https://playaurane.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Aurane — can't stop the signal">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Aurane — jeu de stratégie spatiale gratuit dans le navigateur">
-<meta name="twitter:description" content="Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.">
+<meta name="twitter:title" content="Les règles d'Aurane — Saison 0">
+<meta name="twitter:description" content="Les règles complètes d'Aurane pour la Saison 0 : relier, le Tirage et les ressources, le Marché, construire, combattre, la diplomatie et les Sept Phares.">
 <meta name="twitter:image" content="https://playaurane.com/og.png">
 
 <meta name="theme-color" content="#05070f">
@@ -133,70 +133,44 @@ footer a{color:var(--muted)}
 <div class="bg" aria-hidden="true"></div>
 <header class="wrap top">
 <a class="brand" href="/fr/" data-setlang="fr"><img src="/aurane.svg" alt="" width="34" height="34">AURANE</a>
-<nav aria-label="Navigation"><a href="#jeu" class="sec">Le jeu</a><a href="#general" class="sec">Le Général</a><a href="#factions" class="sec">Factions</a><a href="/fr/regles/">Règles</a><a href="#liste-d-attente">Liste d'attente</a>
-<span class="lang" aria-label="Langue"><span lang="fr">FR</span><a href="/en/" hreflang="en" lang="en" data-setlang="en">EN</a></span></nav>
+<nav aria-label="Navigation"><a href="/fr/">Retour à l'accueil</a><a href="/fr/#liste-d-attente">Liste d'attente</a>
+<span class="lang" aria-label="Langue"><span lang="fr">FR</span><a href="/en/rules/" hreflang="en" lang="en" data-setlang="en">EN</a></span></nav>
 </header>
-<main id="main" class="wrap">
-<section class="hero" aria-labelledby="h1">
-<img class="logo" src="/aurane.svg" alt="" width="84" height="84">
-<h1 id="h1">AURANE</h1>
-<p class="tagline">can't stop the signal</p>
-<p class="hook">Ton Général IA joue pendant que tu dors.</p>
-<p><a class="cta" href="#liste-d-attente">Rejoindre la liste d'attente<small>Join the waitlist</small></a></p>
-<p class="alt"><a href="https://play.playaurane.com">J'ai un code d'invitation →</a></p>
-<p class="season-line">Saison 0 : bêta fermée sur invitation, puis ouverte à tous, sans compte.</p>
-<figure class="shot"><video autoplay muted loop playsinline preload="metadata" poster="/hero-poster.webp" width="1280" height="720" aria-label="Le Réseau qui s'étend, capturé dans le jeu."><source src="/hero.webm" type="video/webm"><img src="/hero-poster.webp" alt="Ton navigateur ne lit pas cette vidéo : l'image montre le Réseau de relais qui s'étend dans la galaxie." width="1280" height="720"></video><figcaption>Le Réseau qui s'étend, capturé dans le jeu.</figcaption></figure>
-</section>
-<section id="jeu" aria-labelledby="h-jeu">
-<h2 id="h-jeu">Le jeu</h2>
-<div class="prose"><p>Aurane est un jeu de stratégie web, gratuit, persistant et massivement multijoueur : cinq minutes sur mobile, cinq heures sur grand écran. Tu incarnes une <strong>Colonie</strong> qui étend un réseau de relais à travers une galaxie partagée. Un seul verbe : <strong>relier</strong>. Deux étoiles reliées forment un relais, et seul ce qui est relié à ta capitale existe vraiment.</p><p>Le temps est celui des ordres, pas du réflexe : chaque décision aboutit dans un délai connu, que tu sois là ou non. Chaque heure, la galaxie bat au rythme du <strong>Tirage</strong> : ressources tirées, échanges réglés, nouvelles publiées. Un vétéran de six semaines ne t'écrase pas par ses statistiques, seulement par son réseau, ses alliés et son intelligence. Pas de pay-to-win : aucun achat n'influence la simulation.</p></div>
-<h3 style="margin-top:22px">Le jeu en trois points</h3>
-<div class="cards"><article class="card" id="relier"><img src="/images/game/structure-relay.png" alt="" width="64" height="64" loading="lazy"><h3>Relier</h3><p>Un seul verbe : <strong>relier</strong>. Deux étoiles reliées forment un relais, et seul ce qui est relié à ta capitale existe vraiment.</p></article><article class="card" id="tirage"><img src="/images/game/structure-station.png" alt="" width="64" height="64" loading="lazy"><h3>Le Tirage</h3><p>Chaque heure, la galaxie bat au rythme du <strong>Tirage</strong> : ressources tirées, échanges réglés, nouvelles publiées.</p></article><article class="card" id="general"><img src="/images/game/structure-antenna.png" alt="" width="64" height="64" loading="lazy"><h3>Le Général</h3><p>Tu lui écris ta doctrine en langage naturel — « défends le pont vers Ancre à tout prix, vends le surplus de Vivres, ne déclare jamais la guerre sans moi » — et il l'exécute quand tu dors.</p></article></div>
-<p><a class="more" href="/fr/regles/">Lire les règles complètes →</a></p>
-</section>
-<section id="general" aria-labelledby="h-general">
-<h2 id="h-general">Le Général</h2>
-<div class="prose"><p>Chaque Colonie abrite un <strong>Général</strong> : un esprit des Anciens retrouvé dans les ruines du Réseau, incomplet, obsédé par le Signal, doté d'une personnalité et d'un humour parfois déconcertant. Tu lui écris ta doctrine en langage naturel — « défends le pont vers Ancre à tout prix, vends le surplus de Vivres, ne déclare jamais la guerre sans moi » — et il l'exécute quand tu dors.</p><p>À ton retour, il te briefe en quelques lignes, dans sa voix : ce qui s'est passé, ce qu'il a fait, ce qu'il recommande. Il ne meurt pas avec le Silence : il se souvient de ses maîtres, de leurs victoires et de leurs trahisons, et il en parle. À la fin de chaque saison, il rédige ses mémoires. Quatre tempéraments pour commencer : la Maréchale Idris Vane, Kestrel, Oriel-Neuf, l'Abbé Solen. Le tempérament change le ton, jamais la puissance.</p></div>
-</section>
-<section id="aurane" aria-labelledby="h-aurane">
-<h2 id="h-aurane">L'Aurane</h2>
-<div class="prose"><p>Il y a mille ans, les Anciens avaient tendu <strong>le Réseau</strong> entre toutes les étoiles habitées de l'Aurane. Sur ce Réseau circulait <strong>le Signal</strong> : les données, les voix, le commerce et, dit-on, les âmes. Puis vint <strong>le Silence</strong>. En une nuit, tout s'éteignit. Mille ans de nuit.</p><p>Aujourd'hui les relais anciens se rallument par intermittence : c'est <strong>le Réveil</strong>. À chaque Réveil, des Colonies se lèvent pour retisser le Réseau et rallumer <strong>les Sept Phares</strong>, dont la légende dit que, réunis, ils ramèneraient le Signal pour de bon. Mais le Silence revient par vagues, toutes les huit semaines environ, et efface tout ce qui a été bâti. Seuls survivent les récits, les titres et les Généraux. Quatre factions se disputent les ruines : le Concordat, la Guilde des Marchands, les Oracles, les Corsaires. Personne n'a raison.</p></div>
-</section>
-<section id="factions" aria-labelledby="h-factions">
-<h2 id="h-factions">Factions</h2>
-<p class="lead">Tu choisis une allégeance à la création. Elle donne une couleur, un vocabulaire, un point de départ et <strong>un</strong> avantage modeste. Elle ne cloisonne rien : on s'allie et on commerce à travers les factions.</p>
-<div class="cards"><article class="card faction f-concordat"><h3>Le Concordat d'Aurane</h3><p>Les héritiers de la dernière administration galactique : la loi, les archives, l'ordre. Portée des relais +10 %.</p></article><article class="card faction f-guilde"><h3>La Guilde des Marchands</h3><p>Marchands, contrebandiers et pilotes de la bordure, libres et endettés. Frais de marché divisés par deux, une région commerciale de plus.</p></article><article class="card faction f-oracles"><h3>Les Oracles</h3><p>Savants-mystiques qui écoutent le Silence pour prédire le Réveil. Ils connaissent une des trois bandes du prochain Tirage une heure à l'avance.</p></article><article class="card faction f-corsaires"><h3>Les Corsaires</h3><p>Milices frontalières, ferrailleurs, condottieri. Vaisseaux 15 % moins chers et 10 % plus rapides.</p></article></div>
-<p><a class="more" href="/fr/regles/#phares">Les Sept Phares →</a></p>
-</section>
-<section id="saison" aria-labelledby="h-saison">
-<h2 id="h-saison">Saison 0</h2>
-<div class="prose"><p>Une saison dure huit semaines, du Réveil au Silence. Score au nombre de systèmes reliés au Tirage, aux Phares rallumés et tenus, et aux titres tournants : le Grand Réseau, l'Amirauté, la Bourse. Victoire anticipée, <strong>la Renaissance</strong>, si une alliance tient les Sept Phares rallumés pendant vingt-quatre heures. Le Palmarès de chaque saison reste public pour toujours.</p><p><strong>Saison 0 : bêta fermée sur invitation, puis ouverte à tous, sans compte.</strong> <a href="https://play.playaurane.com">J'ai un code d'invitation →</a></p></div>
-<section id="liste-d-attente" class="waitlist" aria-labelledby="wl-title">
-<h2 id="wl-title">Rejoindre la liste d'attente</h2>
-<p class="lead">Laisse ton adresse : on t'écrit quand ta place s'ouvre, et pour rien d'autre.</p>
-<form id="waitlist" method="post" action="https://api.playaurane.com/waitlist" novalidate>
-<label class="field">Adresse e-mail<input type="email" name="email" required autocomplete="email" inputmode="email"></label>
-<label class="field">Prénom ou pseudo (facultatif)<input type="text" name="name" autocomplete="nickname" maxlength="60"></label>
-<label class="field">Langue des messages<select name="lang"><option value="fr" selected>Français</option><option value="en">English</option></select></label>
-<label class="consent"><input type="checkbox" name="consent" value="1" required><span>J'accepte que ninabot Sàrl garde mon adresse pour m'informer de l'ouverture d'Aurane. Désinscription possible à tout moment. <a href="/fr/confidentialite/">Ce que nous conservons et pourquoi</a>.</span></label>
-<div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
-<input type="hidden" name="utm_source"><input type="hidden" name="utm_medium"><input type="hidden" name="utm_campaign"><input type="hidden" name="utm_content"><input type="hidden" name="utm_term"><input type="hidden" name="referrer"><input type="hidden" name="page">
-<div class="cf-turnstile" data-sitekey="0x4AAAAAAFCSIqXFBc1hwh8k" data-theme="dark" data-language="fr"></div>
-<button type="submit" class="btn">Rejoindre la liste d'attente</button>
-<p id="wl-status" class="status" role="status" aria-live="polite"></p>
-</form>
-</section>
-</section>
+<main id="main" class="wrap doc">
+<h1>Les règles de la Saison 0</h1>
+<img class="banner" src="/images/game/section-system.jpg" alt="Un système et ses orbites : signal, défense, industrie" width="1200" height="400" loading="lazy">
+<p class="lead">Tout le jeu tient en une carte et un rendez-vous horaire. Voici les règles, telles qu'elles sont conçues pour la Saison 0.</p>
+<nav class="toc" aria-labelledby="toc"><h2 id="toc">Sommaire</h2><ol><li><a href="#relier">Relier</a></li><li><a href="#tirage">Le Tirage et les ressources</a></li><li><a href="#marche">Le Marché</a></li><li><a href="#construire">Construire</a></li><li><a href="#combattre">Combattre</a></li><li><a href="#diplomatie">Diplomatie</a></li><li><a href="#phares">Les Sept Phares</a></li></ol></nav>
+<article class="rule" id="relier"><h2>Relier <a class="anchor" href="#relier" title="Lien vers cette section">#</a></h2>
+<ul class="icons"><li><img src="/images/game/structure-relay.png" alt="Relais — Relay" width="64" height="64" loading="lazy">Relais</li><li><img src="/images/game/structure-station.png" alt="Station" width="64" height="64" loading="lazy">Station</li><li><img src="/images/game/structure-derelict.png" alt="Épave ancienne — Derelict" width="64" height="64" loading="lazy">Épave</li></ul>
+<p>La galaxie est un plateau de <strong>secteurs</strong> hexagonaux, 469 en Saison 0, chacun avec dix à seize systèmes stellaires. Un <strong>relais</strong> relie deux systèmes ; il se construit en Métal et en Énergie, en deux à vingt minutes selon sa longueur, et porte à 260 unités, une fois et demie plus loin depuis un pulsar. Un système ne produit, ne construit et ne compte au score que s'il existe un chemin de relais actifs jusqu'à ta capitale : couper un relais coupe tout ce qui est derrière. Chaque relais consomme de l'Énergie à chaque Tirage, et cet entretien grimpe plus vite que le nombre de relais : un Réseau trop grand pour son énergie voit ses relais les plus lointains s'éteindre en premier. La vraie compétence, c'est la topologie : repérer ses ponts, les doubler, tenir les goulets, ne pas s'étirer. Les nébuleuses doublent le coût, les trous noirs ne se traversent pas.</p></article>
+<article class="rule" id="tirage"><h2>Le Tirage et les ressources <a class="anchor" href="#tirage" title="Lien vers cette section">#</a></h2>
+
+<p>Quatre ressources s'échangent : le <strong>Métal</strong> (relais, bâtiments, coques), l'<strong>Énergie</strong> (relais et flottes, abondante au cœur, rare en bordure), les <strong>Vivres</strong> (population et équipages, abondants en bordure, rares au cœur) et le <strong>Cristal</strong> (Phares, unités lourdes, technologie, rare et concentré vers le centre). Une cinquième, l'<strong>Influence</strong>, ne s'échange pas : elle paie les traités, les décrets et les agents. Personne n'est autosuffisant, c'est voulu. Chaque heure, à la minute zéro, le serveur tire trois <strong>bandes</strong> parmi huit, les mêmes pour toute la galaxie : un système dont la bande sort produit trois fois son rendement, les autres une fois. Pas d'heure morte, seulement des heures fastes. Une fois sur douze, le Tirage porte un événement : une Éruption qui quintuple une bande, une Tempête qui raccourcit les relais d'une région, un Écho qui fait émettre un Phare.</p></article>
+<article class="rule" id="marche"><h2>Le Marché <a class="anchor" href="#marche" title="Lien vers cette section">#</a></h2>
+
+<p>Les échanges se décident pendant l'heure et <strong>se règlent tous au Tirage</strong>. Personne n'a d'avantage de vitesse. Chaque région a son Marché avec un carnet d'ordres par ressource, en Crédits, et un seul prix de règlement par ressource et par heure : « je vends 40 Vivres à au moins 3 » suffit. Entre régions, les prix diffèrent, et l'arbitrage récompense ceux qui aiment ça. Le troc direct existe aussi, entre deux Colonies, exécuté au Tirage. Les frais de 5 % sont détruits ; un Comptoir les réduit, la Guilde les divise par deux. Le Général peut tenir ton Marché à ta place : « garde toujours 200 Énergie d'avance, vends le surplus de Vivres au-dessus de 4 ».</p></article>
+<article class="rule" id="construire"><h2>Construire <a class="anchor" href="#construire" title="Lien vers cette section">#</a></h2>
+<ul class="icons"><li><img src="/images/game/structure-extractor.png" alt="Extracteur — Extractor" width="64" height="64" loading="lazy">Extracteur</li><li><img src="/images/game/structure-shipyard.png" alt="Chantier — Shipyard" width="64" height="64" loading="lazy">Chantier</li><li><img src="/images/game/structure-bastion.png" alt="Bastion" width="64" height="64" loading="lazy">Bastion</li><li><img src="/images/game/structure-tradepost.png" alt="Comptoir — Trading Post" width="64" height="64" loading="lazy">Comptoir</li><li><img src="/images/game/structure-amplifier.png" alt="Amplificateur — Amplifier" width="64" height="64" loading="lazy">Amplificateur</li><li><img src="/images/game/structure-antenna.png" alt="Antenne — Antenna" width="64" height="64" loading="lazy">Antenne</li></ul>
+<p>Chaque système offre un à trois emplacements et six bâtiments, chacun compréhensible en une ligne : l'<strong>Extracteur</strong> (rendement +50 %), le <strong>Chantier</strong> (construit des vaisseaux), le <strong>Bastion</strong> (défense doublée, protège les relais adjacents), le <strong>Comptoir</strong> (une région commerciale de plus, frais réduits), l'<strong>Amplificateur</strong> (portée +25 % au départ d'ici) et l'<strong>Antenne</strong> (révèle les secteurs voisins). La capitale a trois emplacements de plus et l'<strong>Académie</strong>, qui fait monter le Général en grade. Pas d'arbre technologique en Saison 0 : la profondeur vient de la carte, pas des menus.</p></article>
+<article class="rule" id="combattre"><h2>Combattre <a class="anchor" href="#combattre" title="Lien vers cette section">#</a></h2>
+<ul class="icons"><li><img src="/images/game/unit-corvette.png" alt="Corvette" width="64" height="64" loading="lazy">Corvette</li><li><img src="/images/game/unit-frigate.png" alt="Frégate — Frigate" width="64" height="64" loading="lazy">Frégate</li><li><img src="/images/game/unit-cruiser.png" alt="Croiseur — Cruiser" width="64" height="64" loading="lazy">Croiseur</li><li><img src="/images/game/unit-cargo.png" alt="Cargo" width="64" height="64" loading="lazy">Cargo</li><li><img src="/images/game/structure-wreck.png" alt="Épave — Wreck" width="64" height="64" loading="lazy">Épave</li></ul>
+<p>Le combat est lisible, lent et réparable. Trois unités en pierre-feuille-ciseaux : la <strong>Corvette</strong> raide et coupe les relais, la <strong>Frégate</strong> escorte et défend, le <strong>Croiseur</strong> assiège et bloque. Une flotte va à pleine vitesse sur les relais, à demi-vitesse hors Réseau en brûlant de l'Énergie : attaquer un voisin non relié se voit venir. Cinq ordres, chacun avec son heure d'arrivée : se rendre à, raider un relais, bloquer un système, défendre, rentrer. Le combat se résout à l'arrivée, d'un coup, avec un aléa de ±15 %, et le rapport est public, raconté par les deux Généraux. Un raid coupe un relais pour six heures ; douze heures de blocus capturent un système, sauf une capitale, qui ne se prend jamais. Trois protections : 72 heures de bouclier à la création, une <strong>Garde de nuit</strong> de huit heures par jour où tes Bastions valent double, et aucun butin sur une Colonie trois fois plus petite que soi. Trois missions d'agents en Influence : espionner un secteur, saboter un relais, envoyer un émissaire.</p></article>
+<article class="rule" id="diplomatie"><h2>Diplomatie <a class="anchor" href="#diplomatie" title="Lien vers cette section">#</a></h2>
+
+<p>Jusqu'à vingt Colonies forment une alliance, avec un nom, un blason, une charte et un score commun. Les traités se paient en Influence : non-agression sur sept jours, pacte commercial sans frais, transit sur le Réseau de l'autre, et la <strong>Fédération</strong>, qui fusionne les scores pour la victoire de saison. Les décrets sont publics : la diplomatie lit les intentions dans les décrets des autres. Rompre un traité coûte, se voit, et les Généraux s'en souviennent d'une saison à l'autre.</p></article>
+<article class="rule" id="phares"><h2>Les Sept Phares <a class="anchor" href="#phares" title="Lien vers cette section">#</a></h2>
+
+<p>Sept systèmes fixes vers le cœur de l'Aurane, chacun avec un nom et une légende ; Ancre, dit-on, fut le premier à se taire. Rallumer un Phare exige de le relier à sa capitale et d'y consacrer une masse de Cristal. Un Phare rallumé émet : les relais dans son rayon gagnent en portée, et il pèse lourd au score. Tenir les Sept en même temps pendant vingt-quatre heures, c'est la Renaissance : le Signal revient, la saison s'achève.</p></article>
+<p style="margin-top:28px"><a class="cta" href="/fr/#liste-d-attente">Rejoindre la liste d'attente<small>Join the waitlist</small></a></p>
 </main>
 <footer><div class="wrap"><span>© Aurane — ninabot Sàrl, Genève</span><nav aria-label="Pied de page"><a href="/fr/regles/">Règles</a><a href="/fr/confidentialite/">Confidentialité</a><a href="https://play.playaurane.com">play.playaurane.com</a></nav></div></footer>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
 (function(){
 var L="fr";
 try{
 var saved=localStorage.getItem('aurane.lang');
-if(!saved&&(navigator.language||'').toLowerCase().indexOf('fr')!==0){location.replace('/en/'+location.search+location.hash);return;}
-if(saved==='en'){location.replace('/en/'+location.search+location.hash);return;}
+
 document.querySelectorAll('[data-setlang]').forEach(function(a){a.addEventListener('click',function(){try{localStorage.setItem('aurane.lang',a.getAttribute('data-setlang'))}catch(e){}})});
 }catch(e){}
 var f=document.getElementById('waitlist');if(!f)return;

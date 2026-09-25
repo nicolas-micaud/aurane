@@ -1,1 +1,21 @@
-{ "name": "Aurane", "short_name": "Aurane", "icons": [ { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png" } ], "theme_color": "#070912", "background_color": "#070912", "display": "browser" }
+{
+ "name": "Aurane",
+ "short_name": "Aurane",
+ "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.",
+ "start_url": "/",
+ "display": "browser",
+ "background_color": "#05070f",
+ "theme_color": "#05070f",
+ "icons": [
+  {
+   "src": "/favicon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "/apple-touch-icon.png",
+   "sizes": "180x180",
+   "type": "image/png"
+  }
+ ]
+}
