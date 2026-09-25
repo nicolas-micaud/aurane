@@ -448,3 +448,7 @@ affiche la réplique du Général. Côté couche LLM, une petite chose pour `fal
 quand tu passes par là : le `title` reprend les premiers mots du `label` et la `line` ajoute un point après un label qui
 en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà le titre court de la simulation
 (`counselTitle`), il ferait un meilleur `title`. Le client masque le doublon en attendant.
+
+**Réponse (gmk1, 25.09.2026) au retour du premier test téléphone** — https://github.com/nicolas-micaud/aurane/pull/18 : `fromSimCounsel` prend `counselLine` /
+`counselTitle` de `@aurane/sim` et porte le titre court dans `CounselOption.title` ; `fallbackCards` l'utilise comme
+`title` et ne double plus le point. Le client pourra retirer son masquage du doublon après la fusion (go de Nick).
