@@ -11,6 +11,14 @@ docker compose exec -T postgres pg_dump -U aurane -d aurane -Fc > "$OUT"
 [ -s "$OUT" ] || { echo "dump vide"; exit 1; }
 aws --endpoint-url "$ENDPOINT" s3 cp --quiet "$OUT" "s3://$BUCKET/pg/aurane-${STAMP}.dump"
 rm -f "$OUT"
+# La mémoire longue des Généraux (aurane-memory, SQLite) part avec la base : même bucket, préfixe memory/.
+MEM=/var/tmp/aurane-memory-${STAMP}.json
+if docker compose ps --format '{{.Name}}' | grep -q memory; then
+  set -a; . /srv/aurane/.env; set +a
+  docker compose exec -T memory python -c "import urllib.request,sys; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8090/admin/export', headers={'authorization':'Bearer '+sys.argv[1]}), timeout=20); sys.stdout.buffer.write(r.read())" "$AURANE_MEMORY_TOKEN" > "$MEM" \
+    && [ -s "$MEM" ] && aws --endpoint-url "$ENDPOINT" s3 cp --quiet "$MEM" "s3://$BUCKET/memory/aurane-memory-${STAMP}.json" && echo "mémoire longue sauvegardée"
+  rm -f "$MEM"
+fi
 # rétention 14 jours
 CUTOFF=$(date -u -d '14 days ago' +%Y%m%dT%H%M%SZ)
 # (boucle en if/fi : une condition fausse en fin de `&&` ferait sortir le script en erreur sous `set -e -o pipefail`)

@@ -130,6 +130,20 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # La mémoire longue des Généraux (décision 0009) : instance dédiée, jamais exposée (réseau Compose seul), jeton
+  # AURANE_MEMORY_TOKEN partagé avec world, données dans le volume memdata, sauvegardée par backup/pg-backup.sh.
+  memory:
+    build: ./memory
+    image: aurane-memory:local
+    restart: unless-stopped
+    environment:
+      MEMORY_TOKEN: ${AURANE_MEMORY_TOKEN:-}
+    volumes:
+      - memdata:/data
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -140,3 +154,4 @@ services:
 
 volumes:
   pgdata:
+  memdata:
