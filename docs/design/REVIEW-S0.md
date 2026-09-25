@@ -72,7 +72,15 @@ comptent dans le Réseau du principal). Scénario `R2 · legacy` : une Colonie c
 refusés (`pair transfer cap reached`), le convoi de 300 aussi, et le plafond se rouvre le lendemain ; deux
 Colonies de même origine ne peuvent ni troquer ni signer de Transit ; une jeune Colonie dans l'alliance du
 principal n'apporte aucun relais à son Réseau (`transitSet`), tout en pouvant rouler sur ceux de ses alliés.
-La mesure « ferme à jetables » de `review.mjs transfers` est dans le tableau final.
+**Ferme à jetables** (`review.mjs transfers` : un principal, trois Colonies jetables dans son alliance qui lui
+donnent 90 % de leur stock chaque heure pendant un jour) :
+
+| Règles | Offres acceptées | Systèmes reliés du principal après 24 h | Métal du principal |
+|---|---|---|---|
+| prototype | 72 | **15** | 1 002 |
+| Saison 0 | 0 (72 refusées) | 3 | 180 |
+
+Sous les règles du prototype, trois jetables valent cinq fois la croissance d'une Colonie honnête en un jour.
 
 ## 3. Équilibrage des factions et les Oracles
 
@@ -90,12 +98,38 @@ humain attentif si).
 **Mesure.** `node tools/season-sim/review.mjs factions` : saisons de 7 jours, 40 Colonies PNJ, rayon 6, personas
 équilibrées entre factions, 3 graines ; score moyen par faction et écart à la moyenne, fenêtre 60 min, 0 et 15.
 
-RESULTATS_FACTIONS
+| Fenêtre des Oracles | Concordat | Guilde | Oracles | Corsaires |
+|---|---|---|---|---|
+| 60 min (défaut) | 42,5 (+42 %) | 25,5 (−15 %) | 27,6 (−8 %) | 24,2 (−19 %) |
+| désactivée | 40,0 (+39 %) | 22,7 (−21 %) | 26,6 (−8 %) | 26,0 (−10 %) |
+| 15 min | 40,0 (+39 %) | 22,7 (−21 %) | 26,6 (−8 %) | 26,0 (−10 %) |
 
-**Lecture et recommandation.** Voir le tableau : la cible « aucune faction à plus de ~10 % » se lit sur la
-colonne d'écart. Le levier chiffré est `oracleHintMinutes` (60 → 15 divise par deux l'usage PNJ et par
-quatre les Tirages exploitables par un humain endormi) ; le levier suivant, si l'écart venait des Corsaires, est
-`CORSAIR_SHIP_COST_MULT` (0,85 → 0,9).
+Score moyen par Colonie après 7 jours (écart à la moyenne des quatre factions). Lecture : l'indice des Oracles vaut
+environ **+1 point** (27,6 contre 26,6, soit +4 %) joué mécaniquement par un Général toutes les 30 minutes ; à 15
+minutes il n'est plus exploitable par les PNJ (résultat identique à « désactivé »). Les Oracles restent **dans la
+cible** quelle que soit la fenêtre. Le vrai déséquilibre est ailleurs : le **Concordat à +42 %** avec sa portée de
+relais +10 %, parce qu'au rayon 6 la portée décide du nombre d'étoiles reliables, donc du score.
+
+**Second banc : la portée du Concordat** (`review.mjs concordat`, 5 graines × 7 jours × 40 Colonies, rayon 6) :
+
+| `concordatRangeMult` | Concordat | Guilde | Oracles | Corsaires |
+|---|---|---|---|---|
+| ×1,10 (GDD) | 36,8 (+29 %) | 26,3 (−8 %) | 27,0 (−5 %) | 23,8 (−16 %) |
+| ×1,05 | 29,1 (+7 %) | 30,2 (+11 %) | 26,3 (−3 %) | 23,1 (−15 %) |
+| ×1,00 | 27,5 (+1 %) | 29,0 (+7 %) | 26,8 (−1 %) | 25,3 (−7 %) |
+
+Le bruit à cinq graines est d'environ ±7 % (la Guilde oscille entre −8 % et +11 % sans que rien la concerne).
+**Décision implémentée : +5 %** (`concordatRangeMult: 1.05`, GDD § 2.3 mis à jour) : le Concordat passe de +29 %
+à +7 %, dans la cible, en gardant sa saveur. Les **Corsaires** restent sous la cible (−15 %) dans chaque banc :
+leurs capitales sont **toutes** placées dans des systèmes « repaire » (50 sur 50 dans cinq graines, aucune autre
+faction), un biais de placement voulu pour la couverture, qui semble coûter en croissance.
+
+CORSAIRES_RESULTAT
+
+**Recommandation.** Garder la fenêtre des Oracles à 60 minutes (l'avantage est réel mais petit, +4 %, et c'est
+la saveur de la faction) ; le levier de repli `oracleHintMinutes = 15` reste disponible si des joueurs humains,
+plus habiles qu'un Général, en tiraient davantage. Concordat à +5 % : fait. Corsaires : voir ci-dessus, décision à
+Nick (biais de repaire ou compensation économique).
 
 ## 4. Densité de la galaxie
 
@@ -124,7 +158,35 @@ bêta (déjà posé, PR 8), croissance jusqu'à 12.
 ses systèmes (médiane), part des Colonies en contact avant 72 h, selon rayon et population ; puis la croissance
 depuis le rayon 4.
 
-RESULTATS_CONTACT
+| Colonies | Rayon | Secteurs | Secteurs par Colonie | En contact avant 72 h | Médiane (h) |
+|---|---|---|---|---|---|
+| 40 | 6 | 127 | 3,2 | 93 % | 1 |
+| 40 | 8 | 217 | 5,4 | 85 % | 14 |
+| 40 | 12 | 469 | 11,7 | 53 % | 70 |
+| 120 | 8 | 217 | 1,8 | 100 % | 1 |
+| 120 | 10 | 331 | 2,8 | 100 % | 1 |
+| 250 | 10 | 331 | 1,3 | 100 % | 1 |
+| 250 | 12 | 469 | 1,9 | 100 % | 1 |
+| 500 | 12 | 469 | 0,9 | 100 % | 1 |
+
+La Saison 0 du GDD (rayon 12, une quarantaine de Colonies le premier week-end) est le pire cas mesuré : la
+moitié des joueurs sans voisin après trois jours. La règle de bon voisinage se lit dans la colonne « secteurs par
+Colonie » : **entre 2 et 3 secteurs par Colonie**, tout le monde a un voisin dès la première heure sans être
+collé (au-dessous de 1,5 les capitales se touchent, cf. 500 au rayon 12).
+
+**Croissance depuis le rayon 4** (`review.mjs growth`, arrivées par vagues sur la première journée, deux jours) :
+
+| Colonies | Rayon final | Secteurs | Secteurs par Colonie | Anneaux ouverts | Spawns refusés |
+|---|---|---|---|---|---|
+| 40 | 5 | 91 | 2,3 | 1 | 0 |
+| 120 | 9 | 271 | 2,3 | 5 | 0 |
+| 250 | 12 | 469 | 1,9 | 8 | 0 |
+| 500 | 12 | 469 | 0,9 | 8 | 0 |
+
+La croissance tient la densité entre 1,9 et 2,3 secteurs par Colonie jusqu'au plafond ; à 500 Colonies le plafond
+de 12 serre (0,9), sans jamais refuser un spawn (un anneau s'ouvre aussi quand la bordure est pleine au moment
+d'une création). Recommandation : `GALAXY_RADIUS=6` au départ de la bêta, croissance activée, plafond 12 ; porter
+le plafond à 14 si la liste d'attente dépasse 400.
 
 ## 5. Trous de règles tranchés
 
