@@ -3,6 +3,7 @@
 import type { Building, Fleet, Orbit, Resource, Stock, UnitType } from '@aurane/protocol';
 import type { Circle } from './geometry.js';
 import type { Draw } from './draw.js';
+import { counsel, type CounselOption } from './counsel.js';
 import type { Colony, FleetOrder, LitBeacon, PlateauPos, World } from './state.js';
 import { combatSize, fleetSize } from './state.js';
 import { isAlly } from './diplomacy.js';
@@ -68,6 +69,8 @@ export interface PlayerView {
     oracleBand: number | null;
     /** Progressive onboarding tier; the client hides what is not open yet. */
     onboarding: Colony['onboarding'];
+    /** The Draw Counsel: up to three legal, priced options with a ready command and a screen to show (0009). */
+    counsel: CounselOption[];
     alliance: string | null; policy: Colony['policy']; regions: { key: string; name: string }[]; lastProduced: Stock; lastOverflow: Stock;
     routeLimit: number;
   };
@@ -186,6 +189,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       lastOverflow: colony.lastOverflow, routeLimit: routeLimit(w, colony), journal: colony.journal, decrees: colony.decrees.filter((d) => d.until > w.time),
       oracleBand: colony.faction === 'oracles' ? nextDrawHint(w) : null,
       onboarding: colony.onboarding,
+      counsel: counsel(w, colony),
     },
     draw: w.lastDraw, linkTargets, sectors, systems, relays, fleets, colonies,
     routes: Object.values(w.routes).filter((r) => r.owner === colony.id).map((r) => ({ id: r.id, from: r.from, to: r.to, resource: r.resource, perTrip: r.perTrip, whenBelow: r.whenBelow, active: r.active, lastRunAt: r.lastRunAt })),
