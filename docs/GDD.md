@@ -93,7 +93,7 @@ Sept systèmes fixes, placés vers le cœur de l'Aurane, portant un nom et une l
 
 ### 3.1 Structure
 
-- **Secteurs** : la galaxie est un plateau d'hexagones. Saison 0 : rayon 12, soit 469 secteurs. Le plateau peut s'agrandir d'un anneau en cours de saison si la population l'exige (« l'Expansion », annoncée par la Gazette).
+- **Secteurs** : la galaxie est un plateau d'hexagones. Le rayon suit la population (revue S0, risque 4) : la saison s'ouvre petite (rayon 6, 127 secteurs, pour la bêta) et **s'agrandit d'un anneau** dès que la moitié des secteurs de l'anneau extérieur abritent une capitale, jusqu'au rayon 12 (469 secteurs). Les secteurs existants ne changent pas (génération déterministe par secteur), le nouvel anneau accueille les nouveaux venus. « L'Expansion » est annoncée par la Gazette.
 - **Régions** : groupes de sept secteurs (une fleur d'hexagones). Chaque région possède un **Marché**. C'est aussi l'unité de la carte publique et du Tirage.
 - **Systèmes** : chaque secteur contient de 10 à 16 systèmes stellaires positionnés en coordonnées continues (environ 130 unités entre voisins). Un système a un type de ressource, une **bande** (1 à 8), un rendement de base, et de 1 à 3 emplacements de construction.
 - **Phénomènes** (issus du prototype) : **pulsars** (portée des relais ×1,5 au départ ou à l'arrivée), **nébuleuses** (coût de traversée ×2), **trous noirs** (aucun relais ne les traverse). Ils sont générés de façon déterministe à partir de la graine de saison.
@@ -117,7 +117,7 @@ C'est le cœur du jeu et l'héritage direct du prototype.
 - **Coût** de construction : Métal + Énergie proportionnels à la longueur, doublés sur la portion traversant une nébuleuse.
 - **Entretien** : chaque relais consomme de l'Énergie à chaque Tirage, et l'entretien total croît plus vite que le nombre de relais (+3 % par relais actif). C'est le régulateur fondamental : un Réseau trop grand pour son énergie voit ses relais les plus lointains s'éteindre en premier. Pas de blob.
 - **Connexion** : un système ne produit, ne construit et ne compte au score que s'il existe un chemin de relais actifs jusqu'à la capitale. Couper un relais coupe tout ce qui est derrière.
-- **Relais partagés** : deux Colonies alliées peuvent transiter par le Réseau l'une de l'autre (flottes et commerce) selon les termes de leur traité.
+- **Relais partagés** : deux Colonies alliées peuvent transiter par le Réseau l'une de l'autre (flottes et commerce) selon les termes de leur traité. Une Colonie de moins de 24 heures (ou encore sous bouclier) ne prête ses relais à personne et ne peut ni accorder ni recevoir de traité de Transit : pas de pont jetable (revue S0, risque 2).
 - **Redondance** : rien n'empêche de bâtir des boucles. C'est le premier geste du joueur malin : identifier ses **ponts** (au sens de la théorie des graphes) et les doubler. Le client les met en évidence d'une couleur discrète, pour que le débutant les voie aussi.
 
 La topologie est la vraie compétence du jeu : goulets, redondance, nœuds critiques, longueur d'exposition. Elle est lisible d'un coup d'œil sur la carte et n'exige aucune règle supplémentaire.
@@ -158,11 +158,13 @@ Les échanges se décident pendant l'heure et **se règlent tous à l'instant du
 Deux voies :
 
 1. **Le Marché régional** : chaque Marché de région tient un carnet d'ordres par ressource, libellé en **Crédits** (unité de compte, non stockable d'une saison à l'autre ; chaque système connecté en crée deux par Tirage, les frais de marché les détruisent). Les ordres d'achat et de vente sont appariés au Tirage par **enchère uniforme** : un seul prix de règlement par ressource et par région. Simple à comprendre (« je vends 40 Vivres à au moins 3 »), robuste aux bots, et il crée de l'**arbitrage entre régions** pour ceux qui aiment ça.
-2. **Le troc direct** : une Colonie propose à une autre « 30 Métal contre 20 Énergie ». Si l'offre est acceptée avant le Tirage, elle s'exécute au Tirage. Les alliés disposent en plus d'un transfert gratuit plafonné par Tirage.
+2. **Le troc direct** : une Colonie propose à une autre « 30 Métal contre 20 Énergie ». Si l'offre est acceptée avant le Tirage, elle s'exécute au Tirage, portée par un convoi courrier interceptable. **Plafonds de transfert** (revue S0, risque 2) : une Colonie de moins de 24 heures ne peut pas donner plus de 1,25 fois la valeur qu'elle demande (prix de référence) ; deux Colonies échangent au plus 600 de valeur par jour, trocs et convois livrés dans l'entrepôt de l'autre confondus ; deux Colonies créées depuis la même origine (appareil ou adresse, empreinte posée par le serveur) ne s'échangent rien et ne partagent aucun transit.
 
 **Portée commerciale** : une Colonie accède au Marché de toute région que son Réseau touche, plus une région par **Comptoir** construit. La Guilde des Marchands a +1 région d'office. Le troc direct est possible avec toute Colonie partageant un Marché accessible.
 
 **Frais** : 5 % prélevés sur chaque transaction de Marché, détruits (puits monétaire). Le Comptoir les ramène à 3 %, la Guilde les divise par deux.
+
+**Les Crédits** (tranché, revue S0, risque 5) : ils n'existent que dans la saison. Sources : 300 à la fondation, puis 2 par système relié à chaque Tirage ; le teneur de marché PNJ (achète à 40 % du prix de référence, vend à 200 %, 40 unités par ressource, région et Tirage) en crée ou en détruit à la marge. Puits : les frais de Marché et les Décrets. Ils ne s'échangent pas directement entre Colonies : seul le Marché les fait circuler.
 
 **Le Général et le marché** : la doctrine peut lui déléguer le Marché (« maintiens toujours 200 Énergie d'avance, vends le surplus de Vivres au-dessus de 4 »). C'est l'usage le plus quotidien de l'IA.
 
@@ -224,11 +226,13 @@ Le combat est résolu à l'arrivée, en une passe, de façon déterministe à pa
 - **Raid réussi sur un relais** : le relais est coupé pour 6 heures, ou jusqu'à réparation (coût : la moitié de sa construction). Tout ce qui était derrière est déconnecté : plus de production, plus de score, plus de ravitaillement des flottes.
 - **Blocus réussi** : le système ne produit plus. Après 12 heures de blocus ininterrompu, le système est **capturé** (sauf une capitale, qui reste bloquée sans être prise). Les bâtiments passent au vainqueur, endommagés.
 - **Butin** : un raid ou une capture emporte une part des stocks locaux. Attaquer une Colonie dont le score est trois fois inférieur au sien ne rapporte rien et coûte de l'Influence : on ne farme pas les petits.
+- **Capture sans Réseau** (tranché, revue S0, risque 5) : un système capturé que son nouveau maître n'a pas relié à sa capitale dans les 24 heures redevient neutre, installations en place : on ne garde pas ce qu'on ne peut pas tenir. Un Phare rallumé suit la capture de son système et son compte de tenue repart de zéro.
+- **Flottes en route quand un relais tombe** (tranché) : un ordre donné est un ordre exécuté. La flotte arrive à l'heure annoncée ; si le Réseau est tombé derrière elle, elle arrive hors Réseau et paie ses opérations en Rium comme toute flotte en territoire non ami. Les convois, eux, avancent de saut en saut et se réacheminent à chaque étape.
 
 ### 7.5 Protections
 
 - **Bouclier de débutant** : 72 heures d'invulnérabilité à la création (impossible d'attaquer et d'être attaqué).
-- **Garde de nuit** : chaque Colonie définit une fenêtre quotidienne de 8 heures pendant laquelle ses Bastions valent double. C'est la protection du sommeil, sans rendre le monde figé. Le décret *Longue Garde* la porte à 12 heures pendant un jour.
+- **Garde de nuit** : chaque Colonie définit une fenêtre quotidienne de 8 heures pendant laquelle ses Bastions valent double. C'est la protection du sommeil, sans rendre le monde figé. Le décret *Longue Garde* la porte à 12 heures pendant un jour. L'heure de début est choisie par le joueur (0 h UTC par défaut), effective aussitôt, modifiable **une fois par 24 heures** (tranché, revue S0).
 - **Flotte en approche** : dès qu'un vaisseau de guerre part vers un système tenu par une autre Colonie non alliée, le propriétaire est prévenu (alerte et Journal) avec l'heure d'arrivée ; son Général le dit le premier, dans sa voix (0007).
 - **Pression corsaire** : dès le deuxième jour, les Colonies PNJ Corsaires lancent au plus toutes les six heures un raid modeste (six vaisseaux au plus), annoncé, sur l'avant-poste le moins défendu d'un joueur sorti du bouclier, à quatre secteurs au plus. Le tutoriel vivant, version militaire (0007).
 - **La capitale est incapturable.** On peut être ruiné, on ne repart jamais de rien.
@@ -247,7 +251,7 @@ C'est la dose de *Rebellion* : information cachée, coups de main, personnages q
 
 ## 8. Diplomatie
 
-- **Alliances** : jusqu'à 20 Colonies, avec un nom, un blason, une charte (rédigée par les joueurs, résumée par un Général), une vision partagée, un chat, et un score commun.
+- **Alliances** : jusqu'à 20 Colonies, avec un nom, un blason, une charte (rédigée par les joueurs, résumée par un Général), une vision partagée, un chat, et un score commun. La Fédération ne fusionne pas deux alliances : elle lie deux Colonies d'une même alliance ; le plafond de vingt est donc aussi celui d'un bloc de Renaissance (revue S0, risque 1).
 - **Traités** entre Colonies ou alliances, payés en Influence : *Non-agression* (7 jours, rupture publique et coûteuse), *Pacte commercial* (0 % de frais, transferts plafonnés), *Transit* (droit d'emprunter le Réseau), *Fédération* (scores fusionnés pour la victoire de saison, une seule Fédération par alliance).
 - **Décrets** : bonus temporaires, publics, annoncés dans la Gazette : la diplomatie lit les intentions dans les décrets. En Saison 0 ils sont payés en **Crédits** (décision 0007, pour donner un usage aux Crédits qui dorment) : *Portée* (+10 % de portée des relais, 24 h, 120 Cr), *Franchise* (frais de Marché nuls, 3 Tirages, 60 Cr), *Longue Garde* (Garde de nuit de 12 h, 24 h, 90 Cr). Un seul de chaque à la fois. Le paiement en Influence reste possible plus tard.
 - **Réputation** : rompre un traité coûte de l'Influence et se voit. Les Généraux s'en souviennent d'une saison à l'autre et le disent.
@@ -302,7 +306,7 @@ Le Général n'attaque jamais de sa propre initiative sans une règle d'engageme
   - +1 par système connecté au Tirage (moyenné sur les 24 derniers Tirage, pour que l'on ne puisse pas gonfler le score au dernier moment) ;
   - +10 par Phare rallumé et tenu ;
   - titres tournants, à la manière de la « route la plus longue » : **le Grand Réseau** (le plus grand réseau connexe d'un seul tenant, +5), **l'Amirauté** (la plus grande flotte, +5), **la Bourse** (le plus gros volume de Marché sur 7 jours, +5). Un titre se perd dès qu'un autre fait mieux : cela fait vivre la fin de saison.
-- **Victoire** : l'alliance (ou Fédération) au plus haut score à l'heure du Silence. Victoire anticipée, **la Renaissance**, si une alliance tient les Sept Phares rallumés simultanément pendant 24 heures : le Réseau revient, le Signal reprend, la saison s'achève une semaine plus tôt dans la gloire. Presque impossible, donc désirable.
+- **Victoire** : l'alliance (ou Fédération) au plus haut score à l'heure du Silence. Victoire anticipée, **la Renaissance**, si une alliance tient les Sept Phares rallumés simultanément : le Réseau revient, le Signal reprend, la saison s'achève dans la gloire. Presque impossible, donc désirable. **Garde-fous** (revue S0, risque 1) : la Renaissance ne peut pas tomber avant les **trois quarts de la saison** (semaine 6 sur 8) ; la tenue exigée est de 24 heures pour un bloc de cinq Colonies au plus, **plus 2 heures par membre au-delà** (54 heures pour vingt) ; dès qu'un bloc tient cinq Phares, l'**Alerte des Phares** est publique et ses systèmes-Phares se capturent en six heures de blocus au lieu de douze ; un Phare capturé change de mains et son compte repart. Tous ces nombres sont des règles de saison (`SeasonRules`), mesurables à zéro.
 - **Le Palmarès** : page publique permanente par saison : classements, cartes finales, mémoires des Généraux, batailles marquantes. C'est l'archive et la vitrine.
 - **Persistance entre saisons** : compte, cosmétiques, titres, mémoires et personnalité du Général, statistiques. Rien d'autre.
 
@@ -389,9 +393,17 @@ Sans dates ; l'ordre compte, pas le calendrier.
 
 1. **Crédits** : garder une unité de compte pour le Marché, ou troc pur ? **Crédits, non stockables entre saisons ; le troc pur rend l'enchère illisible.**
 2. **Taille de la Saison 0** : bêta fermée sur invitation (200 à 500 Colonies) ou ouverte ? **Fermée, avec liste d'attente publique : la rareté fait parler et l'équilibrage reste possible.**
-3. **Bande du Tirage connue des Oracles** : avantage trop fort pour le Marché ? **À mesurer en saison accélérée ; repli : ils connaissent la bande, mais seulement 15 minutes avant.**
+3. **Bande du Tirage connue des Oracles** : avantage trop fort pour le Marché ? **Mesuré (revue S0, risque 3, `docs/design/REVIEW-S0.md`) : la fenêtre est une règle de saison (`oracleHintMinutes`, 60 par défaut, 15 en repli) ; le Général des Oracles vend à l'avance ce que sa bande va produire.**
 4. **Chat** : chat d'alliance seulement, ou chat régional public ? **Alliance et messages privés en Saison 0 ; le public passe par la Gazette et les traités. Moins de modération, plus de diplomatie.**
 5. **Noms** : « Aurane », « Concordat », « Guilde des Marchands », « Oracles », « Corsaires » ; ressources Métal / Énergie / Vivres / Cristal ; « Tirage », « Marché », « Silence », « Général », « Colonie ». **Validés sauf avis contraire.**
+
+Tranchées par la revue S0 (25.09.2026, `docs/design/REVIEW-S0.md`) : fin de saison prématurée (plancher aux trois quarts, tenue croissante, Alerte des Phares, Phare qui suit la capture), multi-comptes (jeune Colonie sans don ni transit, plafond par paire, même origine), Crédits, Garde de nuit, capture sans Réseau, flottes en route, croissance de la galaxie, onboarding par paliers (`docs/design/ONBOARDING-S0.md`).
+
+Restent ouvertes :
+
+6. **Fenêtre des Oracles** : 60 minutes (défaut) ou 15 ? À trancher sur les mesures de la revue et sur le ressenti des joueurs Oracles.
+7. **Plafond de transfert par paire** : 600 de valeur par jour convient à une bêta ; à revoir quand des alliances organisées joueront la logistique (convois de guerre entre alliés).
+8. **Empreinte d'origine** : adresse IP hachée en Saison 0 (deux joueurs d'un même foyer ne peuvent pas s'échanger de ressources) ; passer à une empreinte d'appareil quand les comptes existeront.
 6. **Kubernetes ou VM simple** sur Exoscale ? **Tranché d'après le contexte ninabot : VM + Compose + tunnel pour la Saison 0 (motif éprouvé, dans la marge du crédit ISV) ; SKS quand le monde devra se répartir. Le budget DBaaS (≈ 150–250 CHF/mois au-delà du crédit) se valide avant le passage en bêta.**
 
 ---
