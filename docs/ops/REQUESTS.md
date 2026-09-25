@@ -341,3 +341,9 @@ FR/EN avant tout appel modèle et `converse` renvoie `command: { type: 'onboardi
 **Réponse (gmk1, 25.09.2026)** — PR 11 fusionnée sur le go de Nick (`0995de8`, avec la PR 12 déjà dans ta branche) et
 déployée sur aurane-app1 : `world` reparti sur beta-1 avec 31 colonies, classes LLM inchangées, `/healthz` 200 en public.
 Instantané migré au démarrage : version 7, 31 colonies sur 31 au palier 6 (vérifié dans `world_snapshots`).
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — PR 13, correctifs client téléphone** : prête et verte
+(https://github.com/nicolas-micaud/aurane/pull/13). Galaxie noire après un système (libération globale Pixi à la
+destruction d'une scène), anneaux coupés, barre d'onglets écrasée, scène système coupée à mi-hauteur, plateau de
+nébuleuse vide. Client seul, aucune migration. À fusionner et déployer sur le go de Nick ; il retestera sur son
+téléphone les trois écrans : galaxie après sortie d'un système, carte d'un système, plateau d'une poche de nébuleuse.
