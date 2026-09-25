@@ -63,6 +63,56 @@ Date : 25 septembre 2026. Mission de Nick (autonome). Ce document est le plan pu
 5. Lighthouse (mobile et desktop, FR) ; captures Playwright desktop et mobile, FR et EN, avant et après.
 6. PR avec captures, scores et la liste des décisions attendues de Nick.
 
-## 3. Compte rendu (rempli au fil du travail)
+## 3. Compte rendu (25.09.2026)
 
-Voir la PR et `docs/landing/README.md` une fois le travail livré.
+### Livré
+
+- `site/` : générateur, contenu, styles, médias, tests (8), README ; workflow `.github/workflows/site.yml` qui
+  publie `site/dist` sur `gh-pages` (manuel ou push sur `main` touchant `site/`). Le premier déploiement n'a pas été
+  déclenché : il attend le go de Nick (fusion de la PR puis `workflow_dispatch`, ou push suivant sur `main`).
+- Pages : `/`, `/fr/`, `/en/`, `/fr/regles/`, `/en/rules/`, `/fr/confidentialite/`, `/en/privacy/`, `404.html`,
+  `sitemap.xml`, `robots.txt`, `site.webmanifest`. Aucun reste du gabarit (jQuery, Font Awesome, Sass, section
+  « Elements », images de démo absentes) ; la licence CCA 3.0 du gabarit n'est plus requise puisque plus aucun
+  de ses fichiers n'est servi (le fond, le logo et les icônes sont à nous).
+- Haut de page : logo et tagline inchangés, accroche FR/EN, vidéo WebM du vrai jeu (24 s, VP9, 480 Ko, capitale
+  puis relais qui s'allument, enregistrée sur un monde local accéléré ×300), poster WebP 26 Ko, un seul appel à
+  l'action vers la liste d'attente, lien « J'ai un code d'invitation » vers play.playaurane.com, ligne « Saison 0 :
+  bêta fermée sur invitation, puis ouverte à tous, sans compte ».
+- Liste d'attente : même endpoint qu'avant, consentement obligatoire, `utm_*`, `referrer`, `page` en champs cachés,
+  pot de miel et Turnstile conservés, messages par langue, page Confidentialité FR/EN (ninabot Sàrl, Genève).
+- Partage et SEO : OG/Twitter complets, image sociale 1200 × 630 générée (logo, tagline, accroche, carte du jeu),
+  descriptions FR/EN centrées sur le pitch, `hreflang`, canonical, sitemap avec alternates, robots, manifest.
+- Une correction de simulation trouvée en enregistrant la vidéo : une Colonie fondée après le premier Tirage ne
+  s'étendait pas pendant sa première heure (plafond d'Énergie calculé sur un revenu encore nul). Corrigée et testée
+  (`fix(sim)`), elle concerne tous les joueurs qui rejoignent une saison en cours.
+
+### Mesures
+
+Lighthouse 13.5 (Chromium headless, serveur statique local, sans CDN) :
+
+| Page | Perf | Accessibilité | Bonnes pratiques | SEO | LCP | CLS | Poids |
+|---|---|---|---|---|---|---|---|
+| `/fr/` mobile | 99 | 100 | 96 | 100 | 2,1 s | 0 | 742 Ko |
+| `/en/` mobile | 99 | 100 | 96 | 100 | 2,1 s | 0 | 741 Ko |
+| `/fr/` desktop | 100 | 100 | 96 | 100 | 0,5 s | 0 | 742 Ko |
+| `/en/` desktop | 100 | 100 | 96 | 100 | 0,5 s | 0 | 741 Ko |
+
+Les 4 points de « bonnes pratiques » viennent du script Turnstile injoignable depuis ce conteneur (erreur console) :
+en production il se charge. Mobile 375 px : aucun défilement horizontal, appel à l'action visible sans défiler
+(captures `docs/landing/screenshots/after-mobile-*-fold.webp`). Avant/après : `before-*` et `after-*` dans le même
+dossier.
+
+### Décisions et configuration qui reviennent à Nick
+
+1. **Déployer** : fusionner la PR puis lancer le workflow `site` (Actions → site → Run workflow), ou laisser le
+   prochain push sur `main` le faire. Il écrase la branche `gh-pages` (l'ancien site reste dans son historique).
+2. **Worker `api.playaurane.com/waitlist`** (session locale, dépôt ninabot-pro) : accepter et stocker `consent`,
+   `utm_*`, `referrer`, `page` ; exiger `consent=1` ; lien de désinscription dans les messages ; adresse
+   d'expédition répondable. Détail dans `docs/ops/REQUESTS.md`.
+3. **Variables de dépôt GitHub** (Settings → Variables) : `DISCORD_URL`, `X_URL`, `CONTACT_EMAIL`. Sans elles, rien
+   n'est affiché. L'adresse de contact est aussi celle que la page Confidentialité annonce « dans le pied de page ».
+4. **Domaines de langue** : `/fr/` et `/en/` sur le même domaine (choisi, indexable, `hreflang`) ; pas de sous-domaine.
+5. **Structure** : la section « Le Général » (les deux paragraphes d'origine) est gardée sur la landing entre les
+   trois points et le lore, parce que c'est l'argument de l'accroche ; à retirer si tu préfères la structure stricte.
+6. **Vidéo** : WebM seulement (pas de H.264 disponible ici) ; Safari iOS 17+ lit le VP9 ; les autres voient le
+   poster. Régénérable avec `node site/tools/media.mjs` (voir `site/README.md`).

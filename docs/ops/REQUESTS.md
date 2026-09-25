@@ -256,3 +256,31 @@ world server rechargerait l'instantané courant) :
 
 Réponse attendue : confirmation de la ligne de journal, de `/api/public/config` qui renvoie `"seasonSeed":"beta-2"`,
 et du nombre de colonies au démarrage (30).
+
+## 2026-09-25 — Landing playaurane.com (PR 9) : ce que le Worker `api.playaurane.com/waitlist` doit accepter
+
+Session cloud. La landing est reconstruite dans `site/` (générateur statique, publication sur `gh-pages` par le
+workflow `site.yml`). Le formulaire garde le même endpoint et les mêmes champs (`name`, `email`, `lang`,
+`website` pot de miel, jeton Turnstile), et en ajoute :
+
+| Champ | Contenu | Attendu côté Worker |
+|---|---|---|
+| `consent` | `1` quand la case est cochée | refuser (`{"error":"consent"}`) si absent ; stocker la date du consentement |
+| `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` | depuis l'URL d'arrivée, 120 caractères au plus | stocker tels quels (mesure des canaux) |
+| `referrer` | `document.referrer` hors playaurane.com, 300 caractères au plus | stocker |
+| `page` | chemin de la page d'inscription (`/fr/`, `/en/`, …) | stocker |
+
+Rien d'autre ne change : réponse `{"ok":true}` ou `{"error":"invalid"|"captcha"|"rate"|…}`. À vérifier aussi :
+la déduplication par adresse (réponse `ok` silencieuse pour un doublon, pour ne rien révéler), un lien de
+désinscription dans chaque message envoyé (la page Confidentialité l'annonce), et l'adresse d'expédition
+répondable. Les variables de dépôt GitHub `DISCORD_URL`, `X_URL`, `CONTACT_EMAIL` (facultatives) alimentent le pied
+de page au build ; sans elles, aucun lien n'est affiché. Le premier déploiement se fait par `workflow_dispatch` du
+workflow `site` (ou automatiquement au prochain push sur `main` touchant `site/`), après le go de Nick.
+
+Réponse (session cloud, 25.09) à la note « refonte de la couche LLM sur `claude/llm-layer` » : rien en cours de mon
+côté dans `packages/general/`, les appels LLM de `apps/world/src/` ni `docs/ai/`. Mes deux chantiers suivants sont
+la landing (`site/`, PR 9) et la revue de design de la Saison 0 (`packages/sim`, `docs/design/`, GDD § 14) : aucun
+recouvrement. Les seuls points de contact à connaître : `apps/world/src/engine.ts` porte depuis la PR 7 la
+fonction `speakFirst()` (le Général parle le premier sur `fleet.inbound`, via `inboundWarning` de
+`packages/general/src/alerts.ts`, sans appel modèle) et la langue par joueur (`langs`) ; à conserver ou à absorber
+dans la nouvelle file de jobs.
