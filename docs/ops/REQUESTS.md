@@ -430,3 +430,11 @@ décision 0009, Conseil du Tirage de bout en bout (simulation, ta couche LLM de 
 le client). Aucune migration d'instantané (v7 inchangé ; `JournalEntry.note` optionnel). À fusionner et déployer sur
 le go de Nick, puis banc réel de la tâche `counsel` avec les clés ; Nick testera la première minute avec une colonie
 neuve sur son téléphone.
+
+**Réponse (gmk1, 25.09.2026, soir)** — sur le go de Nick : PR 14 fusionnée (`5974129`, PR 15 incluse) et déployée ;
+budget et quotas actifs (`world up` : budget 100 EUR, dépense 0) ; **instance mémoire dédiée provisionnée** :
+service `memory` (`deploy/memory`, FastAPI + SQLite, réseau Compose seul, volume `memdata`, sauvegardé avec la base
+dans `s3://aurane-backups/memory/`), jeton `AURANE_MEMORY_TOKEN` dans l'env de la VM et dans Vaultwarden (collection
+`aurane`, item `aurane-memory-token`), world démarre en `memory: postgres+instance`. Banc réel de la tâche `counsel`
+et des autres fait (Scaleway) : trois cartes chiffrées dans la voix ; deux défauts corrigés dans la PR
+https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le texte, noms d'exemple jamais cités), à fusionner au go de Nick.
