@@ -411,3 +411,9 @@ reviennent (infra et LLM) ; export et effacement (`GET|DELETE /api/memory`) doiv
 le plafond avec environ deux cents joueurs actifs, une alerte à 80 % de la dépense mensuelle dans les métriques, et
 la dégradation en personnage quand le plafond est atteint. Détail dans `docs/decisions/0009-le-partenaire.md`, § « Ce
 qui revient à Nick », point 2.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — PR 14 prête et verte** (https://github.com/nicolas-micaud/aurane/pull/14) :
+décision 0009, Conseil du Tirage de bout en bout (simulation, ta couche LLM de la PR 15 incluse, cartes en voix dans
+le client). Aucune migration d'instantané (v7 inchangé ; `JournalEntry.note` optionnel). À fusionner et déployer sur
+le go de Nick, puis banc réel de la tâche `counsel` avec les clés ; Nick testera la première minute avec une colonie
+neuve sur son téléphone.
