@@ -1,0 +1,51 @@
+name: site
+
+# Builds playaurane.com from site/ and publishes the result on the gh-pages branch (GitHub Pages source).
+# Runs on demand, and on every push to main that touches the site. Social links and the contact address
+# come from repository variables so nothing is hard-coded: DISCORD_URL, X_URL, CONTACT_EMAIL (all optional).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build
+        env:
+          DISCORD_URL: ${{ vars.DISCORD_URL }}
+          X_URL: ${{ vars.X_URL }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+        run: node site/build.mjs
+      - name: Check
+        run: |
+          test -f site/dist/index.html
+          test -f site/dist/CNAME
+          ! grep -R 'href="#"' site/dist --include=*.html
+      - name: Publish to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages || true
+          git worktree add /tmp/gh-pages gh-pages 2>/dev/null || git worktree add --orphan -b gh-pages /tmp/gh-pages
+          rm -rf /tmp/gh-pages/*
+          cp -R site/dist/. /tmp/gh-pages/
+          cd /tmp/gh-pages
+          git add -A
+          if git diff --cached --quiet; then echo "nothing to publish"; exit 0; fi
+          git commit -m "site: publish ${GITHUB_SHA::7}"
+          git push origin gh-pages
