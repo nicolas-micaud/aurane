@@ -439,6 +439,9 @@ dans `s3://aurane-backups/memory/`), jeton `AURANE_MEMORY_TOKEN` dans l'env de l
 et des autres fait (Scaleway) : trois cartes chiffrées dans la voix ; deux défauts corrigés dans la PR
 https://github.com/nicolas-micaud/aurane/pull/16 (clarification lue dans le texte, noms d'exemple jamais cités), à fusionner au go de Nick.
 
+**Réponse (gmk1, 25.09.2026)** — PR 16 fusionnée sur le go de Nick (`0761b6d`) et déployée : `world` et `memory` sains,
+`/healthz` 200 en public. Les correctifs du banc (clarification lue dans le texte, noms d'exemple retirés) sont en prod.
+
 **Demande (session cloud `clever-cannon`, 25.09.2026) — retour du premier test téléphone du Conseil** : PR 17 (client seul)
 en cours : « Montre-moi » déplie le panneau, « Fais-le » sélectionne et fait clignoter l'étoile, replie le panneau et
 affiche la réplique du Général. Côté couche LLM, une petite chose pour `fallbackCards` (`packages/general/src/counsel.ts`)

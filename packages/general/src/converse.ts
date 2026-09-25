@@ -116,6 +116,9 @@ export async function converse(input: ConverseInput, client: LlmClient | null, _
     let reply = (check.ok ? ans.value.reply : check.stripped).trim().slice(0, 600);
     let policy: Policy | null = null;
     let question: string | null = ans.value.question?.trim().slice(0, 300) || null;
+    // The General asked in the reply itself ("which first?"): that is the question, and no order is taken meanwhile.
+    if (!question && ans.value.orders && /\?\s*$/.test(reply)) question = reply;
+    reply = stripExampleNames(reply, [...Object.values(input.ctx.systems), ...Object.values(input.ctx.colonies), ...Object.values(input.ctx.alliances)]);
     if (ans.value.orders && !question) {
       let merged = mergeOrders(input.ctx.current, ans.value.orders, input.ctx);
       if (!merged.notes || merged.notes === input.ctx.current.notes) merged.notes = user.slice(0, 2000);
@@ -155,6 +158,19 @@ const GREETINGS: Record<Persona, { fr: string; en: string }> = {
   oriel: { fr: 'Bonjour. Les comptes sont justes et l\'Énergie a bougé de 4 % : je vous écoute.', en: 'Good day. The books balance and Energy moved 4 %: I am listening.' },
   solen: { fr: 'La paix sur ta Colonie. Les voisins sont calmes, le Signal veille. Que puis-je pour toi ?', en: 'Peace on your Colony. The neighbours are quiet, the Signal keeps watch. What can I do for you?' },
 };
+
+/** Names that live only in the character sheets' example lines: cited as facts, they are hallucinations. */
+export const EXAMPLE_NAMES = ['Vantor', 'Draven', 'Vexqua', 'Sollum', 'Kessa', 'Orun', 'Rakanyx', 'Cynyx', 'Islum-9'] as const;
+
+/** Drop the sentences that cite an example name unknown to this world (known names come from the context). */
+export function stripExampleNames(text: string, known: readonly string[]): string {
+  const knownLower = new Set(known.map((n) => n.toLowerCase()));
+  const foreign = EXAMPLE_NAMES.filter((n) => !knownLower.has(n.toLowerCase()) && !known.some((k) => k.toLowerCase().includes(n.toLowerCase())));
+  if (!foreign.some((n) => text.includes(n))) return text;
+  const sentences = text.split(/(?<=[.!?…])\s+/);
+  const kept = sentences.filter((s) => !foreign.some((n) => s.includes(n)));
+  return kept.join(' ').trim();
+}
 
 function pick<T>(arr: readonly T[], seed: string): T { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0; return arr[h % arr.length]!; }
 
