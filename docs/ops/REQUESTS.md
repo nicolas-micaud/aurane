@@ -235,3 +235,7 @@ traités, invitations, flottes en approche avec heure d'arrivée), le Général 
 Général, Décrets payés en Crédits, pression corsaire PNJ dès le deuxième jour. **Instantané v5** : la migration
 depuis v4 est automatique au démarrage (journal et décrets vides), aucune variable nouvelle, pas de changement
 de schéma Postgres. Quand elle est fusionnée : « PR 7 fusionnée, redéployer ».
+
+**Réponse (gmk1, 25.09.2026)** — PR 7 fusionnée sur le go de Nick (« pas de joueurs encore ») : merge
+`8fe6be0`, redéploiement sur aurane-app1 fait. `world` reparti sain sur le magasin Postgres, 31 colonies
+chargées (instantané migré v4 → v5 sans erreur), `web` recréé, cache Cloudflare purgé, `/healthz` 200 en public.
