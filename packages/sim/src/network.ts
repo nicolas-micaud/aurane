@@ -32,6 +32,8 @@ export interface RangeContext {
   stormSectors: ReadonlySet<string>;
   /** Extra range multiplier (the Range decree), 1 when none. */
   rangeMult?: number;
+  /** The Concordat's range multiplier for this season (defaults to the balance constant). */
+  concordatRangeMult?: number;
 }
 
 /** Effective range of a relay between two systems for a given owner. */
@@ -39,7 +41,7 @@ export function relayRange(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: Ra
   let range = BASE_RANGE;
   if (a.kind === 'pulsar' || b.kind === 'pulsar') range *= PULSAR_RANGE_MULT;
   if (ctx.amplifiers.has(a.id) || ctx.amplifiers.has(b.id)) range *= AMPLIFIER_RANGE_MULT;
-  if (ctx.faction === 'concordat') range *= CONCORDAT_RANGE_MULT;
+  if (ctx.faction === 'concordat') range *= ctx.concordatRangeMult ?? CONCORDAT_RANGE_MULT;
   if (ctx.rangeMult) range *= ctx.rangeMult;
   for (const bid of ctx.litBeacons) {
     const beacon = galaxy.systems[bid];

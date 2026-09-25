@@ -105,7 +105,7 @@ export function stormSectors(w: World): Set<string> {
 export function rangeContext(w: World, colony: Colony): RangeContext {
   const amplifiers = new Set<string>();
   for (const id of ownedSystems(w, colony.id)) if (hasStructure(w.systems[id]!, 'amplifier')) amplifiers.add(id);
-  const ctx: RangeContext = { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w) };
+  const ctx: RangeContext = { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w), concordatRangeMult: w.rules.concordatRangeMult };
   if (hasDecree(w, colony, 'range')) ctx.rangeMult = B.DECREE_RANGE_MULT;
   return ctx;
 }
