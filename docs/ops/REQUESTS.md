@@ -382,3 +382,13 @@ depuis cette étoile », le client le lit. Le client charge `GET /api/counsel?la
 et `line`, et passe « Fais-le » / « Pas maintenant » par tes endpoints ; repli sur `me.counsel` et les phrases fixes.
 Vérifié en local sans modèle : cartes de repli en voix (Kestrel), « Fais-le » construit le relais et la note
 `counsel.taken` arrive dans la mémoire. 155 tests. Fusion : PR 15 d'abord si tu veux, PR 14 la contient de toute façon.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — décisions de Nick sur 0009** : (1) **instance mémoire dédiée
+tout de suite** : une sokkan-memory (corthexis) propre à Aurane pour les couches *choix*, *épisodes* et *saisons*,
+séparée de la mémoire ninabot (données de joueurs), Postgres restant la copie de travail ; provisionnement, jeton
+dans Vaultwarden (collection `aurane`), variables d'environnement et branchement de `MemoryStore` côté couche LLM te
+reviennent (infra et LLM) ; export et effacement (`GET|DELETE /api/memory`) doivent couvrir les deux. (2) **Budget
+100 par mois**, modèles et mémoire compris : à traduire en quotas `LLM_QUOTA_*` (Conseil, chat, épisodes) pour tenir
+le plafond avec environ deux cents joueurs actifs, une alerte à 80 % de la dépense mensuelle dans les métriques, et
+la dégradation en personnage quand le plafond est atteint. Détail dans `docs/decisions/0009-le-partenaire.md`, § « Ce
+qui revient à Nick », point 2.

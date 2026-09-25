@@ -95,9 +95,14 @@ cartes de repli en personnage) et la tentation de laisser l'IA jouer à la place
 1. **Un seul personnage** : le Général *est* le Partenaire (recommandé), ou un second personnage « le Signal »
    qui parle du jeu quand le Général parle de la guerre ? Recommandation : un seul, quitte à lui donner deux
    registres ; deux voix, c'est deux fois la mémoire et la confusion pour le nouveau.
-2. **L'instance mémoire** : sokkan-memory dédiée à Aurane (données de joueurs, donc séparée de la mémoire
-   ninabot), ou Postgres seul pour la Saison 0 ? Recommandation : Postgres seul jusqu'à ce qu'un besoin de
-   recherche sémantique apparaisse ; la mémoire *épisodes* tient en quelques lignes par jour.
+2. **L'instance mémoire** : **tranché par Nick (25.09.2026) : instance dédiée tout de suite.** Une sokkan-memory
+   (corthexis) propre à Aurane, séparée de la mémoire ninabot puisqu'elle contient des données de joueurs, pour les
+   couches *choix*, *épisodes* et *saisons* (recherche sémantique au retour du joueur et d'une saison à l'autre) ;
+   la couche *faits* reste calculée depuis le journal. Postgres garde la copie de travail (le monde n'attend jamais
+   la mémoire) ; l'instance est la mémoire longue. Export et effacement couvrent les deux.
+   **Budget : 100 par mois**, modèles et mémoire compris. Au coût mesuré (§ « Ce qu'on mesure »), c'est de l'ordre de
+   deux cents joueurs actifs ; les quotas par joueur et par jour se règlent pour tenir ce plafond, avec une alerte à
+   80 % de la dépense mensuelle et une dégradation en personnage, jamais un silence, quand il est atteint.
 3. **Le budget de latence** au niveau 1 (3 s proposé) et le fournisseur qui le tient.
 4. **La première minute** : remplacer le coach par le Conseil dès le palier 0 (recommandé), ou garder les deux.
 
