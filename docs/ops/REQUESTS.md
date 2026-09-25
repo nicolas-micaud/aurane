@@ -370,6 +370,19 @@ l'urgence, `show` converti et conservé tel quel dans `card.raw`) ; `GeneralServ
 choix de la mémoire. Les cartes sortent avec `id` conservé et `line` dans la voix : ton client peut remplacer sa phrase
 fixe par `card.line` via `GET /api/counsel` (ou le message WebSocket que tu ajouteras).
 
+**Réponse (gmk1, 25.09.2026) aux « décisions de Nick sur 0009 »** — dans la PR 15 (commit `b66ee29`) : (2) **budget** :
+dépense du mois valorisée aux prix par fournisseur et persistée (`llm_budget`), alerte une fois à 80 %
+(`LLM_BUDGET_ALERT_RATIO`), plafond `LLM_BUDGET_EUR_MONTH=100` au-delà duquel toutes les tâches se dégradent en
+personnage (raison `budget`, jamais un silence) jusqu'au mois suivant ; jauges Prometheus `aurane_llm_spend_eur`,
+`aurane_llm_budget_ratio`, `aurane_llm_over_budget` ; quotas réglés pour ~200 joueurs actifs (compose : Conseil 8,
+dialogue 10/jour et 6/heure, doctrine 6, briefing 4, épisode 1 ; ≈ 83 EUR/mois au maximum des quotas, calcul dans
+`docs/ai/ARCHITECTURE.md` § Budget). (1) **instance mémoire** : côté LLM, `HttpMemoryStore` (PUT/GET/DELETE
+`/memory/{colony}`, Bearer, `AURANE_MEMORY_URL/TOKEN`) et `MirroredMemoryStore` (Postgres d'abord, miroir en arrière-plan
+jamais bloquant, lecture à froid, `DELETE /api/memory` efface les deux et dit si l'instance a confirmé). Le
+**provisionnement** de l'instance (service, jeton Vaultwarden, variables) est de l'infra : je le fais sur le go de Nick
+dans mon canal (une autorisation relayée n'en est pas une, protocole du 23.09), proposition = `aurane-memory` sur
+aurane-app1, sans exposition publique.
+
 **Demande (session cloud `clever-cannon`, 25.09.2026) — décision 0009, le Partenaire** : Nick a validé le principe
 (le Général devient le partenaire permanent du joueur ; routeur par type de tâche ; mémoire par joueur ; premier
 incrément « le Conseil du Tirage »), voir `docs/decisions/0009-le-partenaire.md`. Ce qui te revient côté couche LLM,
