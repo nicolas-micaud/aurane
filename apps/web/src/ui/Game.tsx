@@ -21,8 +21,9 @@ const tab = signal<Tab>('colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
 /** The system whose plateau is open full-screen, or null for the galaxy. */
 export const systemMode = signal<string | null>(null);
-/** Bumped when something asks the panel to unfold (the Counsel's "Show me" on a phone). */
+/** Bumped when something asks the panel to unfold (the Counsel's "Show me" on a phone), or to fold so the map shows. */
 const openPanel = signal(0);
+const foldPanel = signal(0);
 
 export function Game() {
   const host = useRef<HTMLDivElement>(null);
@@ -222,7 +223,7 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
   };
   // After "Do it": the star flashes and is selected, and the General's acknowledgement shows as a toast.
   const acted = (target: string | null, reply: string | null) => {
-    if (target) { selected.value = target; map.current?.centerOn(target); map.current?.flash(target); }
+    if (target) { selected.value = target; map.current?.centerOn(target); map.current?.flash(target); foldPanel.value++; }
     if (reply) { toast.value = { text: reply, kind: 'ok' }; setTimeout(() => { if (toast.value?.text === reply) toast.value = null; }, 3500); }
   };
   const cards: UiCard[] = voice && voice.drawIndex === nextDraw && voice.cards.length
@@ -302,6 +303,8 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   useEffect(() => { if (sel && isNarrow()) setOpen(true); }, [sel]);
   const openReq = useSig(openPanel);
   useEffect(() => { if (openReq > 0) setOpen(true); }, [openReq]);
+  const foldReq = useSig(foldPanel);
+  useEffect(() => { if (foldReq > 0 && isNarrow()) setOpen(false); }, [foldReq]);
   // Progressive onboarding: a tab appears with its tier (docs/design/ONBOARDING-S0.md), the General says why.
   const tier = v.me.onboarding?.tier ?? 6;
   const TAB_TIER: Partial<Record<Tab, number>> = { logistics: 1, market: 2, fleets: 3, diplomacy: 5 };
