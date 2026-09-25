@@ -104,5 +104,8 @@ describe('the simulation\'s Counsel, bridged', () => {
     expect(r.cards.map((c) => c.id)).toEqual(['turret:S9', 'link:S2', 'recap:3']);
     expect(r.cards[0]!.raw).toEqual({ kind: 'plateau', system: 'S9', orbit: 2 });
     expect(r.cards[0]!.line).toContain('30 min');
+    expect(r.cards[1]!.title).toBe('Relie ta voisine'); // the simulation's short title, not the first words of the line
+    expect(r.cards[2]!.line).not.toMatch(/\.\./); // no double period after a label that already ends with one
+    expect(r.cards[2]!.line).not.toContain("heure.. ");
   });
 });
