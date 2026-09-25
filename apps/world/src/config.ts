@@ -42,6 +42,13 @@ export interface Config {
   counselDeadlineMs: number;
   /** Daily episodes are written over this many minutes after the day turns. */
   episodeSpreadMin: number;
+  /** Monthly LLM budget, EUR, models and memory included (decision 0009: 100); 0 disables the cap. */
+  budgetEurMonth: number;
+  /** Share of the budget at which the alert fires (0.8). */
+  budgetAlertRatio: number;
+  /** The dedicated long-memory instance of Aurane (PUT/GET/DELETE /memory/{colony}, Bearer); absent = Postgres only. */
+  memoryUrl: string | null;
+  memoryToken: string | null;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -73,5 +80,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     counselLeadMin: num(env.LLM_COUNSEL_LEAD_MIN, 20),
     counselDeadlineMs: num(env.LLM_COUNSEL_DEADLINE_MS, 3000),
     episodeSpreadMin: num(env.LLM_EPISODE_SPREAD_MIN, 30),
+    budgetEurMonth: num(env.LLM_BUDGET_EUR_MONTH, 100),
+    budgetAlertRatio: num(env.LLM_BUDGET_ALERT_RATIO, 0.8),
+    memoryUrl: env.AURANE_MEMORY_URL || null,
+    memoryToken: env.AURANE_MEMORY_TOKEN || null,
   };
 }

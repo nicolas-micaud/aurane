@@ -82,3 +82,33 @@ describe('prompt', () => {
     expect(short).not.toContain('Règles d\'Aurane');
   });
 });
+
+describe('the dedicated memory instance', () => {
+  it('mirrors saves in the background, falls back to the instance on a cold read, and erases both', async () => {
+    const { HttpMemoryStore, MirroredMemoryStore, InMemoryMemoryStore, emptyMemory, recordChoice } = await import('../src/persona/memory.js');
+    const remote = new Map<string, string>();
+    const calls: string[] = [];
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input); const id = decodeURIComponent(url.split('/memory/')[1]!); const method = init?.method ?? 'GET';
+      calls.push(`${method} ${id}`);
+      if (!(init?.headers as Record<string, string>).authorization?.startsWith('Bearer ')) return new Response('', { status: 401 });
+      if (method === 'PUT') { remote.set(id, String(init!.body)); return new Response('{}', { status: 200 }); }
+      if (method === 'DELETE') { remote.delete(id); return new Response(null, { status: 204 }); }
+      return remote.has(id) ? new Response(remote.get(id)!, { status: 200 }) : new Response('', { status: 404 });
+    }) as typeof fetch;
+    const http = new HttpMemoryStore('https://memory.example/v1/', 'tok', fetchFn);
+    const local = new InMemoryMemoryStore();
+    const store = new MirroredMemoryStore(local, http);
+    await store.save('C1', recordChoice(emptyMemory(), 'counsel.taken', 'link:S2', 1));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(remote.has('C1')).toBe(true);
+    const cold = new MirroredMemoryStore(new InMemoryMemoryStore(), http);
+    expect((await cold.load('C1'))!.notes[0]!.text).toBe('link:S2'); // restored from the instance, then cached locally
+    expect(await store.erase('C1')).toEqual({ primary: true, mirror: true });
+    expect(remote.has('C1')).toBe(false);
+    expect((await local.load('C1'))!.notes.length).toBe(0);
+    const dead = new MirroredMemoryStore(new InMemoryMemoryStore(), new HttpMemoryStore('https://down.example', 'tok', (async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch));
+    await dead.save('C2', emptyMemory()); // never throws: the world does not wait for the long memory
+    expect(await dead.erase('C2')).toEqual({ primary: true, mirror: false });
+  });
+});

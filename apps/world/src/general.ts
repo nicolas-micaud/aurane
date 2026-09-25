@@ -4,11 +4,12 @@
 import type { Policy } from '@aurane/protocol';
 import { apply, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom, fromSimCounsel,
+  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom, fromSimCounsel,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
   type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
 } from '@aurane/general';
 import type { Config } from './config.js';
+import type { BudgetStore } from './llmstore.js';
 
 export interface GeneralDeps {
   world: () => World;
@@ -16,6 +17,7 @@ export interface GeneralDeps {
   dirty: (colonyId: string) => void;
   jobStore?: JobStore | undefined;
   memoryStore?: MemoryStore | undefined;
+  budgetStore?: BudgetStore | undefined;
   stack?: LlmStack | undefined;
   metrics?: LlmMetrics | undefined;
   env?: NodeJS.ProcessEnv | undefined;
@@ -45,6 +47,9 @@ export class GeneralService {
   readonly metrics: LlmMetrics;
   readonly quota: PlayerQuota;
   private readonly memoryStore: MemoryStore;
+  private readonly mirror: MirroredMemoryStore | null = null;
+  private readonly budgetStore: BudgetStore | null;
+  private lastBudgetSave = 0;
   private talks = new Map<string, Turn[]>();
   private langs = new Map<string, 'fr' | 'en'>();
   private pending = new Map<string, PendingDoctrine>();
@@ -68,7 +73,15 @@ export class GeneralService {
     this.stack = deps.stack ?? stackFromEnv(deps.env ?? process.env, this.metrics);
     for (const w of this.stack.warnings) console.warn(JSON.stringify({ msg: 'llm config', warning: w }));
     this.quota = new PlayerQuota(cfg.quotas);
-    this.memoryStore = deps.memoryStore ?? new InMemoryMemoryStore();
+    const primary = deps.memoryStore ?? new InMemoryMemoryStore();
+    if (cfg.memoryUrl && cfg.memoryToken) {
+      this.mirror = new MirroredMemoryStore(primary, new HttpMemoryStore(cfg.memoryUrl, cfg.memoryToken), (err) => console.warn(JSON.stringify({ msg: 'memory instance', error: err.message })));
+      this.memoryStore = this.mirror;
+    } else this.memoryStore = primary;
+    this.budgetStore = deps.budgetStore ?? null;
+    if (cfg.budgetEurMonth > 0) this.metrics.budget = { eurPerMonth: cfg.budgetEurMonth, alertRatio: cfg.budgetAlertRatio };
+    this.metrics.onSpend = (month, eur) => { const now = Date.now(); if (now - this.lastBudgetSave < 10000) return; this.lastBudgetSave = now; void this.budgetStore?.save(month, eur).catch((err: Error) => console.warn(JSON.stringify({ msg: 'budget save', error: err.message }))); };
+    this.metrics.onAlert = (kind, month, eur, budget) => console.warn(JSON.stringify({ msg: kind === 'cap' ? 'LLM BUDGET REACHED: every task degrades in character until the month turns' : 'LLM budget alert', month, eur: Math.round(eur * 100) / 100, budgetEur: budget.eurPerMonth, ratio: Math.round((eur / budget.eurPerMonth) * 100) / 100 }));
     this.scheduler = new Scheduler(deps.jobStore ?? new MemoryJobStore(), undefined, {
       concurrency: cfg.llmWorkers,
       onEvent: (e) => { if (e.kind !== 'enqueued') this.metrics.job(e.kind); else this.metrics.job('enqueued'); },
@@ -79,6 +92,20 @@ export class GeneralService {
     this.scheduler.handle<GazetteJob, GazetteIssue>('gazette', (job) => this.runGazette(job.payload));
     this.scheduler.handle<CounselJob, CounselView>('counsel', (job) => this.runCounsel(job.payload));
     this.scheduler.handle<EpisodeJob, string>('episode', (job) => this.runEpisode(job.payload));
+  }
+
+  /** Restore the month's spend so the cap survives a restart. */
+  async init(): Promise<void> {
+    if (!this.budgetStore) return;
+    const month = LlmMetrics.monthKey();
+    try { this.metrics.seedSpend(month, await this.budgetStore.load(month)); } catch (err) { console.warn(JSON.stringify({ msg: 'budget load', error: (err as Error).message })); }
+  }
+
+  /** The month's cap is reached: no model for anyone, in-character lines everywhere (decision 0009: never a silence). */
+  private capped(task: 'talk' | 'doctrine' | 'briefing' | 'counsel' | 'episode' | 'gazette'): boolean {
+    if (!this.metrics.overBudget()) return false;
+    this.metrics.degradation(task === 'gazette' ? 'narrative' : 'voice', task, 'budget');
+    return true;
   }
 
   start(): void { this.scheduler.start(); }
@@ -147,11 +174,11 @@ export class GeneralService {
     const history = this.history(c.id);
     const seed = `${c.id}:${history.length}:${Date.now()}`;
     let res: ConverseResult;
-    const overQuota = !this.quota.take(c.id, 'talk');
+    const overQuota = this.capped('talk') || !this.quota.take(c.id, 'talk');
     if (!overQuota && this.stack.voice && !this.scheduler.active) res = await this.runTalk({ colonyId: c.id, text, lang, seed });
     else if (overQuota || !this.stack.voice) {
       res = await converse({ text, lang, persona: c.persona, history, ctx: this.context(c, lang), analysis: this.analysisOf(c), seed, overQuota }, null);
-      if (overQuota) this.metrics.degradation('voice', 'talk', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'talk', 'quota');
     } else {
       const fallback = (): ConverseResult => {
         this.metrics.degradation('voice', 'talk', 'deadline');
@@ -190,11 +217,11 @@ export class GeneralService {
     this.langs.set(c.id, lang);
     const seed = `${c.id}:doctrine:${Date.now()}`;
     let compiled: CompiledDoctrine;
-    const overQuota = !this.quota.take(c.id, 'doctrine');
+    const overQuota = this.capped('doctrine') || !this.quota.take(c.id, 'doctrine');
     if (!overQuota && this.stack.voice && !this.scheduler.active) compiled = await this.runDoctrine({ colonyId: c.id, text, lang, seed });
     else if (overQuota || !this.stack.voice) {
       compiled = await compileDoctrine(text, this.context(c, lang), null, { overQuota, seed });
-      if (overQuota) this.metrics.degradation('voice', 'doctrine', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'doctrine', 'quota');
     } else {
       const fallback = (): CompiledDoctrine => { this.metrics.degradation('voice', 'doctrine', 'deadline'); return { ...heuristicSync(text, lang, c, this.context(c, lang)), source: 'degraded' }; };
       compiled = (await this.scheduler.enqueueWithDeadline<TalkJob, CompiledDoctrine>('doctrine', 'doctrine', { colonyId: c.id, text, lang, seed }, this.cfg.talkDeadlineMs, fallback, { colony: c.id, ttlMs: 120000 })).result;
@@ -263,12 +290,12 @@ export class GeneralService {
     const cached = this.briefings.get(`${c.id}:${lang}`);
     if (cached && cached.eventMark === this.eventMark(c, since)) return { text: cached.text, source: cached.source, awaySeconds: cached.awaySeconds };
     const worth = awaySeconds >= ABSENT_AFTER_S;
-    const overQuota = worth && !this.quota.take(c.id, 'briefing');
+    const overQuota = worth && (this.capped('briefing') || !this.quota.take(c.id, 'briefing'));
     let out: { text: string; source: string };
     if (worth && !overQuota && this.stack.voice && !this.scheduler.active) out = await this.runBriefing({ colonyId: c.id, lang, since, awaySeconds });
     else if (!worth || overQuota || !this.stack.voice) {
       out = await writeBriefing({ ...this.briefingInput(c, lang, since, awaySeconds), overQuota }, null);
-      if (overQuota) this.metrics.degradation('voice', 'briefing', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'briefing', 'quota');
     } else {
       const input = this.briefingInput(c, lang, since, awaySeconds);
       const template = (): { text: string; source: string } => { this.metrics.degradation('voice', 'briefing', 'deadline'); return writeBriefingSync(input); };
@@ -282,7 +309,7 @@ export class GeneralService {
   // --- gazette -------------------------------------------------------------------
 
   private async runGazette(p: GazetteJob): Promise<GazetteIssue> {
-    const issue = await writeGazette(this.deps.world(), p.day, p.lang, this.stack.narrative ?? this.stack.voice);
+    const issue = await writeGazette(this.deps.world(), p.day, p.lang, this.capped('gazette') ? null : (this.stack.narrative ?? this.stack.voice));
     this.gazettes.set(`${p.day}:${p.lang}`, issue);
     return issue;
   }
@@ -336,6 +363,7 @@ export class GeneralService {
     const next = this.drawIndexNow() + 1;
     if (this.lastCounselDraw === next || this.minutesToDraw() > this.cfg.counselLeadMin) return;
     this.lastCounselDraw = next;
+    if (this.capped('counsel')) return; // the live request serves the fallback cards
     for (const c of Object.values(w.colonies)) {
       if (c.npc || w.time - c.lastSeenAt > 2 * 3600) continue;
       if (!this.quota.take(c.id, 'counsel')) { this.metrics.degradation('voice', 'counsel', 'quota'); continue; }
@@ -355,7 +383,7 @@ export class GeneralService {
     if (hit && hit.drawIndex === next) return { ...hit, minutesToDraw: this.minutesToDraw() };
     const src = this.counselSource(this.deps.world(), c);
     const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time }; };
-    if (!this.stack.voice || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
+    if (!this.stack.voice || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
     if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
     const template = await fallback();
     const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, ttlMs: 3600000 });
@@ -393,7 +421,7 @@ export class GeneralService {
     const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
     const choices = choicesOf(mem);
     const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).join(', ')}.`) : ''].filter(Boolean).join('\n');
-    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.stack.voice);
+    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.voice);
     await this.memoryStore.save(c.id, recordEpisode(mem, p.day, r.text, Date.now()));
     return r.text;
   }
@@ -411,26 +439,29 @@ export class GeneralService {
 
   // --- the player's memory: theirs to read and to erase -----------------------------
 
-  async exportMemory(colonyId: string): Promise<{ facts: ReturnType<typeof factsFrom>; record: MemoryRecord; rendered: string } | null> {
+  async exportMemory(colonyId: string): Promise<{ facts: ReturnType<typeof factsFrom>; record: MemoryRecord; rendered: string; stores: string[] } | null> {
     const c = this.colony(colonyId);
     if (!c) return null;
     const mem = await this.memoryOf(c, this.langOf(c.id));
-    return { facts: factsFrom(this.deps.world(), c), record: mem.record, rendered: mem.text };
+    return { facts: factsFrom(this.deps.world(), c), record: mem.record, rendered: mem.text, stores: this.mirror ? ['postgres', 'instance'] : ['postgres'] };
   }
 
-  async eraseMemory(colonyId: string): Promise<boolean> {
+  /** Erase everywhere: the world's copy and the long-memory instance; `mirror` says whether the instance confirmed. */
+  async eraseMemory(colonyId: string): Promise<{ ok: boolean; mirror: boolean | null }> {
     const c = this.colony(colonyId);
-    if (!c) return false;
-    await this.memoryStore.save(c.id, emptyMemory());
+    if (!c) return { ok: false, mirror: null };
+    let mirror: boolean | null = null;
+    if (this.mirror) mirror = (await this.mirror.erase(c.id)).mirror;
+    else await this.memoryStore.save(c.id, emptyMemory());
     this.talks.delete(c.id);
     for (const lang of ['fr', 'en'] as const) { this.briefings.delete(`${c.id}:${lang}`); this.counsels.delete(`${c.id}:${lang}`); }
-    return true;
+    return { ok: true, mirror };
   }
 
   // --- observability -----------------------------------------------------------
 
-  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null } }> {
-    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null } };
+  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null }; memory: { stores: string[]; mirrorFailures: number } }> {
+    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: { stores: this.mirror ? ['postgres', 'instance'] : ['postgres'], mirrorFailures: this.mirror?.mirrorFailures ?? 0 } };
   }
 
   prometheus(): string { return this.metrics.prometheus(); }

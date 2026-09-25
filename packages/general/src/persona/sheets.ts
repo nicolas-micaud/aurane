@@ -11,7 +11,8 @@ export type Lang = 'fr' | 'en';
 export const SITUATIONS = ['briefing', 'advice', 'refusal', 'clarification', 'crisis', 'victory', 'betrayal', 'smalltalk', 'teaching'] as const;
 export type Situation = (typeof SITUATIONS)[number];
 export const DEGRADE_REASONS = ['saturated', 'unavailable', 'quota'] as const;
-export type DegradeReason = (typeof DEGRADE_REASONS)[number];
+/** `budget` = the month's cap is reached: the quota lines are used (same meaning for the player: I resume at the Draw). */
+export type DegradeReason = (typeof DEGRADE_REASONS)[number] | 'budget';
 
 const Bi = z.object({ fr: z.string().min(1), en: z.string().min(1) });
 const BiList = z.object({ fr: z.array(z.string().min(1)).min(1), en: z.array(z.string().min(1)).min(1) });
