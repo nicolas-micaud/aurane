@@ -14,6 +14,9 @@
       "path": "tools/season-sim"
     },
     {
+      "path": "tools/persona-bench"
+    },
+    {
       "path": "apps/world"
     },
     {

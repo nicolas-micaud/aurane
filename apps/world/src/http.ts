@@ -90,6 +90,10 @@ export function createHttpServer(engine: Engine): Server {
           return json(res, 201, { codes: await engine.createInvites(parsed.data.count, parsed.data.note) });
         }
         if (req.method === 'GET' && url.pathname === '/api/admin/invites') return json(res, 200, { invites: await engine.invites() });
+        if (req.method === 'GET' && url.pathname === '/api/admin/llm/metrics') {
+          if (url.searchParams.get('format') === 'prometheus') { const body = engine.general.prometheus(); res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); return res.end(body); }
+          return json(res, 200, await engine.general.snapshot());
+        }
         return json(res, 404, { error: 'not found' });
       }
       const token = bearer(req);
@@ -118,6 +122,15 @@ export function createHttpServer(engine: Engine): Server {
         if (!parsed.success) return json(res, 400, { error: 'invalid doctrine' });
         return json(res, 200, await engine.doctrine(colony.id, parsed.data.text, parsed.data.lang));
       }
+      // The doctrine shown to the player, waiting for a yes (DOCTRINE_CONFIRM=1), and the yes itself.
+      if (req.method === 'GET' && url.pathname === '/api/doctrine/pending') { const p = engine.general.pendingDoctrine(colony.id); return json(res, 200, p ? { id: p.id, readable: p.readable, summary: p.summary, reply: p.reply } : null); }
+      if (req.method === 'POST' && url.pathname === '/api/doctrine/confirm') {
+        const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid confirmation' });
+        const r = engine.confirmDoctrine(colony.id, parsed.data.id);
+        return json(res, r.ok ? 200 : 404, r);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/doctrine/discard') { engine.general.discardDoctrine(colony.id); return json(res, 200, { ok: true }); }
       if (req.method === 'POST' && url.pathname === '/api/cmd') {
         const parsed = CommandSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid command', issues: parsed.error.issues });

@@ -284,3 +284,31 @@ recouvrement. Les seuls points de contact à connaître : `apps/world/src/engine
 fonction `speakFirst()` (le Général parle le premier sur `fleet.inbound`, via `inboundWarning` de
 `packages/general/src/alerts.ts`, sans appel modèle) et la langue par joueur (`langs`) ; à conserver ou à absorber
 dans la nouvelle file de jobs.
+## 2026-09-25 — PR 10 : couche LLM des Généraux (0008), session locale → session cloud
+
+Session locale (gmk1), sur commande de Nick. PR https://github.com/nicolas-micaud/aurane/pull/10, branche
+`claude/llm-layer`, **pas déployée**. Ce qui te concerne :
+1. **Zones touchées** : `packages/general/**` (réécrit : `llm/`, `queue/`, `analysis/`, `persona/`, `doctrine/`,
+   `converse.ts`, `doctrine.ts`, `briefing.ts`, `security.ts`, `voice.ts`), `apps/world/src/{general,llmstore,engine,http,
+   config,main,store}.ts`, `deploy/docker-compose.yml`, `tools/persona-bench`, `tools/llm-capacity`, `docs/ai/*`,
+   `docs/decisions/0008-couche-llm.md`, `docs/ops/beta.md`. Rien dans `packages/sim` ni `apps/web`. Rebase-toi
+   sur main après la fusion avant de toucher `packages/general` ou `apps/world/src/engine.ts`.
+2. **Contrat client à câbler quand tu veux** (`docs/ai/ARCHITECTURE.md`, « Ce qui change pour le client ») :
+   `POST /api/talk` renvoie en plus `pending: { id, readable[] } | null` et `question: string | null` ;
+   `POST /api/doctrine` renvoie `readable[]`, `question`, `pending: { id } | null`, `applied` ; nouveaux
+   `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`. Tant que
+   `DOCTRINE_CONFIRM=0` (défaut), le comportement actuel est inchangé : rien à faire côté client pour fusionner.
+3. **Exports de `@aurane/general` retirés** : `FailoverClient`, `clientFromEnv` (déprécié, renvoie le pool voix),
+   `Quota` (→ `PlayerQuota`). Nouveaux : `stackFromEnv`, `ProviderPool`, `analyze`/`renderAnalysis`, `SHEETS`,
+   `systemPrompt`, `compileDoctrine`, `Scheduler`… Le mémento `MECHANICS_PRIMER` et `PERSONA_VOICES` restent.
+4. **Décisions en attente chez Nick** (dans la PR) : fournisseurs de la classe voix, modèle narratif, quotas,
+   activation de `DOCTRINE_CONFIRM`, mémoires de fin de saison.
+Réponse attendue : rien d'obligatoire ; dis-moi ici si tu as un chantier en cours sur ces fichiers, je gère le rebase.
+
+**Réponse (gmk1, 25.09.2026) à la demande PR 9 « ce que le Worker waitlist doit accepter »** — fait et déployé sur
+api.playaurane.com (ninabot-pro `infra/aurane-api`, commit d0fe0f5) : `consent` exigé (`{"error":"consent"}`) dès que
+le formulaire envoie `page`, ou partout avec `WAITLIST_REQUIRE_CONSENT=1` une fois la landing en ligne ; `utm_*`
+(120 car.), `referrer` (300), `page` stockés et repris dans le mail de relais ; doublon = `ok` silencieux sans ligne
+ni mail ; lien de désinscription déjà présent dans chaque message (`/u/<hmac>` + en-têtes List-Unsubscribe) ;
+expéditeur `Aurane <aurane@ninabot.ch>` répondable (alias de nicolas@). Le déploiement de la landing (workflow
+`site` → écrase gh-pages) attend le go de Nick.

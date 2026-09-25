@@ -51,3 +51,13 @@ livraison arrive). Consignes pour les testeurs :
 Limites face à une application native, à garder pour le portage iOS/Android : pas de notifications
 push sur iPhone tant que l'app n'est pas installée (et seulement depuis iOS 16.4), pas de présence sur
 les stores, stockage hors ligne limité à la coquille de l'app (la partie exige le réseau).
+
+## Généraux et modèles (décision 0008)
+
+La couche LLM se configure par classe et par fournisseur (`LLM_VOICE_*`, `LLM_NARRATIVE_*`,
+`LLM_PROVIDER_<NOM>_*`), avec quotas par joueur (`LLM_QUOTA_*`), échéances des requêtes vivantes
+(`LLM_TALK_DEADLINE_MS`, `LLM_BRIEFING_DEADLINE_MS`), lissage de la Gazette (`LLM_GAZETTE_SPREAD_MIN`) et
+confirmation de doctrine (`DOCTRINE_CONFIRM`). La liste complète, les valeurs proposées pour la bêta et
+la marche à suivre pour vérifier le catalogue d'un fournisseur sont dans
+[docs/ai/ARCHITECTURE.md](../ai/ARCHITECTURE.md). Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*`
+restent lues en compatibilité. Métriques : `GET /api/admin/llm/metrics` (jeton admin).
