@@ -16,7 +16,7 @@ import { planPath } from './routing.js';
 import { capacityOf, freeSlotsOnOrbit, hasStructure } from './structures.js';
 import {
   colonyNetwork, colonyRelays, colonyScore, hasBuilding, isShielded, networkUpkeep, offNetRium, ownedSystems, rangeContext,
-  reachableRegions, routeLimit, stockHas, journal,
+  reachableRegions, routeLimit, stockHas, journal, nextDrawHint,
 } from './world.js';
 
 /** A structured note (translated by the client) on what the General did and why. */
@@ -107,7 +107,18 @@ function decideMarket(ctx: Ctx): void {
   if (!regions.length) return;
   const home = w.galaxy.systems[c.marketSystem]!.region;
   const region = regions.includes(home) ? home : regions[0]!;
+  // The Oracles' perk: one band of the next Draw an hour early. Their General sells, before the glut, what its
+  // systems in that band are about to produce threefold, and defers buying it.
+  const hint = c.faction === 'oracles' ? nextDrawHint(w) : null;
+  const ahead = B.emptyStock();
+  if (hint !== null) for (const id of ctx.productive) { const sys = w.galaxy.systems[id]!; if (sys.band === hint) ahead[sys.resource] += B.BASE_YIELD * sys.baseYield * (B.DRAW_MATCH_MULT - 1); }
   for (const r of B.RESOURCE_LIST) {
+    if (ahead[r] > 0) {
+      const ref0 = lastPrice(w, region, r) ?? BASE_PRICE[r];
+      const qty = Math.floor(Math.min(ahead[r], Math.max(0, ctx.home[r] - ctx.reserve[r] * 0.5)));
+      if (qty >= 5) { ctx.out.push({ type: 'market_order', region, resource: r, side: 'sell', qty, price: round2(Math.max(0.1, ref0 * 0.95)) }); ctx.notes.push({ kind: 'oracle.sell' }); }
+      continue;
+    }
     const ref = lastPrice(w, region, r) ?? BASE_PRICE[r];
     const cap = capacityOf(w, c.marketSystem);
     // Sell what would overflow the warehouse first, then a share of the surplus.
