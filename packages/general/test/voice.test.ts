@@ -193,3 +193,26 @@ describe('briefing', () => {
     expect(r3.text).toContain('3 Tirages'); // the template follows the in-character line
   });
 });
+
+describe('after the live bench (25.09)', () => {
+  it('asks from the text when the doctrine is ambiguous even if the model filled orders, treats a reply ending with ? as the question, and strips names that exist only in the example lines', async () => {
+    const w = createWorld('bench-fix', { radius: 4 });
+    const c = spawnColony(w, { name: 'Nick', faction: 'guild', persona: 'vane' });
+    const ctx = ctxOf(w, c);
+    const guessed = scripted([JSON.stringify({ orders: { defendFirst: [c.capital], sellAbove: { metal: 1 } }, reply: 'Compris, je défends la capitale et je vends le Métal.', question: null })]);
+    const r = await compileDoctrine('Défends tout et vends le surplus.', ctx, guessed, {});
+    expect(r.question).toMatch(/Lequel d'abord|de quelle ressource/);
+    expect(r.policy).toEqual(ctx.current);
+    const asks = scripted([JSON.stringify({ orders: { defendFirst: [c.capital] }, reply: 'Lequel d\'abord : la capitale ou le pont ?', question: null })]);
+    const r2 = await compileDoctrine(`Défends ${w.galaxy.systems[c.capital]!.name} et vends le Métal.`, ctx, asks, {});
+    expect(r2.question).toBe('Lequel d\'abord : la capitale ou le pont ?');
+    expect(r2.policy).toEqual(ctx.current);
+    const { stripExampleNames } = await import('../src/converse.js');
+    expect(stripExampleNames('Le voisin dort. 300 Rium dorment à Vexqua chez Vantor. Double ton pont.', ['Isno'])).toBe('Le voisin dort. Double ton pont.');
+    expect(stripExampleNames('Vantor nous attaque.', ['Colonie Vantor'])).toBe('Vantor nous attaque.'); // a real Vantor in this world stays
+    const a = analyze(w, c);
+    const bleed = scripted([JSON.stringify({ reply: 'Rien à signaler. Draven prépare un raid sur Kessa, je le sens. Tes ponts tiennent.', orders: null, question: null })]);
+    const t = await converse({ text: 'Des nouvelles ?', lang: 'fr', persona: 'vane', history: [], ctx, analysis: a }, bleed);
+    expect(t.reply).toBe('Rien à signaler. Tes ponts tiennent.');
+  });
+});

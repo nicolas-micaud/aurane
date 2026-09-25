@@ -21,7 +21,7 @@ export function replayClient(rec: Recording, keyOf: () => string, synthetic: Llm
 }
 
 /** Answers with one of the persona's own lines, as the JSON the task expects. */
-export function syntheticClient(current: () => { persona: Persona; lang: 'fr' | 'en'; task: 'talk' | 'doctrine' | 'briefing'; crisis: boolean }): LlmClient {
+export function syntheticClient(current: () => { persona: Persona; lang: 'fr' | 'en'; task: 'talk' | 'doctrine' | 'briefing' | 'counsel'; crisis: boolean }): LlmClient {
   return {
     name: 'synthetic', healthy: async () => true,
     chat: async (messages: ChatMessage[], opts: ChatOptions = {}): Promise<ChatResult> => {
@@ -31,6 +31,7 @@ export function syntheticClient(current: () => { persona: Persona; lang: 'fr' | 
       const user = messages.at(-1)?.content ?? '';
       let text: string;
       if (task === 'briefing') text = pick('briefing');
+      else if (task === 'counsel') { const ids = [...(messages[0]?.content ?? '').matchAll(/^\d+\. \[([^\]]+)\]/gm)].map((m) => m[1]); text = JSON.stringify({ cards: ids.slice(0, 3).map((id, i) => ({ id, title: ['Priorité', 'Ensuite', 'Si tu veux'][i], line: pick(i === 0 ? 'crisis' : 'advice') })) }); }
       else if (task === 'doctrine') text = JSON.stringify(/tout|everything/i.test(user) ? { orders: null, reply: '', question: pick('clarification') } : { orders: { expansion: 0.7 }, reply: pick('advice'), question: null });
       else text = JSON.stringify({ reply: crisis ? pick('crisis') : /rire|laugh/i.test(user) ? pick('smalltalk') : /Draven/i.test(user) ? pick('betrayal') : pick('advice'), orders: null, question: null });
       void opts;

@@ -10,7 +10,7 @@ import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { PERSONAS, type Persona } from '@aurane/protocol';
 import { viewFor } from '@aurane/sim';
-import { OpenAICompatibleClient, ProviderPool, analyze, compileDoctrine, converse, factsFrom, emptyMemory, providerConfigFromEnv, renderAnalysis, renderMemory, writeBriefing, type LlmClient } from '@aurane/general';
+import { OpenAICompatibleClient, ProviderPool, analyze, compileDoctrine, converse, factsFrom, emptyMemory, providerConfigFromEnv, renderAnalysis, renderMemory, writeBriefing, writeCounsel, type LlmClient } from '@aurane/general';
 import { SCENARIOS, type Lang } from './scenarios.js';
 import { recordingKey, replayClient, syntheticClient, type Recording } from './mock.js';
 import { aggregate, markdown, type Sample } from './report.js';
@@ -26,7 +26,7 @@ const personas = (a.personas ? a.personas.split(',') : [...PERSONAS]) as Persona
 const scenarios = SCENARIOS.filter((s) => !a.scenarios || a.scenarios.split(',').includes(s.id));
 
 // Providers: live = one pool per provider of the voice class (to compare voices across providers); else mock.
-let current = { provider: 'mock', scenario: '', persona: 'vane' as Persona, lang: 'fr' as Lang, task: 'talk' as 'talk' | 'doctrine' | 'briefing', crisis: false };
+let current = { provider: 'mock', scenario: '', persona: 'vane' as Persona, lang: 'fr' as Lang, task: 'talk' as 'talk' | 'doctrine' | 'briefing' | 'counsel', crisis: false };
 const synthetic = syntheticClient(() => current);
 const recording: Recording = a.replay ? JSON.parse(await readFile(a.replay, 'utf8')) as Recording : {};
 const clients = new Map<string, LlmClient>();
@@ -70,6 +70,9 @@ for (const [provider, client] of clients) {
       } else if (sc.kind === 'doctrine') {
         const r = await compileDoctrine(sc.text[lang], ctx, wrapped, { analysis: renderAnalysis(analysis, lang), memory, crisis: analysis.crisis, seed: `${sc.id}:${persona}` });
         sample = { provider, scenario: sc.id, persona, lang, kind: sc.kind, source: r.source, reply: r.reply, question: r.question, ordersApplied: r.question === null && JSON.stringify(r.policy) !== JSON.stringify(ctx.current), numbersStripped: false, ms: Date.now() - started, expect: sc.expect };
+      } else if (sc.kind === 'counsel') {
+        const r = await writeCounsel({ persona, lang, tier: 6, options: analysis.options, analysis: renderAnalysis(analysis, lang), memory, crisis: analysis.crisis, minutesToDraw: 20, seed: `${sc.id}:${persona}` }, wrapped);
+        sample = { provider, scenario: sc.id, persona, lang, kind: sc.kind, source: r.source, reply: r.cards.map((c) => `[${c.title}] ${c.line}`).join(' / '), question: null, ordersApplied: false, numbersStripped: r.numbersStripped, ms: Date.now() - started, expect: sc.expect };
       } else {
         const names: Record<string, string> = {}; for (const o of Object.values(w.colonies)) names[o.id] = o.name;
         const events = w.events.filter((e) => e.at > w.time - (awaySeconds ?? 3600) && (e.actors.includes(c.id) || e.kind === 'draw'));
