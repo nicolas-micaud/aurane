@@ -165,4 +165,14 @@ describe('the Generals behind the queue', () => {
     expect(snap.llm.degradations.some((d) => d.reason === 'budget')).toBe(true);
     metrics.budget = null;
   });
+
+  it('rewrites the counsel when the onboarding tier changes within the same Draw', async () => {
+    const before = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { tier: number; writtenAt: number };
+    const col = engine.world.colonies[colonyId] as unknown as { onboarding: { tier: number } };
+    col.onboarding.tier = Math.min(6, before.tier + 1);
+    const after = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { tier: number };
+    expect(after.tier).toBe(col.onboarding.tier);
+    const same = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { tier: number };
+    expect(same.tier).toBe(after.tier); // cached until the next Draw or the next tier
+  });
 });

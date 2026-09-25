@@ -101,9 +101,10 @@ export function fallbackCards(input: CounselInput): CounselCard[] {
     oriel: { fr: 'Recommandation chiffrée : ', en: 'Costed recommendation: ' }, solen: { fr: 'Si tu veux mon avis : ', en: 'If you want my view: ' },
   };
   const sentence = (t: string): string => t.trim().replace(/[.!?…]+$/, '');
+  // On a phone a long label is enough: the gain is only added when the label is short (≤ 120 characters).
   return pickOptions(input.options, input.skipped).map((o, i) => ({
     id: o.id, title: o.title?.[L] ?? titleOf(o.label[L]),
-    line: `${i === 0 ? opener[input.persona][L] : ''}${sentence(o.label[L])}. ${o.gain[L].charAt(0).toUpperCase()}${sentence(o.gain[L]).slice(1)}.${i === 2 ? ` ${voice.catchphrases[0] ?? ''}` : ''}`.trim().slice(0, 240),
+    line: `${i === 0 ? opener[input.persona][L] : ''}${sentence(o.label[L])}.${o.label[L].length <= 120 ? ` ${o.gain[L].charAt(0).toUpperCase()}${sentence(o.gain[L]).slice(1)}.` : ''}${i === 2 && o.label[L].length <= 120 ? ` ${voice.catchphrases[0] ?? ''}` : ''}`.trim().slice(0, 240),
     command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}),
   }));
 }

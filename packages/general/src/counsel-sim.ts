@@ -74,27 +74,30 @@ export function showOf(s: SimCounselOption['show']): ShowTarget {
 
 const RISK: Record<number, CounselOption['risk']> = { 0: 'low', 1: 'low', 2: 'mid' };
 
-/** The simulation's own line and short title for a kind it knows; our copy of the phrases otherwise. */
-function simText(kind: SimCounselKind, params: Record<string, string | number>): { label: { fr: string; en: string }; title: { fr: string; en: string } | undefined } {
+/** The simulation's own line and short title, whatever the kind (the sim knows its kinds); our copy of the phrases in reserve. */
+function simText(kind: string, params: Record<string, string | number>): { label: { fr: string; en: string }; title: { fr: string; en: string } | undefined } {
   try {
-    const o = { kind, params } as Parameters<typeof counselLine>[0];
-    return { label: { fr: counselLine(o, 'fr'), en: counselLine(o, 'en') }, title: { fr: counselTitle(o, 'fr'), en: counselTitle(o, 'en') } };
-  } catch {
-    return { label: { fr: fillLine(SIM_COUNSEL_LINES.fr[kind], params), en: fillLine(SIM_COUNSEL_LINES.en[kind], params) }, title: undefined };
-  }
+    const o = { kind, params } as unknown as Parameters<typeof counselLine>[0];
+    const label = { fr: counselLine(o, 'fr'), en: counselLine(o, 'en') };
+    if (label.fr && label.en) return { label, title: { fr: counselTitle(o, 'fr'), en: counselTitle(o, 'en') } };
+  } catch { /* a kind this sim does not know: our copy below */ }
+  const known = (kind in SIM_COUNSEL_LINES.fr ? kind : 'doctrine') as SimCounselKind;
+  return { label: { fr: fillLine(SIM_COUNSEL_LINES.fr[known], params), en: fillLine(SIM_COUNSEL_LINES.en[known], params) }, title: undefined };
 }
 
-/** The simulation's options, ready for `writeCounsel`: label = the simulation's line filled in, title = its short title, gain per kind. */
+const GENERIC_GAIN = { fr: 'une étape de plus pour la Colonie', en: 'one more step for the Colony' };
+
+/** The simulation's options, ready for `writeCounsel`: label and title from the simulation, gain per kind (generic for a kind we have no gain for). */
 export function fromSimCounsel(options: readonly SimCounselOption[]): CounselOption[] {
   return options.map((o) => {
-    const kind = (o.kind in SIM_COUNSEL_LINES.fr ? o.kind : 'doctrine') as SimCounselKind;
-    const text = simText(kind, o.params);
+    const text = simText(o.kind, o.params);
+    const gainKind = (o.kind in GAINS.fr ? o.kind : null) as SimCounselKind | null;
     return {
       id: o.id,
       label: text.label,
       ...(text.title ? { title: text.title } : {}),
       cost: o.cost, delayMin: 0,
-      gain: { fr: GAINS.fr[kind], en: GAINS.en[kind] },
+      gain: gainKind ? { fr: GAINS.fr[gainKind], en: GAINS.en[gainKind] } : { ...GENERIC_GAIN },
       risk: RISK[Math.max(0, Math.min(2, Math.round(o.urgency)))] ?? 'low',
       command: o.command,
       show: showOf(o.show),
