@@ -4,9 +4,9 @@
 import type { Policy } from '@aurane/protocol';
 import { apply, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, degradedReply, emptyMemory, factsFrom,
-  metrics as globalMetrics, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeGazette,
-  type Analysis, type CompiledDoctrine, type ConverseResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
+  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom,
+  metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
+  type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
 } from '@aurane/general';
 import type { Config } from './config.js';
 
@@ -29,6 +29,13 @@ export interface DoctrineResponse { policy: Policy; summary: string; readable: s
 interface TalkJob { colonyId: string; text: string; lang: 'fr' | 'en'; seed: string }
 interface BriefingJob { colonyId: string; lang: 'fr' | 'en'; since: number; awaySeconds: number }
 interface GazetteJob { day: number; lang: 'fr' | 'en' }
+interface CounselJob { colonyId: string; lang: 'fr' | 'en'; drawIndex: number }
+interface EpisodeJob { colonyId: string; lang: 'fr' | 'en'; day: number }
+
+export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
+
+/** Where the simulation's counsel comes from; `buildOptions` of the analysis until `counsel(w, colony, tier)` lands in packages/sim. */
+export type CounselSource = (w: World, c: Colony) => { tier: number; options: CounselOption[] };
 
 const ABSENT_AFTER_S = 1800;
 
@@ -44,7 +51,12 @@ export class GeneralService {
   private lastBriefedAt = new Map<string, number>();
   private briefings = new Map<string, { text: string; source: string; eventMark: number; awaySeconds: number }>();
   private gazettes = new Map<string, GazetteIssue>();
+  private counsels = new Map<string, CounselView>();
+  private lastCounselDraw = -1;
+  private lastEpisodeDay = -1;
   private seq = 0;
+  /** Overridable by the world when the simulation's `counsel()` exists. */
+  counselSource: CounselSource = (w, c) => ({ tier: (c as Colony & { onboarding?: { tier: number } }).onboarding?.tier ?? 6, options: analyze(w, c).options });
 
   constructor(readonly cfg: Config, private readonly deps: GeneralDeps) {
     this.metrics = deps.metrics ?? globalMetrics;
@@ -60,6 +72,8 @@ export class GeneralService {
     this.scheduler.handle<TalkJob, CompiledDoctrine>('doctrine', (job) => this.runDoctrine(job.payload));
     this.scheduler.handle<BriefingJob, { text: string; source: string }>('briefing', (job) => this.runBriefing(job.payload));
     this.scheduler.handle<GazetteJob, GazetteIssue>('gazette', (job) => this.runGazette(job.payload));
+    this.scheduler.handle<CounselJob, CounselView>('counsel', (job) => this.runCounsel(job.payload));
+    this.scheduler.handle<EpisodeJob, string>('episode', (job) => this.runEpisode(job.payload));
   }
 
   start(): void { this.scheduler.start(); }
@@ -290,6 +304,122 @@ export class GeneralService {
     if (!this.scheduler.active) return this.runGazette({ day: target, lang });
     const out = await this.scheduler.enqueueWithDeadline<GazetteJob, GazetteIssue>('gazette', 'gazette', { day: target, lang }, this.cfg.briefingDeadlineMs, template, { key: `gazette:${target}:${lang}`, ttlMs: 6 * 3600000 });
     return out.result;
+  }
+
+  // --- the Draw Counsel (decision 0009) -------------------------------------------
+
+  private drawIndexNow(): number { return Math.floor(this.deps.world().time / 3600); }
+  private minutesToDraw(): number { return Math.max(0, Math.round(((this.drawIndexNow() + 1) * 3600 - this.deps.world().time) / 60)); }
+
+  private async runCounsel(p: CounselJob): Promise<CounselView> {
+    const c = this.colony(p.colonyId);
+    if (!c) throw new Error('colony gone');
+    const w = this.deps.world();
+    const mem = await this.memoryOf(c, p.lang);
+    const src = this.counselSource(w, c);
+    const a = this.analysisOf(c);
+    const r: CounselResult = await writeCounsel({ persona: c.persona, lang: p.lang, tier: src.tier, options: src.options, analysis: renderAnalysisSafe(a, p.lang), memory: mem.text, crisis: a.crisis, minutesToDraw: this.minutesToDraw(), seed: `${c.id}:${p.drawIndex}`, skipped: choicesOf(mem.record).skipped.slice(-6) }, this.stack.voice);
+    if (r.source === 'degraded' && r.degradeReason) this.metrics.degradation('voice', 'counsel', r.degradeReason);
+    const view: CounselView = { drawIndex: p.drawIndex, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: w.time };
+    this.counsels.set(`${c.id}:${p.lang}`, view);
+    return view;
+  }
+
+  /** Called every step by the engine: T−lead minutes before the Draw, one counsel job per colony seen in the last two hours. */
+  scheduleCounsel(): void {
+    const w = this.deps.world();
+    const next = this.drawIndexNow() + 1;
+    if (this.lastCounselDraw === next || this.minutesToDraw() > this.cfg.counselLeadMin) return;
+    this.lastCounselDraw = next;
+    for (const c of Object.values(w.colonies)) {
+      if (c.npc || w.time - c.lastSeenAt > 2 * 3600) continue;
+      if (!this.quota.take(c.id, 'counsel')) { this.metrics.degradation('voice', 'counsel', 'quota'); continue; }
+      const lang = this.langOf(c.id);
+      void this.scheduler.enqueue<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, spreadMs: Math.max(0, (this.cfg.counselLeadMin - 5) * 60000), ttlMs: this.cfg.counselLeadMin * 60000 })
+        .then((j) => j.result.catch(() => undefined));
+    }
+  }
+
+  /** The counsel for the coming Draw: cached when written ahead, else written now within the budget (fallback cards past it). */
+  async counsel(colonyId: string, lang: 'fr' | 'en'): Promise<CounselView | null> {
+    const c = this.colony(colonyId);
+    if (!c) return null;
+    this.langs.set(c.id, lang);
+    const next = this.drawIndexNow() + 1;
+    const hit = this.counsels.get(`${c.id}:${lang}`);
+    if (hit && hit.drawIndex === next) return { ...hit, minutesToDraw: this.minutesToDraw() };
+    const src = this.counselSource(this.deps.world(), c);
+    const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time }; };
+    if (!this.stack.voice || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
+    if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
+    const template = await fallback();
+    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, ttlMs: 3600000 });
+    if (out.timedOut) this.counsels.set(`${c.id}:${lang}`, out.result);
+    return out.result;
+  }
+
+  /** "Do it" / "Not now": the choice enters the memory; a taken card runs its command through the world. */
+  async decideCounsel(colonyId: string, cardId: string, take: boolean): Promise<{ ok: true; reply: string; result: unknown } | { ok: false; reason: string }> {
+    const c = this.colony(colonyId);
+    if (!c) return { ok: false, reason: 'no such colony' };
+    const lang = this.langOf(c.id);
+    const view = this.counsels.get(`${c.id}:${lang}`) ?? this.counsels.get(`${c.id}:${lang === 'fr' ? 'en' : 'fr'}`);
+    const card = view?.cards.find((x) => x.id === cardId);
+    if (!card) return { ok: false, reason: 'no such card' };
+    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    await this.memoryStore.save(c.id, recordChoice(mem, take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    let result: unknown = null;
+    if (take && card.command) { result = apply(this.deps.world(), c.id, card.command); this.deps.dirty(c.id); }
+    if (view) view.cards = view.cards.filter((x) => x.id !== card.id);
+    const reply = counselAck(c.persona, lang, take, `${c.id}:${card.id}`);
+    this.pushLine(c.id, reply);
+    return { ok: true, reply, result };
+  }
+
+  // --- episodes (memory, level 1) -------------------------------------------------
+
+  private async runEpisode(p: EpisodeJob): Promise<string> {
+    const c = this.colony(p.colonyId);
+    if (!c) throw new Error('colony gone');
+    const w = this.deps.world();
+    const since = (p.day - 1) * 86400, until = p.day * 86400;
+    const events = w.events.filter((e) => e.at >= since && e.at < until && (e.actors.includes(c.id) || e.kind === 'draw'));
+    const names: Record<string, string> = {}; for (const o of Object.values(w.colonies)) names[o.id] = o.name;
+    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    const choices = choicesOf(mem);
+    const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).join(', ')}.`) : ''].filter(Boolean).join('\n');
+    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.stack.voice);
+    await this.memoryStore.save(c.id, recordEpisode(mem, p.day, r.text, Date.now()));
+    return r.text;
+  }
+
+  /** Called by the engine when the season day turns: one episode per colony seen during the day that ended. */
+  scheduleEpisodes(day: number): void {
+    if (day < 1 || this.lastEpisodeDay === day) return;
+    this.lastEpisodeDay = day;
+    const w = this.deps.world();
+    for (const c of Object.values(w.colonies)) {
+      if (c.npc || c.lastSeenAt < (day - 1) * 86400) continue;
+      void this.scheduler.enqueue<EpisodeJob, string>('episode', 'episode', { colonyId: c.id, lang: this.langOf(c.id), day }, { colony: c.id, key: `episode:${c.id}:${day}`, spreadMs: this.cfg.episodeSpreadMin * 60000, ttlMs: 12 * 3600000 }).then((j) => j.result.catch(() => undefined));
+    }
+  }
+
+  // --- the player's memory: theirs to read and to erase -----------------------------
+
+  async exportMemory(colonyId: string): Promise<{ facts: ReturnType<typeof factsFrom>; record: MemoryRecord; rendered: string } | null> {
+    const c = this.colony(colonyId);
+    if (!c) return null;
+    const mem = await this.memoryOf(c, this.langOf(c.id));
+    return { facts: factsFrom(this.deps.world(), c), record: mem.record, rendered: mem.text };
+  }
+
+  async eraseMemory(colonyId: string): Promise<boolean> {
+    const c = this.colony(colonyId);
+    if (!c) return false;
+    await this.memoryStore.save(c.id, emptyMemory());
+    this.talks.delete(c.id);
+    for (const lang of ['fr', 'en'] as const) { this.briefings.delete(`${c.id}:${lang}`); this.counsels.delete(`${c.id}:${lang}`); }
+    return true;
   }
 
   // --- observability -----------------------------------------------------------

@@ -36,6 +36,12 @@ export interface Config {
   llmWorkers: number;
   /** Per-player LLM quotas (LLM_QUOTA_*). */
   quotas: QuotaLimits;
+  /** The Draw Counsel is written this many minutes before each Draw (decision 0009). */
+  counselLeadMin: number;
+  /** Budget of a live counsel request before the fallback cards answer. */
+  counselDeadlineMs: number;
+  /** Daily episodes are written over this many minutes after the day turns. */
+  episodeSpreadMin: number;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -64,5 +70,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gazetteSpreadMin: num(env.LLM_GAZETTE_SPREAD_MIN, 40),
     llmWorkers: num(env.LLM_WORKERS, 4),
     quotas: limitsFromEnv(env),
+    counselLeadMin: num(env.LLM_COUNSEL_LEAD_MIN, 20),
+    counselDeadlineMs: num(env.LLM_COUNSEL_DEADLINE_MS, 3000),
+    episodeSpreadMin: num(env.LLM_EPISODE_SPREAD_MIN, 30),
   };
 }

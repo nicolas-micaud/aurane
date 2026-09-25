@@ -105,7 +105,8 @@ export class Engine {
     }
     // A new season day: yesterday's Gazette is queued (spread over the off-peak window), never written here.
     const day = Math.floor(this.world.time / 86400);
-    if (day !== this.lastDaySeen) { this.lastDaySeen = day; this.general.scheduleDailyGazette(day); }
+    if (day !== this.lastDaySeen) { this.lastDaySeen = day; this.general.scheduleDailyGazette(day); this.general.scheduleEpisodes(day); }
+    this.general.scheduleCounsel(); // T−20 min before the Draw: queued, never written here
     this.flush();
     if (now - this.lastSnapshot >= this.cfg.snapshotEverySeconds * 1000) {
       this.lastSnapshot = now;

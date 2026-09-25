@@ -88,7 +88,9 @@ export function renderMemory(f: Facts, m: MemoryRecord, lang: Lang): string {
     if (f.treaties.length) L.push(`Traités en vigueur : ${f.treaties.map((t) => `${t.kind} avec ${t.who}`).join(', ')}.`);
     L.push(`Bilan 72 h : ${f.victories} victoire(s), ${f.defeats} défaite(s), ${f.systemsCaptured} capture(s), ${f.systemsLost} système(s) perdu(s), ${f.beaconsLit} Phare(s) rallumé(s).`);
     if (m.seasons.length) L.push(`Saisons passées : ${m.seasons.slice(-2).map((s) => `${s.label} — ${s.summary.fr}`).join(' | ')}.`);
-    if (m.notes.length) L.push(`Notes : ${m.notes.slice(-4).map((n) => n.text).join(' ; ')}.`);
+    { const c = choicesOf(m); if (c.taken.length || c.skipped.length) L.push(`Choix du joueur : a suivi ${c.taken.slice(-5).join(', ') || 'rien'} ; a écarté ${c.skipped.slice(-5).join(', ') || 'rien'}.`); }
+    { const e = episodesOf(m); if (e.length) L.push(`Épisodes récents : ${e.slice(-3).join(' | ')}.`); }
+    { const other = m.notes.filter((n) => !['counsel.taken', 'counsel.skipped', 'order', 'episode'].includes(n.kind)); if (other.length) L.push(`Notes : ${other.slice(-4).map((n) => n.text).join(' ; ')}.`); }
     if (m.recentPhrases.length) L.push(`Formules déjà employées récemment, à ne pas répéter : ${m.recentPhrases.slice(-6).map((p) => `« ${p} »`).join(', ')}.`);
     return L.join('\n');
   }
@@ -98,7 +100,9 @@ export function renderMemory(f: Facts, m: MemoryRecord, lang: Lang): string {
   if (f.treaties.length) L.push(`Treaties in force: ${f.treaties.map((t) => `${t.kind} with ${t.who}`).join(', ')}.`);
   L.push(`Last 72 h: ${f.victories} win(s), ${f.defeats} defeat(s), ${f.systemsCaptured} capture(s), ${f.systemsLost} system(s) lost, ${f.beaconsLit} Beacon(s) lit.`);
   if (m.seasons.length) L.push(`Past seasons: ${m.seasons.slice(-2).map((s) => `${s.label} — ${s.summary.en}`).join(' | ')}.`);
-  if (m.notes.length) L.push(`Notes: ${m.notes.slice(-4).map((n) => n.text).join('; ')}.`);
+  { const c = choicesOf(m); if (c.taken.length || c.skipped.length) L.push(`Player's choices: followed ${c.taken.slice(-5).join(', ') || 'nothing'}; set aside ${c.skipped.slice(-5).join(', ') || 'nothing'}.`); }
+  { const e = episodesOf(m); if (e.length) L.push(`Recent episodes: ${e.slice(-3).join(' | ')}.`); }
+  { const other = m.notes.filter((n) => !['counsel.taken', 'counsel.skipped', 'order', 'episode'].includes(n.kind)); if (other.length) L.push(`Notes: ${other.slice(-4).map((n) => n.text).join('; ')}.`); }
   if (m.recentPhrases.length) L.push(`Formulas used recently, do not repeat: ${m.recentPhrases.slice(-6).map((p) => `"${p}"`).join(', ')}.`);
   return L.join('\n');
 }
@@ -108,6 +112,26 @@ export function signaturesIn(text: string, candidates: readonly string[]): strin
   const t = text.toLowerCase();
   return candidates.filter((c) => t.includes(c.toLowerCase().replace(/[.!…]$/, '')));
 }
+
+/** The *choices* layer: what the player took or set aside (a counsel card, an order), written without a model. */
+export function recordChoice(m: MemoryRecord, kind: 'counsel.taken' | 'counsel.skipped' | 'order', id: string, at: number, cap = 60): MemoryRecord {
+  const notes = [...m.notes, { at, kind, text: id }].slice(-cap);
+  return { ...m, notes };
+}
+
+/** The *episodes* layer: one line per active day, written by the model (or a template), read again on return. */
+export function recordEpisode(m: MemoryRecord, day: number, text: string, at: number, cap = 14): MemoryRecord {
+  const notes = [...m.notes.filter((n) => !(n.kind === 'episode' && n.text.startsWith(`J${day} `))), { at, kind: 'episode', text: `J${day} ${text}` }];
+  const episodes = notes.filter((n) => n.kind === 'episode');
+  const keep = new Set(episodes.slice(-cap));
+  return { ...m, notes: notes.filter((n) => n.kind !== 'episode' || keep.has(n)) };
+}
+
+export const choicesOf = (m: MemoryRecord): { taken: string[]; skipped: string[] } => ({
+  taken: m.notes.filter((n) => n.kind === 'counsel.taken').map((n) => n.text),
+  skipped: m.notes.filter((n) => n.kind === 'counsel.skipped').map((n) => n.text),
+});
+export const episodesOf = (m: MemoryRecord): string[] => m.notes.filter((n) => n.kind === 'episode').map((n) => n.text);
 
 export function rememberPhrases(m: MemoryRecord, phrases: readonly string[], cap = 10): MemoryRecord {
   const recent = [...m.recentPhrases.filter((p) => !phrases.includes(p)), ...phrases].slice(-cap);

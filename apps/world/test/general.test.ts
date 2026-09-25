@@ -27,7 +27,7 @@ const metrics = new LlmMetrics();
 
 beforeAll(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'aurane-general-'));
-  const cfg = loadConfig({ SNAPSHOT_DIR: dir, GALAXY_RADIUS: '4', NPC_COUNT: '3', SEASON_SEED: 'general-test', TIME_SCALE: '1', ADMIN_TOKEN: 'adm', DOCTRINE_CONFIRM: '1', LLM_TALK_DEADLINE_MS: '600', LLM_BRIEFING_DEADLINE_MS: '600', LLM_QUOTA_TALK_HOUR: '3' });
+  const cfg = loadConfig({ SNAPSHOT_DIR: dir, GALAXY_RADIUS: '4', NPC_COUNT: '3', SEASON_SEED: 'general-test', TIME_SCALE: '1', ADMIN_TOKEN: 'adm', DOCTRINE_CONFIRM: '1', LLM_TALK_DEADLINE_MS: '600', LLM_BRIEFING_DEADLINE_MS: '600', LLM_QUOTA_TALK_HOUR: '3', LLM_EPISODE_SPREAD_MIN: '0' });
   engine = new Engine(cfg, new FileStore(dir), { stack, metrics, jobStore: new MemoryJobStore() });
   await engine.init();
   engine.start();
@@ -104,5 +104,46 @@ describe('the Generals behind the queue', () => {
     expect(h.length).toBe(before + 1);
     expect(h.at(-1)!.who).toBe('general');
     expect(h.at(-1)!.text).toMatch(/Marché/);
+  });
+
+  it('serves the Draw Counsel as cards, runs a taken card, remembers the choice, and lets the player read and erase the memory', async () => {
+    (voice as unknown as { chat: LlmClient['chat'] }).chat = scripted([() => JSON.stringify({ cards: [{ id: 'nope', title: 'x', line: 'y' }] })]).chat;
+    const v = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { cards: { id: string; title: string; line: string; command: unknown }[]; source: string; drawIndex: number };
+    expect(v.cards.length).toBeGreaterThanOrEqual(1);
+    expect(v.cards.length).toBeLessThanOrEqual(3);
+    expect(['llm', 'fallback', 'degraded']).toContain(v.source);
+    const card = v.cards[0]!;
+    const bad = await post('/api/counsel/skip', { id: 'ghost' });
+    expect(bad.status).toBe(404);
+    const took = await (await post('/api/counsel/take', { id: card.id })).json() as { ok: boolean; reply: string };
+    expect(took.ok).toBe(true);
+    expect(took.reply).toMatch(/Tirage|Draw/);
+    const again = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { cards: { id: string }[] };
+    expect(again.cards.some((c) => c.id === card.id)).toBe(false); // a taken card leaves the counsel
+    const mem = await (await fetch(`${base}/api/memory`, { headers: auth() })).json() as { record: { notes: { kind: string; text: string }[] }; rendered: string };
+    expect(mem.record.notes.some((n) => n.kind === 'counsel.taken' && n.text === card.id)).toBe(true);
+    expect(mem.rendered).toContain('a suivi');
+    expect(engine.history(colonyId).at(-1)!.text).toBe(took.reply);
+    const erased = await (await fetch(`${base}/api/memory`, { method: 'DELETE', headers: auth() })).json() as { ok: boolean };
+    expect(erased.ok).toBe(true);
+    const after = await (await fetch(`${base}/api/memory`, { headers: auth() })).json() as { record: { notes: unknown[] } };
+    expect(after.record.notes.length).toBe(0);
+  });
+
+  it('queues one counsel per recently seen colony twenty minutes before the Draw, and an episode per active colony when the day turns', async () => {
+    const before = await engine.general.scheduler.counts();
+    engine.world.time = 3600 * 5 - 15 * 60; // T−15 min before Draw 5
+    engine.world.colonies[colonyId]!.lastSeenAt = engine.world.time - 600;
+    engine.general.scheduleCounsel();
+    engine.general.scheduleCounsel(); // idempotent for the same Draw
+    await new Promise((r) => setTimeout(r, 30));
+    const mid = await engine.general.scheduler.counts();
+    expect(mid.queued + mid.running + mid.done - (before.queued + before.running + before.done)).toBe(1);
+    (voice as unknown as { chat: LlmClient['chat'] }).chat = scripted([() => 'Tu as tenu ton étoile et relié ta voisine : une bonne première journée.']).chat;
+    engine.world.time = 86400 + 10;
+    engine.general.scheduleEpisodes(1);
+    for (let i = 0; i < 40 && !(await engine.general.exportMemory(colonyId))!.record.notes.some((n) => n.kind === 'episode'); i++) await new Promise((r) => setTimeout(r, 100));
+    const mem = await engine.general.exportMemory(colonyId);
+    expect(mem!.record.notes.some((n) => n.kind === 'episode' && n.text.startsWith('J1 '))).toBe(true);
   });
 });
