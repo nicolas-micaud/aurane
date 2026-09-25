@@ -157,3 +157,18 @@ describe('journal, alerts and decrees', () => {
     expect(migrated.colonies[me.id]!.decrees).toEqual([]);
   });
 });
+
+describe('late joiners', () => {
+  it('a colony founded mid-season expands before its first Draw instead of stalling on an unmeasured income', () => {
+    const w = createWorld('late1', { radius: 4 });
+    spawnColony(w, { name: 'Early', faction: 'concordat', persona: 'vane', npc: true });
+    tick(w, 3600 * 30); // day two of the season
+    const late = spawnColony(w, { name: 'Late', faction: 'guild', persona: 'oriel' });
+    // The expansion roll is seeded per tick: over a few ticks the General must try to link at least once.
+    const rounds = [1, 2, 3, 4, 5, 6, 7, 8].map((i) => decide(w, late, i));
+    expect(rounds.some((d) => d.commands.some((c) => c.type === 'build_relay'))).toBe(true);
+    for (const d of rounds) expect(d.notes).not.toContainEqual({ kind: 'expansion.energy' });
+    // No backup relay at the capital before the colony is six hours old: the Metal goes to expansion first.
+    for (const d of rounds) expect(d.commands.some((c) => c.type === 'build' && c.building === 'relay')).toBe(false);
+  });
+});

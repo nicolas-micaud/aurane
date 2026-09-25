@@ -1,0 +1,258 @@
+{
+  "fr": {
+    "lang": "fr",
+    "otherLang": "en",
+    "htmlLang": "fr",
+    "title": "Aurane — jeu de stratégie spatiale gratuit dans le navigateur",
+    "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors.",
+    "rulesTitle": "Les règles d'Aurane — Saison 0",
+    "rulesDescription": "Les règles complètes d'Aurane pour la Saison 0 : relier, le Tirage et les ressources, le Marché, construire, combattre, la diplomatie et les Sept Phares.",
+    "privacyTitle": "Confidentialité — Aurane",
+    "privacyDescription": "Ce que la liste d'attente d'Aurane enregistre, pourquoi, combien de temps, et comment se désinscrire. Éditeur : ninabot Sàrl, Genève.",
+    "skip": "Aller au contenu",
+    "nav": {
+      "game": "Le jeu",
+      "general": "Le Général",
+      "lore": "L'Aurane",
+      "factions": "Factions",
+      "season": "Saison 0",
+      "rules": "Règles",
+      "waitlist": "Liste d'attente",
+      "privacy": "Confidentialité",
+      "play": "play.playaurane.com"
+    },
+    "tagline": "can't stop the signal",
+    "hook": "Ton Général IA joue pendant que tu dors.",
+    "cta": "Rejoindre la liste d'attente",
+    "ctaSub": "Join the waitlist",
+    "haveCode": "J'ai un code d'invitation",
+    "seasonLine": "Saison 0 : bêta fermée sur invitation, puis ouverte à tous, sans compte.",
+    "videoCaption": "Le Réseau qui s'étend, capturé dans le jeu.",
+    "videoFallback": "Ton navigateur ne lit pas cette vidéo : l'image montre le Réseau de relais qui s'étend dans la galaxie.",
+    "threeTitle": "Le jeu en trois points",
+    "points": [
+      {
+        "id": "relier",
+        "title": "Relier",
+        "quote": "Un seul verbe : <strong>relier</strong>. Deux étoiles reliées forment un relais, et seul ce qui est relié à ta capitale existe vraiment.",
+        "icon": "/images/game/structure-relay.png",
+        "alt": "Relais"
+      },
+      {
+        "id": "tirage",
+        "title": "Le Tirage",
+        "quote": "Chaque heure, la galaxie bat au rythme du <strong>Tirage</strong> : ressources tirées, échanges réglés, nouvelles publiées.",
+        "icon": "/images/game/structure-station.png",
+        "alt": "Station"
+      },
+      {
+        "id": "general",
+        "title": "Le Général",
+        "quote": "Tu lui écris ta doctrine en langage naturel — « défends le pont vers Ancre à tout prix, vends le surplus de Vivres, ne déclare jamais la guerre sans moi » — et il l'exécute quand tu dors.",
+        "icon": "/images/game/structure-antenna.png",
+        "alt": "Antenne"
+      }
+    ],
+    "rulesLink": "Lire les règles complètes",
+    "rulesLead": "Tout le jeu tient en une carte et un rendez-vous horaire. Les règles ci-dessous sont celles conçues pour la Saison 0.",
+    "toc": "Sommaire",
+    "backHome": "Retour à l'accueil",
+    "anchorTitle": "Lien vers cette section",
+    "form": {
+      "title": "Rejoindre la liste d'attente",
+      "lead": "Laisse ton adresse : on t'écrit quand ta place s'ouvre, et pour rien d'autre.",
+      "email": "Adresse e-mail",
+      "name": "Prénom ou pseudo (facultatif)",
+      "langLabel": "Langue des messages",
+      "fr": "Français",
+      "en": "English",
+      "consent": "J'accepte que ninabot Sàrl garde mon adresse pour m'informer de l'ouverture d'Aurane. Désinscription possible à tout moment.",
+      "privacyLink": "Ce que nous conservons et pourquoi",
+      "submit": "Rejoindre la liste d'attente",
+      "sending": "Envoi…",
+      "ok": "Merci, tu es sur la liste. Le Réveil t'attendra.",
+      "captcha": "Le contrôle anti-robot n'a pas abouti, réessaie.",
+      "invalid": "Adresse e-mail invalide.",
+      "consentRequired": "Il faut accepter la conservation de ton adresse pour rejoindre la liste.",
+      "rate": "Trop d'essais, reviens dans une heure.",
+      "err": "Le Signal est coupé, réessaie plus tard."
+    },
+    "footer": {
+      "legal": "© Aurane — ninabot Sàrl, Genève",
+      "discord": "Discord",
+      "x": "@playaurane"
+    },
+    "privacy": {
+      "h1": "Confidentialité",
+      "updated": "Dernière mise à jour : 25 septembre 2026.",
+      "blocks": [
+        {
+          "h": "Qui",
+          "p": [
+            "Le site playaurane.com et le jeu Aurane sont édités par <strong>ninabot Sàrl</strong>, Genève, Suisse. Cette page s'applique à la liste d'attente de la Saison 0. Le jeu lui-même (play.playaurane.com) a ses propres règles, décrites dans l'application."
+          ]
+        },
+        {
+          "h": "Ce que la liste d'attente enregistre",
+          "p": [
+            "Ton <strong>adresse e-mail</strong> (obligatoire), un <strong>prénom ou pseudo</strong> si tu en donnes un, la <strong>langue</strong> choisie, la <strong>date</strong> de l'inscription, et la <strong>source</strong> de ta visite (paramètres UTM de l'adresse et site d'où tu venais, s'il y en a) pour savoir par quel canal les joueurs nous trouvent.",
+            "Le formulaire est protégé par Cloudflare Turnstile, qui vérifie qu'un humain envoie le formulaire ; Cloudflare traite pour cela des données techniques (adresse IP, navigateur) selon sa propre politique. Nous ne recevons pas ton adresse IP en clair."
+          ]
+        },
+        {
+          "h": "Pourquoi",
+          "p": [
+            "Pour t'écrire quand ta place s'ouvre dans la Saison 0, puis quand le jeu s'ouvre à tous. Rien d'autre : pas de publicité, pas de revente, pas de croisement avec d'autres fichiers. Base légale : ton consentement (case à cocher du formulaire), au sens de la LPD suisse et du RGPD."
+          ]
+        },
+        {
+          "h": "Combien de temps",
+          "p": [
+            "Jusqu'à ta désinscription, et au plus tard un an après la fin de la Saison 0. Les données sont hébergées chez Cloudflare (Union européenne et Suisse selon la région de traitement)."
+          ]
+        },
+        {
+          "h": "Tes droits",
+          "p": [
+            "Accès, rectification, effacement, retrait du consentement : chaque message de la liste contient un lien de désinscription, et tu peux aussi nous écrire à l'adresse indiquée dans le pied de page de ce site ou répondre à n'importe quel message reçu de la liste. Tu peux saisir le Préposé fédéral à la protection des données et à la transparence (Suisse) ou l'autorité de ton pays."
+          ]
+        },
+        {
+          "h": "Cookies",
+          "p": [
+            "Le site ne pose aucun cookie de suivi. Il mémorise ta langue dans le stockage local de ton navigateur, et Cloudflare Turnstile peut poser un cookie technique le temps de la vérification."
+          ]
+        }
+      ]
+    },
+    "rulesH1": "Les règles de la Saison 0"
+  },
+  "en": {
+    "lang": "en",
+    "otherLang": "fr",
+    "htmlLang": "en",
+    "title": "Aurane — free space strategy game in your browser",
+    "description": "Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, and let your AI General play while you sleep.",
+    "rulesTitle": "The rules of Aurane — Season 0",
+    "rulesDescription": "The complete rules of Aurane for Season 0: linking, the Draw and resources, the Market, building, fighting, diplomacy and the Seven Beacons.",
+    "privacyTitle": "Privacy — Aurane",
+    "privacyDescription": "What the Aurane waitlist stores, why, for how long, and how to unsubscribe. Publisher: ninabot Sàrl, Geneva.",
+    "skip": "Skip to content",
+    "nav": {
+      "game": "The game",
+      "general": "The General",
+      "lore": "The Aurane",
+      "factions": "Factions",
+      "season": "Season 0",
+      "rules": "Rules",
+      "waitlist": "Waitlist",
+      "privacy": "Privacy",
+      "play": "play.playaurane.com"
+    },
+    "tagline": "can't stop the signal",
+    "hook": "Your AI General plays while you sleep.",
+    "cta": "Join the waitlist",
+    "ctaSub": "Rejoindre la liste d'attente",
+    "haveCode": "I have an invitation code",
+    "seasonLine": "Season 0: closed, invitation-only beta, then open to everyone, no account needed.",
+    "videoCaption": "The Network spreading, captured in the game.",
+    "videoFallback": "Your browser does not play this video: the image shows the relay Network spreading across the galaxy.",
+    "threeTitle": "The game in three points",
+    "points": [
+      {
+        "id": "link",
+        "title": "Link",
+        "quote": "One verb: <strong>link</strong>. Two linked stars make a relay, and only what is linked to your capital truly exists.",
+        "icon": "/images/game/structure-relay.png",
+        "alt": "Relay"
+      },
+      {
+        "id": "draw",
+        "title": "The Draw",
+        "quote": "Every hour the galaxy beats to the <strong>Draw</strong>: resources drawn, trades settled, news published.",
+        "icon": "/images/game/structure-station.png",
+        "alt": "Station"
+      },
+      {
+        "id": "general",
+        "title": "The General",
+        "quote": "You write your doctrine in plain language — \"hold the bridge to Anchor at all costs, sell surplus Food, never declare war without me\" — and the General carries it out while you sleep.",
+        "icon": "/images/game/structure-antenna.png",
+        "alt": "Antenna"
+      }
+    ],
+    "rulesLink": "Read the full rules",
+    "rulesLead": "The whole game fits in one map and one hourly rendezvous. The rules below are the ones designed for Season 0.",
+    "toc": "Contents",
+    "backHome": "Back to the home page",
+    "anchorTitle": "Link to this section",
+    "form": {
+      "title": "Join the waitlist",
+      "lead": "Leave your address: we write when your seat opens, and for nothing else.",
+      "email": "E-mail address",
+      "name": "First name or nickname (optional)",
+      "langLabel": "Language of our messages",
+      "fr": "Français",
+      "en": "English",
+      "consent": "I agree that ninabot Sàrl keeps my address to tell me when Aurane opens. Unsubscribe at any time.",
+      "privacyLink": "What we keep and why",
+      "submit": "Join the waitlist",
+      "sending": "Sending…",
+      "ok": "Thank you, you're on the list. The Awakening will wait for you.",
+      "captcha": "The anti-bot check did not complete, please try again.",
+      "invalid": "Invalid e-mail address.",
+      "consentRequired": "You need to accept that we keep your address to join the list.",
+      "rate": "Too many attempts, come back in an hour.",
+      "err": "The Signal is down, please try again later."
+    },
+    "footer": {
+      "legal": "© Aurane — ninabot Sàrl, Geneva",
+      "discord": "Discord",
+      "x": "@playaurane"
+    },
+    "privacy": {
+      "h1": "Privacy",
+      "updated": "Last updated: 25 September 2026.",
+      "blocks": [
+        {
+          "h": "Who",
+          "p": [
+            "The playaurane.com website and the Aurane game are published by <strong>ninabot Sàrl</strong>, Geneva, Switzerland. This page covers the Season 0 waitlist. The game itself (play.playaurane.com) has its own rules, described inside the application."
+          ]
+        },
+        {
+          "h": "What the waitlist stores",
+          "p": [
+            "Your <strong>e-mail address</strong> (required), a <strong>first name or nickname</strong> if you give one, the <strong>language</strong> you chose, the <strong>date</strong> you signed up, and the <strong>source</strong> of your visit (UTM parameters in the address and the site you came from, when present) so we know which channels bring players.",
+            "The form is protected by Cloudflare Turnstile, which checks that a human is sending it; to do so Cloudflare processes technical data (IP address, browser) under its own policy. We do not receive your IP address in clear."
+          ]
+        },
+        {
+          "h": "Why",
+          "p": [
+            "To write to you when your seat opens in Season 0, then when the game opens to everyone. Nothing else: no advertising, no resale, no matching with other files. Legal basis: your consent (the form's checkbox), under the Swiss FADP and the GDPR."
+          ]
+        },
+        {
+          "h": "For how long",
+          "p": [
+            "Until you unsubscribe, and at the latest one year after the end of Season 0. The data is hosted at Cloudflare (European Union and Switzerland depending on the processing region)."
+          ]
+        },
+        {
+          "h": "Your rights",
+          "p": [
+            "Access, rectification, erasure, withdrawal of consent: every message from the list carries an unsubscribe link, and you can also write to the address shown in this site's footer or reply to any message received from the list. You may lodge a complaint with the Swiss Federal Data Protection and Information Commissioner or your country's authority."
+          ]
+        },
+        {
+          "h": "Cookies",
+          "p": [
+            "The site sets no tracking cookie. It remembers your language in your browser's local storage, and Cloudflare Turnstile may set a technical cookie for the duration of the check."
+          ]
+        }
+      ]
+    },
+    "rulesH1": "The rules of Season 0"
+  }
+}
