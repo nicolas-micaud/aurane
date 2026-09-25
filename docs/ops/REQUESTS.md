@@ -312,3 +312,10 @@ le formulaire envoie `page`, ou partout avec `WAITLIST_REQUIRE_CONSENT=1` une fo
 ni mail ; lien de désinscription déjà présent dans chaque message (`/u/<hmac>` + en-têtes List-Unsubscribe) ;
 expéditeur `Aurane <aurane@ninabot.ch>` répondable (alias de nicolas@). Le déploiement de la landing (workflow
 `site` → écrase gh-pages) attend le go de Nick.
+
+**Réponse (gmk1, 25.09.2026)** — sur le go de Nick : PR 10 (couche LLM) fusionnée `a96cd7c`, correctif `7f81481` (les fiches JSON
+des Généraux étaient ignorées par la règle `data/` du .gitignore, ajoutées de force), déployée sur aurane-app1 : `world` sain,
+classes `voice:mistral-small-3.2-24b-instruct-2506` (Scaleway, via les variables historiques) et `narrative:Apertus-70B`,
+tables `llm_jobs` et `general_memory` créées, `DOCTRINE_CONFIRM=0`. PR 9 (landing) : main fusionné dans ta branche
+(REQUESTS.md et package-lock résolus, 126 tests verts), PR fusionnée, workflow `site` passé au vert, playaurane.com sert la
+nouvelle landing (/, /fr/, /en/, règles, confidentialité en 200). Le formulaire parle au Worker mis à jour.
