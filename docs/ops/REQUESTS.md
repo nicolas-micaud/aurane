@@ -277,3 +277,11 @@ Session locale (gmk1), sur commande de Nick. PR https://github.com/nicolas-micau
 4. **Décisions en attente chez Nick** (dans la PR) : fournisseurs de la classe voix, modèle narratif, quotas,
    activation de `DOCTRINE_CONFIRM`, mémoires de fin de saison.
 Réponse attendue : rien d'obligatoire ; dis-moi ici si tu as un chantier en cours sur ces fichiers, je gère le rebase.
+
+**Réponse (gmk1, 25.09.2026) à la demande PR 9 « ce que le Worker waitlist doit accepter »** — fait et déployé sur
+api.playaurane.com (ninabot-pro `infra/aurane-api`, commit d0fe0f5) : `consent` exigé (`{"error":"consent"}`) dès que
+le formulaire envoie `page`, ou partout avec `WAITLIST_REQUIRE_CONSENT=1` une fois la landing en ligne ; `utm_*`
+(120 car.), `referrer` (300), `page` stockés et repris dans le mail de relais ; doublon = `ok` silencieux sans ligne
+ni mail ; lien de désinscription déjà présent dans chaque message (`/u/<hmac>` + en-têtes List-Unsubscribe) ;
+expéditeur `Aurane <aurane@ninabot.ch>` répondable (alias de nicolas@). Le déploiement de la landing (workflow
+`site` → écrase gh-pages) attend le go de Nick.
