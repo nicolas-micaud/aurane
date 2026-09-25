@@ -178,6 +178,7 @@ export async function compileDoctrine(text: string, ctx: DoctrineContext, client
     const ans = await askJson(client, { task: 'doctrine', schema: DOCTRINE_JSON_SCHEMA, zod: DoctrineOutputSchema, messages: [{ role: 'system', content: system }, { role: 'user', content: `DOCTRINE (${ctx.lang}): ${text.slice(0, 2000)}` }] });
     const out = ans.value;
     const warnings: string[] = ans.repaired ? ['model answer repaired once'] : [];
+    if (!out.question && out.orders && /\?\s*$/.test(out.reply.trim())) { out.question = out.reply.trim(); out.orders = null; }
     if (out.question && !out.orders) {
       return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: out.question.trim().slice(0, 300), issues: [], source: 'llm', warnings, reply: out.question.trim().slice(0, 300) };
     }

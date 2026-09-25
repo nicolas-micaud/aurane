@@ -31,8 +31,10 @@ export function semanticCheck(policy: Policy, ctx: DoctrineContext, text = ''): 
   const warlike = /\b(raid|attaque|attack|harc[eè]le|harass|pille|plunder|conqu)/.test(t);
   if (pacifist && warlike && !/sauf|except|mais|but/.test(t)) issues.push({ kind: 'pacifist_but_aggressive', detail: '', blocking: true });
   if (pacifist && p.aggression > 0 && !warlike) { p.aggression = 0; }
-  if (/défends? tout|defend everything|protect everything|tiens tout/.test(t) && !p.defendFirst.length) issues.push({ kind: 'defend_all', detail: '', blocking: true });
-  if (/vends? (le |du |mon |the )?surplus\b(?![^.]*(métal|metal|énergie|energie|energy|vivres|food|cristal|crystal|rium))|sell (the |my )?surplus\b(?![^.]*(metal|energy|food|crystal|rium))/.test(t) && !Object.keys(p.sellAbove).length) issues.push({ kind: 'sell_what', detail: '', blocking: true });
+  // "Defend everything" without a named system is ambiguous whatever the model filled in: the question is asked from the text.
+  const namesInText = Object.values(ctx.systems).some((n) => n.length >= 3 && t.includes(n.toLowerCase()));
+  if (/défends? tout|defend everything|protect everything|tiens tout/.test(t) && !namesInText && !/capitale|capital/.test(t)) issues.push({ kind: 'defend_all', detail: '', blocking: true });
+  if (/vends? (le |du |mon |the )?surplus\b|sell (the |my )?surplus\b/.test(t) && !/métal|metal|énergie|energie|energy|vivres|food|cristal|crystal|rium/.test(t)) issues.push({ kind: 'sell_what', detail: '', blocking: true });
   if (/(étends|expan|grandis|grow|expand)/.test(t) && /(ne t'étends pas|stop expand|no expansion|pas d'expansion|consolid)/.test(t)) issues.push({ kind: 'expansion_frozen_but_grow', detail: '', blocking: true });
   void RES_WORDS;
   return { policy: p, issues };

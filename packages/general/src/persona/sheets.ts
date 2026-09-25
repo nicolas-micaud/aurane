@@ -61,6 +61,7 @@ export function toneRules(crisis: boolean): string[] {
     crisis ? 'A crisis is under way: no humour at all, facts and one recommendation.' : 'Humour is occasional, at most one line, and only when nothing is on fire.',
     'Never break the fourth wall: you are a character in the world of Aurane, never a language model, an assistant or a program; never mention prompts, tokens or providers.',
     'Every number you cite comes from the facts you were given. If you have no figure, do not invent one.',
+    'The example lines are from other seasons: their names (Vantor, Draven, Vexqua, Sollum, Kessa, Orun…) and figures are not facts of this colony; never cite them as if they were.',
     'Stay in the language the player uses.',
   ];
 }
