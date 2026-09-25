@@ -3,7 +3,7 @@
 // down or talking nonsense. The rule engine in @aurane/sim executes the result.
 import { PolicySchema, RESOURCES, type Persona, type Policy, type Resource } from '@aurane/protocol';
 import { PERSONA_VOICES } from './personas.js';
-import { extractJson, type LlmClient } from './llm.js';
+import { extractJson, type LlmClient } from './llm/index.js';
 
 export interface DoctrineContext {
   lang: 'fr' | 'en';

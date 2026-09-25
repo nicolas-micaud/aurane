@@ -2,7 +2,7 @@
 // always works; the model, when available, rewrites it with personality.
 import type { Persona } from '@aurane/protocol';
 import type { PlayerView, WorldEvent } from '@aurane/sim';
-import type { LlmClient } from './llm.js';
+import type { LlmClient } from './llm/index.js';
 import { PERSONA_VOICES } from './personas.js';
 
 export interface BriefingInput {

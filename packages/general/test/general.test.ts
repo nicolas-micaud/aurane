@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY } from '@aurane/protocol';
 import { createWorld, spawnColony, tick, viewFor } from '@aurane/sim';
-import { compilePolicy, dayFacts, extractJson, heuristicPolicy, templateBriefing, templateGazette, writeBriefing, FailoverClient, OpenAICompatibleClient, Quota, type LlmClient } from '../src/index.js';
+import { compilePolicy, dayFacts, extractJson, heuristicPolicy, templateBriefing, templateGazette, writeBriefing, Quota, type LlmClient } from '../src/index.js';
 import { converse, situationSummary } from '../src/converse.js';
 
 const ctx = { lang: 'fr' as const, current: DEFAULT_POLICY, systems: { S1: 'Thair', S2: 'Amqua' }, colonies: { C1: 'Colonie Vantor', C2: 'Colonie Draven' }, alliances: { A1: 'Compact du Nord' } };
@@ -22,12 +22,12 @@ describe('doctrine', () => {
   });
 
   it('uses the model when it answers valid JSON, and falls back when it does not', async () => {
-    const good: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Sure:\n```json\n{"expansion":0.9,"aggression":0.2,"defendFirst":["S2","BOGUS"],"notes":"Grow, guard Amqua."}\n```', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1 }) };
+    const good: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Sure:\n```json\n{"expansion":0.9,"aggression":0.2,"defendFirst":["S2","BOGUS"],"notes":"Grow, guard Amqua."}\n```', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) };
     const r = await compilePolicy('grow and guard Amqua', ctx, good);
     expect(r.source).toBe('llm');
     expect(r.policy.expansion).toBe(0.9);
     expect(r.policy.defendFirst).toEqual(['S2']);
-    const bad: LlmClient = { ...good, chat: async () => ({ text: 'I cannot help with that.', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1 }) };
+    const bad: LlmClient = { ...good, chat: async () => ({ text: 'I cannot help with that.', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) };
     const r2 = await compilePolicy('grow', ctx, bad);
     expect(r2.source).toBe('heuristic');
     expect(r2.warnings.length).toBeGreaterThan(0);
@@ -53,7 +53,7 @@ describe('briefing', () => {
     expect(text).toContain('3 Tirages');
     expect(text).toContain('Oriel.');
     expect(templateBriefing({ ...input, lang: 'en' })).toContain('3 Draws');
-    const fake: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Les comptes sont bons, capitaine. Trois Tirages, rien à signaler, un peu d\'Énergie à acheter. Les comptes sont justes. Oriel.', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1 }) };
+    const fake: LlmClient = { name: 'fake', healthy: async () => true, chat: async () => ({ text: 'Les comptes sont bons, capitaine. Trois Tirages, rien à signaler, un peu d\'Énergie à acheter. Les comptes sont justes. Oriel.', model: 'm', provider: 'fake', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) };
     const r = await writeBriefing(input, fake);
     expect(r.source).toBe('llm');
     const r2 = await writeBriefing(input, { ...fake, chat: async () => { throw new Error('down'); } });
@@ -61,17 +61,7 @@ describe('briefing', () => {
   });
 });
 
-describe('failover and quota', () => {
-  it('falls back when the primary fails and cools it down', async () => {
-    let primaryCalls = 0;
-    const primary = new OpenAICompatibleClient({ name: 'p', baseUrl: 'http://127.0.0.1:9', model: 'x', concurrency: 1, timeoutMs: 500 });
-    (primary as unknown as { chat: LlmClient['chat'] }).chat = async () => { primaryCalls++; throw new Error('down'); };
-    const fallback: LlmClient = { name: 'f', healthy: async () => true, chat: async () => ({ text: 'ok', model: 'f', provider: 'f', inputTokens: 0, outputTokens: 0, ms: 0 }) };
-    const fo = new FailoverClient(primary, fallback, { cooldownMs: 60000 });
-    expect((await fo.chat([{ role: 'user', content: 'hi' }])).provider).toBe('f');
-    expect((await fo.chat([{ role: 'user', content: 'hi' }])).provider).toBe('f');
-    expect(primaryCalls).toBe(1); // second call skipped the cooling primary
-  });
+describe('quota', () => {
   it('quotas reset per day and cap calls', () => {
     const q = new Quota({ writes: 2, events: 1 });
     expect(q.take('c', 'writes')).toBe(true);

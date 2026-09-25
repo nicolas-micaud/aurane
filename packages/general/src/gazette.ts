@@ -2,7 +2,7 @@
 // Template first (always available, deterministic), model rewrite when a client exists.
 import type { World } from '@aurane/sim';
 import { colonyScore, layoutOf } from '@aurane/sim';
-import type { LlmClient } from './llm.js';
+import type { LlmClient } from './llm/index.js';
 
 export interface GazetteIssue {
   day: number;                 // season day (1-based)
@@ -125,7 +125,7 @@ export async function writeGazette(w: World, day: number, lang: 'fr' | 'en', cli
   ];
   try {
     const res = await client.chat(messages, { maxTokens: 900, temperature: 0.6, timeoutMs: 60000 });
-    const { extractJson } = await import('./llm.js');
+    const { extractJson } = await import('./llm/index.js');
     const raw = extractJson(res.text) as { title?: string; lead?: string; sections?: { heading?: string; body?: string }[] };
     if (!raw.title || !raw.sections?.length) return base;
     return { ...base, title: String(raw.title).slice(0, 120), lead: String(raw.lead ?? base.lead).slice(0, 400), sections: raw.sections.slice(0, 6).map((x) => ({ heading: String(x.heading ?? '').slice(0, 80), body: String(x.body ?? '').slice(0, 1200) })), source: 'llm' };

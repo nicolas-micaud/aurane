@@ -1,10 +1,10 @@
 // Smoke test against the configured providers: `npm run -w packages/general smoke`.
 // Reads LLM_PRIMARY_* / LLM_FALLBACK_* from the environment; prints nothing secret.
 import { DEFAULT_POLICY } from '@aurane/protocol';
-import { clientFromEnv } from './llm.js';
+import { stackFromEnv } from './llm/index.js';
 import { compilePolicy } from './doctrine.js';
 
-const client = clientFromEnv();
+const client = stackFromEnv().voice;
 if (!client) { console.error('no LLM configured (LLM_PRIMARY_BASE_URL/LLM_PRIMARY_MODEL or LLM_FALLBACK_*)'); process.exit(2); }
 console.log(JSON.stringify({ healthy: await client.healthy() }));
 const started = Date.now();

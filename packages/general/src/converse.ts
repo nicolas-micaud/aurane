@@ -3,7 +3,7 @@
 import type { Persona, Policy } from '@aurane/protocol';
 import type { PlayerView } from '@aurane/sim';
 import { heuristicPolicy, summarize, type DoctrineContext } from './doctrine.js';
-import { extractJson, type LlmClient } from './llm.js';
+import { extractJson, type LlmClient } from './llm/index.js';
 import { MECHANICS_PRIMER, PERSONA_VOICES } from './personas.js';
 import { PolicySchema } from '@aurane/protocol';
 
