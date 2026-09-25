@@ -6,7 +6,7 @@ import {
   apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { inboundWarning, type GazetteIssue, type Turn } from '@aurane/general';
+import { inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
@@ -134,6 +134,13 @@ export class Engine {
     if (this.lastEventSeen > w.events.length) this.lastEventSeen = 0;
     for (let i = this.lastEventSeen; i < w.events.length; i++) {
       const e = w.events[i]!;
+      if (e.kind === 'onboarding.unlocked') {
+        // A new screen opens: the General says its first word on it, in the player's language, no model.
+        const c = w.colonies[e.actors[0] ?? ''];
+        const d = e.data as { tier?: number; all?: boolean } | undefined;
+        if (c && !c.npc) this.general.pushLine(c.id, tierUnlocked(c.persona, this.general.langOf(c.id), d?.tier ?? 1, d?.all === true));
+        continue;
+      }
       if (e.kind !== 'fleet.inbound') continue;
       const c = w.colonies[e.actors[1] ?? ''];
       if (!c || c.npc) continue;

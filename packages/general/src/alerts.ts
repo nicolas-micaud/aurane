@@ -30,3 +30,100 @@ export function inboundWarning(persona: Persona, lang: 'fr' | 'en', f: InboundFa
     case 'solen': return `The Signal brings me a shadow: ${ships} from ${f.from} approach ${f.system}, in ${t}. Nothing seen in time is lost. Let us reinforce, and keep the door open to an envoy.`;
   }
 }
+
+// --- onboarding: the General's first word on each new screen ------------------------------------------------
+
+/** Tiers of docs/design/ONBOARDING-S0.md: 1 produce, 2 market, 3 hold, 4 strike, 5 talk, 6 beacons. */
+const TIER_LINES: Record<Persona, Record<'fr' | 'en', string[]>> = {
+  vane: {
+    fr: [
+      'Premier relais posé. Maintenant on produit : un Extracteur au bon endroit vaut un second système. Construis, je surveille les ponts.',
+      'Le Marché t\'est ouvert. Vends ce qui déborde, garde six Tirages d\'Énergie, et ne fais jamais confiance au teneur de marché : il vend à 200 %.',
+      'Chantier et tourelles disponibles. Une tourelle au dernier corps avant la station, un Bastion à la capitale, et personne ne passe.',
+      'Tu peux frapper, désormais. Je ne le ferai jamais la première : donne-moi une règle d\'engagement, et je l\'exécute.',
+      'Un voisin humain est en vue. Traités, agents, alliance : tout passe par l\'Influence. Un pacte de non-agression coûte moins qu\'un pont perdu.',
+      'Les Phares sont à portée. Deux mille Cristal sur place pour en rallumer un, dix points par Tirage tant qu\'il brille. On tient d\'abord, on grandit ensuite.',
+    ],
+    en: [
+      'First relay built. Now we produce: an Extractor in the right place is worth a second system. Build; I watch the bridges.',
+      'The Market is open to you. Sell what overflows, keep six Draws of Energy, and never trust the market maker: he sells at 200 %.',
+      'Shipyard and turrets available. A turret on the last body before the station, a Bastion at the capital, and nothing gets through.',
+      'You may strike now. I will never strike first: give me a rule of engagement and I execute it.',
+      'A human neighbour is in sight. Treaties, agents, alliance: all of it costs Influence. A non-aggression pact costs less than a lost bridge.',
+      'The Beacons are within reach. Two thousand Crystal on site to relight one, ten points per Draw while it shines. Hold first, grow second.',
+    ],
+  },
+  kestrel: {
+    fr: [
+      'Un relais, enfin. Pose un Extracteur, remplis les entrepôts : un dépôt plein, c\'est un cadeau mal emballé, autant que ce soit le nôtre.',
+      'Le Marché est à toi. Vends le surplus, achète du Rium : sans carburant, pas de sortie, et sans sortie je m\'ennuie.',
+      'Chantier ouvert. Des corvettes, vite : les prudents finissent deuxièmes.',
+      'On peut cogner. Tu me donnes la doctrine, je te trouve la cible : il y en a toujours une à deux secteurs.',
+      'Un voisin humain. On lui parle, ou on le visite ? Les deux, dans cet ordre, c\'est ma préférence.',
+      'Les Phares. Dix points par Tirage, et tout le monde vient les disputer : c\'est là que ça devient amusant.',
+    ],
+    en: [
+      'A relay, at last. Build an Extractor, fill the warehouses: a full depot is a badly wrapped gift, better it be ours.',
+      'The Market is yours. Sell the surplus, buy Rium: no fuel, no sortie, and without sorties I get bored.',
+      'Shipyard open. Corvettes, fast: the careful finish second.',
+      'We can hit now. You give me the doctrine, I find the target: there is always one two sectors out.',
+      'A human neighbour. Do we talk to him, or pay him a visit? Both, in that order, is my preference.',
+      'The Beacons. Ten points per Draw, and everyone comes to fight for them: this is where it gets fun.',
+    ],
+  },
+  oriel: {
+    fr: [
+      'Premier relais : le rendement commence. Un Extracteur, 60 Métal, rend 50 % de plus à chaque Tirage. Je recommande.',
+      'Le Marché vous est ouvert. Un prix par ressource et par région, réglé au Tirage ; le teneur de marché achète à 40 %, vendez au-dessus.',
+      'Le poste défense est ouvert. Une tourelle légère coûte 40 Métal et protège un stock qui vaut dix fois plus. Le retour est évident.',
+      'Vous pouvez attaquer. Je chiffre chaque sortie en Rium et en coques perdues avant de la financer : donnez-moi la doctrine.',
+      'Un voisin humain. La diplomatie se paie en Influence, produite par le Cristal ; c\'est la ligne de dépense la moins chère du bilan.',
+      'Les Phares : 2 000 Cristal immobilisés pour 10 points par Tirage. À votre score actuel, c\'est le meilleur placement disponible.',
+    ],
+    en: [
+      'First relay: the yield begins. An Extractor, 60 Metal, returns 50 % more at every Draw. I recommend it.',
+      'The Market is open to you. One price per resource per region, settled at the Draw; the market maker buys at 40 %, sell above that.',
+      'The defence line is open. A light turret costs 40 Metal and protects a stock worth ten times more. The return is obvious.',
+      'You may attack. I price every sortie in Rium and lost hulls before funding it: give me the doctrine.',
+      'A human neighbour. Diplomacy is paid in Influence, produced by Crystal; it is the cheapest expense line on the books.',
+      'The Beacons: 2,000 Crystal tied up for 10 points per Draw. At your current score, it is the best placement available.',
+    ],
+  },
+  solen: {
+    fr: [
+      'Ton premier relais parle. Fais-le produire, mon ami : un système relié nourrit les autres, comme un voisin qui partage.',
+      'Le Marché t\'accueille. Vends ce que tu as en trop, achète ce qui manque ; un échange juste est un traité qui ne dit pas son nom.',
+      'Tu peux te défendre, désormais. Une tourelle n\'est pas une menace, c\'est une porte qu\'on ferme la nuit.',
+      'Tu peux frapper. Je te demanderai toujours si un émissaire ne ferait pas mieux ; mais la décision est tienne.',
+      'Un voisin humain nous voit. Écris-lui avant qu\'il ne t\'écrive : une main tendue coûte 7 Influence et vaut un pont.',
+      'Les Phares se rallument à plusieurs. Deux mille Cristal, dix points par Tirage, et le Signal se souvient de qui l\'a fait.',
+    ],
+    en: [
+      'Your first relay speaks. Make it produce, my friend: a connected system feeds the others, like a neighbour who shares.',
+      'The Market welcomes you. Sell what you have too much of, buy what you lack; a fair trade is a treaty that does not say its name.',
+      'You can defend yourself now. A turret is not a threat, it is a door one closes at night.',
+      'You may strike. I will always ask whether an envoy would do better; but the decision is yours.',
+      'A human neighbour sees us. Write to them before they write to you: an outstretched hand costs 7 Influence and is worth a bridge.',
+      'Beacons are relit together. Two thousand Crystal, ten points per Draw, and the Signal remembers who did it.',
+    ],
+  },
+};
+
+const ALL_LINES: Record<Persona, { fr: string; en: string }> = {
+  vane: { fr: 'Compris : tu connais le jeu. Tout est ouvert. Mes règles restent les mêmes : je ne frappe pas la première, je ne romps rien.', en: 'Understood: you know the game. Everything is open. My rules stay: I never strike first, I never break a treaty.' },
+  kestrel: { fr: 'Un vétéran. Tout ouvert, alors : chantier, Marché, cibles. Dis un mot.', en: 'A veteran. Everything open, then: shipyard, Market, targets. Say the word.' },
+  oriel: { fr: 'Vous connaissez les comptes. Tout est ouvert ; je vous épargne la leçon et je vous donne les prix.', en: 'You know the books. Everything is open; I spare you the lesson and give you the prices.' },
+  solen: { fr: 'Tu as déjà marché sous ce ciel. Tout est ouvert, mon ami ; les voisins t\'attendent.', en: 'You have walked under this sky before. Everything is open, my friend; the neighbours are waiting.' },
+};
+
+/** A tier just unlocked (1..6), or everything at once: the General's first word on the new screen, no model. */
+export function tierUnlocked(persona: Persona, lang: 'fr' | 'en', tier: number, all = false): string {
+  if (all) return ALL_LINES[persona][lang];
+  const lines = TIER_LINES[persona][lang];
+  return lines[Math.min(lines.length, Math.max(1, Math.round(tier))) - 1]!;
+}
+
+const UNLOCK_INTENT = /\b(tout ouvrir|ouvre tout|ouvrir tout|je connais (déjà )?le jeu|passe le tuto(riel)?|saute le tuto(riel)?|pas de tuto(riel)?|show me everything|unlock everything|open everything|i know the game|skip the tutorial|no tutorial)\b/i;
+
+/** "Show me everything": the player wants every tier open now. */
+export function wantsEverything(text: string): boolean { return UNLOCK_INTENT.test(text); }
