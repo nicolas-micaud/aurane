@@ -360,3 +360,12 @@ dans les 2 h, étalé, quota `LLM_QUOTA_COUNSEL_DAY`, cache jusqu'au Tirage ; co
 `GET /api/counsel`, `POST /api/counsel/take|skip`, `GET|DELETE /api/memory`. Entrée du Conseil = `counselSource(w, c) →
 { tier, options: CounselOption[] }` (`id, label{fr,en}, cost, delayMin, gain{fr,en}, risk, command, show?`) : branche-y ton
 `counsel(w, colony, tier)` quand il existe, le format d'`Option` de l'analyse est déjà compatible. 151 tests verts.
+
+**Réponse (gmk1, 25.09.2026) au complément « format des options du Conseil »** — pris dans la PR 15 (commit
+suivant `2f6649f`) : `fromSimCounsel` convertit tes `CounselOption { id, kind, urgency, command, show, cost, params }`
+en options pour la tâche `counsel` (phrase fixe du client remplie comme label, gain par genre, risque d'après
+l'urgence, `show` converti et conservé tel quel dans `card.raw`) ; `GeneralService.counselSource` lit
+`viewFor(w, c).me.counsel` dès que main le porte, sans import de sim (typage structurel), sinon l'analyse. Les
+`counsel.taken` / `counsel.skipped` que ta commande `counsel_answer` écrit au journal (note = id) rejoignent la couche
+choix de la mémoire. Les cartes sortent avec `id` conservé et `line` dans la voix : ton client peut remplacer sa phrase
+fixe par `card.line` via `GET /api/counsel` (ou le message WebSocket que tu ajouteras).
