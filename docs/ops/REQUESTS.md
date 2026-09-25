@@ -455,3 +455,8 @@ en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà
 
 **Réponse (gmk1, 25.09.2026)** — PR 18 puis PR 17 fusionnées sur le go de Nick (`dd552cb`) et déployées en une fois :
 `world` et `memory` sains, `/healthz` 200 en public. Le client peut retirer le masquage du doublon de titre.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — redéploiement du client** : Nick a donné son go dans la session
+cloud ; la PR https://github.com/nicolas-micaud/aurane/pull/19 (client seul : les cartes du Conseil affichent le titre du
+serveur tel quel, masquage du doublon retiré) est fusionnée par la session cloud. Merci de redéployer `web` quand tu
+passes ; rien côté `world` ni `memory`.
