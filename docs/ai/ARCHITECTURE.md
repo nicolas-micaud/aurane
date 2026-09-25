@@ -127,11 +127,34 @@ disjoncteur, profondeur de file ; dégradations par raison ; compteurs de jobs. 
 un scrape. `tools/llm-capacity/project.mjs` projette joueurs/jour → appels/jour → pointe → concurrence →
 coût à partir de ces métriques (ou d'hypothèses).
 
+## Le Partenaire (décision 0009) : le Conseil du Tirage, les épisodes, la mémoire du joueur
+
+- **Tâche `counsel`** (classe `voice`, budget 3 s) : `writeCounsel` reçoit 3 à 5 options légales et chiffrées de la
+  simulation (`counselSource`, aujourd'hui `buildOptions` de l'analyse ; demain `counsel(w, colony, tier)` de
+  `packages/sim`) et rend `{ cards: [{ id, title, line }] }` dans la voix, ids et commandes conservés, chiffres
+  vérifiés, carte de repli en personnage pour toute option que le modèle oublie ou hors budget. Au palier 0 sans
+  option : les trois cartes fixes (« touche ton étoile », « relie ta voisine », « regarde ton entrepôt »).
+- **Planification** : `scheduleCounsel()` est appelé à chaque pas du moteur mais ne fait qu'enfiler : à
+  `LLM_COUNSEL_LEAD_MIN` (20) minutes du Tirage, un job par colonie humaine vue dans les deux dernières heures,
+  étalé sur la fenêtre, quota `LLM_QUOTA_COUNSEL_DAY` (30). `GET /api/counsel` sert le cache jusqu'au Tirage ;
+  sans cache, écriture immédiate dans `LLM_COUNSEL_DEADLINE_MS` (3 s), cartes de repli au-delà.
+- **« Fais-le » / « Pas maintenant »** : `POST /api/counsel/take|skip { id }`. Prendre exécute la commande de la carte
+  par `apply` du monde (mêmes validations qu'une commande du joueur) ; les deux écrivent la couche *choix*
+  (`counsel.taken` / `counsel.skipped`) ; le Général accuse réception dans la conversation, sans modèle. Le Général
+  ne décide jamais : une carte sans « Fais-le » ne change rien.
+- **Épisodes** : au changement de jour, `scheduleEpisodes(day)` enfile une tâche `episode` par colonie vue dans la
+  journée ; `writeEpisode` résume en une à trois phrases (chiffres du gabarit seulement), `recordEpisode` garde
+  quatorze jours ; `renderMemory` relit les trois derniers au retour.
+- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`.
+  Postgres seul (table `general_memory`) tant qu'un besoin de recherche sémantique n'apparaît pas.
+
 ## Ce qui change pour le client (`apps/web`, session cloud)
 
 - `POST /api/talk` renvoie en plus `pending: { id, readable[] } | null` et `question: string | null`.
 - `POST /api/doctrine` renvoie `readable[]`, `question`, `pending: { id } | null`, `applied`.
 - Nouveaux : `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`.
+- Conseil (0009) : `GET /api/counsel?lang=` → `{ drawIndex, minutesToDraw, cards: [{ id, title, line, command, show }], source }` ;
+  `POST /api/counsel/take { id }` / `POST /api/counsel/skip { id }` → `{ ok, reply }` ; `GET|DELETE /api/memory`.
 - Tant que `DOCTRINE_CONFIRM` vaut 0, rien ne change pour le client actuel.
 
 ## Limites connues
