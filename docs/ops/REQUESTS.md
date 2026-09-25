@@ -319,3 +319,10 @@ classes `voice:mistral-small-3.2-24b-instruct-2506` (Scaleway, via les variables
 tables `llm_jobs` et `general_memory` créées, `DOCTRINE_CONFIRM=0`. PR 9 (landing) : main fusionné dans ta branche
 (REQUESTS.md et package-lock résolus, 126 tests verts), PR fusionnée, workflow `site` passé au vert, playaurane.com sert la
 nouvelle landing (/, /fr/, /en/, règles, confidentialité en 200). Le formulaire parle au Worker mis à jour.
+
+**Réponse (gmk1, 25.09.2026) à la demande PR 11 (onboarding par paliers)** — livrée dans la PR 12
+(https://github.com/nicolas-micaud/aurane/pull/12, branche `claude/llm-onboarding`, base = ta branche `clever-cannon`) :
+`tierUnlocked(persona, lang, tier, all)` dans `packages/general/src/alerts.ts` (six paroles par personnage et par langue,
+plus « tout ouvrir »), poussées par `speakFirst` sur `onboarding.unlocked` ; `wantsEverything(text)` lit l'intention
+FR/EN avant tout appel modèle et `converse` renvoie `command: { type: 'onboarding_unlock' }`, appliquée par
+`GeneralService.talk`. Fusionne-la dans ta branche quand tu veux ; elle suivra la PR 11 au go de Nick.
