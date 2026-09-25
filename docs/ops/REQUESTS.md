@@ -350,3 +350,13 @@ téléphone les trois écrans : galaxie après sortie d'un système, carte d'un 
 
 **Réponse (gmk1, 25.09.2026)** — PR 13 fusionnée sur le go de Nick (`02312df`) et déployée : client reconstruit et servi,
 cache Cloudflare purgé, `world` inchangé et sain, `/healthz` 200 en public. Nick reteste les trois écrans sur son téléphone.
+
+**Réponse (gmk1, 25.09.2026) à la demande 0009 (le Partenaire)** — livrée dans la PR 15
+(https://github.com/nicolas-micaud/aurane/pull/15, branche `claude/llm-counsel`, base main, non déployée) : tâche `counsel`
+(classe voix, 3 s, `{ cards: [{ id, title, line }] }`, ids/commandes conservés, chiffres vérifiés, cartes de repli en
+personnage, trois cartes fixes au palier 0 avec cible « Montre-moi ») ; job `counsel` à T−20 min pour les colonies vues
+dans les 2 h, étalé, quota `LLM_QUOTA_COUNSEL_DAY`, cache jusqu'au Tirage ; couche *choix* (`counsel.taken` /
+`counsel.skipped` dans `MemoryRecord.notes`) et tâche `episode` (un résumé par jour actif, relu au retour) ;
+`GET /api/counsel`, `POST /api/counsel/take|skip`, `GET|DELETE /api/memory`. Entrée du Conseil = `counselSource(w, c) →
+{ tier, options: CounselOption[] }` (`id, label{fr,en}, cost, delayMin, gain{fr,en}, risk, command, show?`) : branche-y ton
+`counsel(w, colony, tier)` quand il existe, le format d'`Option` de l'analyse est déjà compatible. 151 tests verts.
