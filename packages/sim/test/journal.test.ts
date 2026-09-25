@@ -145,7 +145,7 @@ describe('journal, alerts and decrees', () => {
     apply(w, me.id, { type: 'decree', kind: 'range' });
     recordNotes(w, me, [{ kind: 'expand', system: me.capital }]);
     const snap = snapshotWorld(w, { radius: 4 });
-    expect(snap.version).toBe(5);
+    expect(snap.version).toBe(6);
     const back = restoreWorld(JSON.parse(JSON.stringify(snap)) as typeof snap);
     expect(back.colonies[me.id]!.journal).toEqual(me.journal);
     expect(back.colonies[me.id]!.decrees).toEqual(me.decrees);

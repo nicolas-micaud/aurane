@@ -1,11 +1,12 @@
 import type { Building, Command, Decree, Faction, Fleet, Orbit, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
 import { COMBAT_UNITS, DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@aurane/protocol';
 import * as B from './balance.js';
-import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
+import { expandGalaxy, generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
+import { mergeRules, type SeasonRules } from './rules.js';
 import { hexNeighbors, hexKey } from './hex.js';
 import { dist } from './geometry.js';
 import { connectedFrom, evaluateLink, findBridges, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
-import { rollDraw, type Draw } from './draw.js';
+import { oracleHint, rollDraw, type Draw } from './draw.js';
 import { clearAuction, marketKey } from './market.js';
 import { addFleet } from './combat.js';
 import { atPeace, isAlly, transitSet } from './diplomacy.js';
@@ -29,6 +30,8 @@ export { totalSlots as slotsOf } from './structures.js';
 
 export interface WorldOptions extends GalaxyOptions {
   seasonDays?: number;
+  /** Season rules overrides (see rules.ts); defaults are the Season 0 guard-rails. */
+  rules?: Partial<SeasonRules>;
 }
 
 export function createWorld(seed: number | string, opts: WorldOptions = {}): World {
@@ -41,6 +44,8 @@ export function createWorld(seed: number | string, opts: WorldOptions = {}): Wor
     treaties: {}, proposals: [], alliances: {}, missions: {}, routes: {}, reveals: {}, known: {}, salvage: {}, depots: {}, litBeacons: {}, lastClearing: [],
     events: [], battles: {}, titles: { network: null, admiralty: null, exchange: null }, ended: null, nextId: 1,
     owned: {}, relaysByOwner: {}, treatiesByColony: {}, engagedSystems: [],
+    rules: mergeRules(opts.rules), transfers: {}, beaconAlert: null,
+    galaxyOptions: { radius: galaxy.radius, baseRadius: opts.baseRadius ?? galaxy.radius, ...(opts.systemsPerSector ? { systemsPerSector: opts.systemsPerSector } : {}) },
   };
 }
 
@@ -215,6 +220,31 @@ export function watchHours(w: World, colony: Colony): number {
   return hasDecree(w, colony, 'longwatch') ? B.WATCH_HOURS_DECREE : B.WATCH_HOURS;
 }
 
+/** A colony younger than the season's `youngColonyHours` (or still shielded): it cannot gift, lend relays or grant transit. */
+export function isYoung(w: World, colony: Colony): boolean {
+  return w.time - colony.createdAt < w.rules.youngColonyHours * 3600 || isShielded(w, colony);
+}
+
+/** Value of a bundle at the season's reference prices, for transfer caps. */
+export function bundleValue(st: StockDelta): number {
+  return B.RESOURCE_LIST.reduce((s, r) => s + (st[r] ?? 0) * B.BASE_PRICE[r], 0);
+}
+
+const pairKey = (a: string, b: string): string => [a, b].sort().join('|');
+
+/** Records a transfer between two colonies against the daily pair cap; false when it would exceed it. */
+function recordTransfer(w: World, a: string, b: string, value: number): boolean {
+  const cap = w.rules.pairTransferCapPerDay;
+  if (cap <= 0) return true;
+  const key = pairKey(a, b);
+  const day = Math.floor(w.time / 86400);
+  const cur = w.transfers[key];
+  const used = cur && cur.day === day ? cur.value : 0;
+  if (used + value > cap + 1e-9) return false;
+  w.transfers[key] = { day, value: used + value };
+  return true;
+}
+
 export function hasDecree(w: World, colony: Colony, kind: Decree): boolean {
   return colony.decrees.some((d) => d.kind === kind && d.until > w.time);
 }
@@ -274,7 +304,7 @@ export function routeLimit(w: World, colony: Colony): number {
 // Colonies
 // ---------------------------------------------------------------------------
 
-export interface SpawnOptions { name: string; faction: Faction; persona: Persona; npc?: boolean; id?: string }
+export interface SpawnOptions { name: string; faction: Faction; persona: Persona; npc?: boolean; id?: string; origin?: string }
 
 /** Number of free systems a relay could reach from `sys` (own sector and neighbours). */
 function countLinkable(w: World, sys: StarSystem, faction: Faction): number {
@@ -338,6 +368,7 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
     createdAt: w.time, watchStartHour: 0, policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...PERSONA_DEFAULTS[opts.persona] }),
     alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastOverflow: B.emptyStock(), lastSeenAt: w.time, journal: [], decrees: [],
   };
+  if (opts.origin) colony.origin = opts.origin;
   w.colonies[id] = colony;
   const st = w.systems[best.id]!;
   setOwner(w, best.id, id);
@@ -411,6 +442,12 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       if (!shared && !isAlly(w, colony.id, to.id)) return { ok: false, reason: 'no shared market' };
       const ms = w.systems[colony.marketSystem]!;
       if (!stockHas(ms.stock, cmd.give)) return { ok: false, reason: 'not enough stock at the market system' };
+      // Throwaway colonies feeding a main one (REVIEW-S0 § 2): same origin never trades; a young colony may not gift;
+      // a pair of colonies exchanges at most `pairTransferCapPerDay` of value per day.
+      if (!w.rules.sameOriginTrade && colony.origin && colony.origin === to.origin) return { ok: false, reason: 'same origin' };
+      const give = bundleValue(cmd.give), want = bundleValue(cmd.want);
+      if (isYoung(w, colony) && give > want * w.rules.giftRatioMax) return { ok: false, reason: 'young colonies cannot gift' };
+      if (!recordTransfer(w, colony.id, to.id, give)) return { ok: false, reason: 'pair transfer cap reached' };
       stockSub(ms.stock, cmd.give);
       const id = newId(w, 'B');
       w.barters[id] = { id, from: colony.id, to: to.id, give: cmd.give, want: cmd.want, accepted: false, createdAt: w.time };
@@ -472,7 +509,14 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
       return { ok: true, id };
     }
     case 'treaty': return proposeTreaty(w, colony, cmd.with, cmd.kind);
-    case 'set_watch': colony.watchStartHour = cmd.startHour; return { ok: true };
+    case 'set_watch': {
+      const cd = w.rules.watchChangeCooldownHours * 3600;
+      if (colony.watchChangedAt !== undefined && w.time - colony.watchChangedAt < cd) return { ok: false, reason: 'watch changed recently' };
+      if (cmd.startHour === colony.watchStartHour) return { ok: true };
+      colony.watchStartHour = cmd.startHour;
+      colony.watchChangedAt = w.time;
+      return { ok: true };
+    }
     case 'set_policy': colony.policy = cmd.policy; return { ok: true };
     case 'decree': return enactDecree(w, colony, cmd.kind);
     case 'light_beacon': {
@@ -717,6 +761,14 @@ function sendConvoy(w: World, colony: Colony, from: string, to: string, cargo: S
   if (!st || st.owner !== colony.id) return { ok: false, reason: 'origin is not yours' };
   if (!w.systems[to] || to === from) return { ok: false, reason: 'bad destination' };
   if (st.blockade) return { ok: false, reason: 'origin under blockade' };
+  // A convoy into another colony's warehouse is a transfer like a barter: same caps (REVIEW-S0 § 2).
+  const destOwner = w.systems[to]!.owner;
+  if (destOwner && destOwner !== colony.id) {
+    const other = w.colonies[destOwner];
+    if (other && !w.rules.sameOriginTrade && colony.origin && colony.origin === other.origin) return { ok: false, reason: 'same origin' };
+    if (isYoung(w, colony)) return { ok: false, reason: 'young colonies cannot gift' };
+    if (!recordTransfer(w, colony.id, destOwner, bundleValue(cargo))) return { ok: false, reason: 'pair transfer cap reached' };
+  }
   const total = stockTotal(cargo);
   if (total <= 0) return { ok: false, reason: 'empty cargo' };
   if (!stockHas(st.stock, cargo)) return { ok: false, reason: 'not enough stock at origin' };
@@ -759,6 +811,8 @@ function proposeTreaty(w: World, colony: Colony, withId: string, kind: TreatyKin
   const cost = B.TREATY_COST_INFLUENCE[kind];
   if (colony.influence < cost) return { ok: false, reason: 'not enough influence' };
   if (kind === 'federation' && (!colony.alliance || colony.alliance !== other.alliance)) return { ok: false, reason: 'federation requires a shared alliance' };
+  if ((kind === 'transit' || kind === 'federation') && (isYoung(w, colony) || isYoung(w, other))) return { ok: false, reason: 'young colonies cannot grant transit' };
+  if (!w.rules.sameOriginTrade && colony.origin && colony.origin === other.origin) return { ok: false, reason: 'same origin' };
   const existing = w.proposals.findIndex((p) => p.from === other.id && p.to === colony.id && p.kind === kind);
   if (existing >= 0) {
     w.proposals.splice(existing, 1);
@@ -917,7 +971,7 @@ function processTimers(w: World, dt: number): void {
       }
     }
     evaluateBlockade(w, id, plateau.get(plateauKey(id, st.mainPoi)) ?? []);
-    if (st.blockade && st.owner && w.time - st.blockade.since >= B.BLOCKADE_CAPTURE_HOURS * 3600) capture(w, id, st.blockade.by);
+    if (st.blockade && st.owner && w.time - st.blockade.since >= captureHours(w, id) * 3600) capture(w, id, st.blockade.by);
   }
   for (const fleet of Object.values(w.fleets)) {
     if (fleet.at === null && fleet.arriveAt <= w.time) arrive(w, fleet);
@@ -1237,6 +1291,10 @@ function capture(w: World, systemId: string, by: string): void {
   if (w.colonies[prev]?.capital === systemId) return; // capitals are never captured
   setOwner(w, systemId, by);
   st.blockade = null;
+  st.capturedAt = w.time;
+  // A lit Beacon belongs to whoever holds its system: the Renaissance clock restarts for the new holder.
+  const lit = w.litBeacons[systemId];
+  if (lit && w.rules.beaconFollowsCapture) { lit.by = by; lit.since = w.time; }
   for (const s of st.structures) s.hp = Math.max(1, Math.floor(s.hp * 0.5));
   st.stationHp = Math.min(st.stationHp, 100) || 100;
   st.buildQueue = [];
@@ -1397,6 +1455,8 @@ function runDraw(w: World): void {
     colony.decrees = colony.decrees.filter((d) => d.until > w.time);
   }
 
+  lapseCaptures(w);
+  maybeGrowGalaxy(w);
   settleMarkets(w);
   settleBarters(w);
   for (const p of w.proposals.slice()) if (w.time - p.at > 86400) w.proposals.splice(w.proposals.indexOf(p), 1);
@@ -1527,12 +1587,96 @@ function updateTitles(w: World): void {
   w.titles = { network, admiralty, exchange };
 }
 
+/** The bloc (alliance id or colony id) a lit Beacon counts for. */
+const blocOf = (w: World, colonyId: string): string => w.colonies[colonyId]?.alliance ?? colonyId;
+const blocSize = (w: World, bloc: string): number => w.alliances[bloc]?.members.length ?? 1;
+
+/** Hours of simultaneous hold the Renaissance needs for this bloc: longer for a large coalition. */
+export function renaissanceHoldHours(w: World, bloc: string): number {
+  const r = w.rules;
+  return r.renaissanceHoldHours + r.renaissanceHoldHoursPerMember * Math.max(0, blocSize(w, bloc) - r.renaissanceFreeMembers);
+}
+
+/** Earliest sim time at which the Renaissance may end the season. */
+export const renaissanceEarliestAt = (w: World): number => w.rules.renaissanceEarliestFraction * w.seasonEndsAt;
+
+/** Beacon Alert: one bloc holds at least `beaconAlertAt` lit Beacons. Public, and its beacon systems fall in half the time. */
+function updateBeaconAlert(w: World): void {
+  const count = new Map<string, number>();
+  for (const b of Object.values(w.litBeacons)) { const k = blocOf(w, b.by); count.set(k, (count.get(k) ?? 0) + 1); }
+  let bloc: string | null = null;
+  for (const [k, n] of count) if (n >= w.rules.beaconAlertAt) bloc = k;
+  if (bloc !== w.beaconAlert) {
+    w.beaconAlert = bloc;
+    logEvent(w, bloc ? 'beacons.alert' : 'beacons.calm', bloc ? [bloc] : [], { beacons: bloc ? count.get(bloc) : 0 });
+  }
+}
+
+/** Hours of unbroken blockade before capture: halved on a Beacon system of the bloc under Beacon Alert. */
+export function captureHours(w: World, systemId: string): number {
+  const st = w.systems[systemId]!;
+  const lit = w.litBeacons[systemId];
+  if (w.beaconAlert && lit && st.owner && blocOf(w, st.owner) === w.beaconAlert) return B.BLOCKADE_CAPTURE_HOURS / 2;
+  return B.BLOCKADE_CAPTURE_HOURS;
+}
+
 function checkRenaissance(w: World): void {
+  updateBeaconAlert(w);
   if (Object.keys(w.litBeacons).length < w.galaxy.beacons.length) return;
-  const holders = new Set(Object.values(w.litBeacons).map((b) => w.colonies[b.by]?.alliance ?? b.by));
+  const holders = new Set(Object.values(w.litBeacons).map((b) => blocOf(w, b.by)));
   if (holders.size !== 1) return;
+  const bloc = [...holders][0]!;
   const since = Math.max(...Object.values(w.litBeacons).map((b) => b.since));
-  if (w.time - since >= B.RENAISSANCE_HOURS * 3600) endSeason(w, 'renaissance');
+  if (w.time < renaissanceEarliestAt(w)) return; // the Beacons burn, the season goes on: the floor date protects everyone else
+  if (w.time - since >= renaissanceHoldHours(w, bloc) * 3600) endSeason(w, 'renaissance');
+}
+
+/** A captured system its captor never connected falls neutral after the grace period (REVIEW-S0 § 5). */
+function lapseCaptures(w: World): void {
+  const grace = w.rules.captureGraceHours * 3600;
+  if (grace <= 0) return;
+  const nets = new Map<string, Map<string, number>>();
+  for (const [id, st] of Object.entries(w.systems)) {
+    if (st.capturedAt === undefined || !st.owner) { if (st.capturedAt !== undefined && !st.owner) delete st.capturedAt; continue; }
+    const c = w.colonies[st.owner];
+    if (!c) continue;
+    let net = nets.get(c.id);
+    if (!net) { net = colonyNetwork(w, c); nets.set(c.id, net); }
+    if (net.has(id)) { delete st.capturedAt; continue; }
+    if (w.time - st.capturedAt >= grace) {
+      const prev = st.owner;
+      setOwner(w, id, null);
+      st.blockade = null;
+      delete st.capturedAt;
+      for (const r of colonyRelays(w, prev)) if (r.a === id || r.b === id) removeRelay(w, r.id);
+      logEvent(w, 'system.lapsed', [prev], { system: id });
+    }
+  }
+}
+
+/** The galaxy grows a ring when the rim fills up (REVIEW-S0 § 4): existing sectors are untouched, new ones open for newcomers. */
+function maybeGrowGalaxy(w: World): void {
+  const g = w.rules.galaxyGrowth;
+  if (!g.enabled || w.galaxy.radius >= g.maxRadius) return;
+  const rimMin = Math.max(0, w.galaxy.radius - 2);
+  const rim = Object.values(w.galaxy.sectors).filter((s) => s.ring >= rimMin);
+  const occupied = rim.filter((s) => s.systems.some((id) => { const o = w.systems[id]!.owner; return o !== null && w.colonies[o]?.capital === id; })).length;
+  if (occupied / Math.max(1, rim.length) < g.rimOccupancy) return;
+  const next = expandGalaxy(w.galaxy, w.galaxyOptions);
+  for (const id of Object.keys(next.systems)) if (!w.systems[id]) { w.systems[id] = emptySystem(); w.systems[id]!.mainPoi = layoutOf(next, id).main; }
+  w.galaxy = next;
+  w.galaxyOptions = { ...w.galaxyOptions, radius: next.radius };
+  logEvent(w, 'galaxy.expanded', [], { radius: next.radius });
+}
+
+/** The band of the next Draw the Oracles know ahead of time, or null outside their window (or when the perk is off). */
+export function nextDrawHint(w: World): number | null {
+  if (w.rules.oracleHintMinutes <= 0) return null;
+  const nextDrawAt = (Math.floor(w.time / 3600) + 1) * 3600;
+  if (nextDrawAt - w.time > w.rules.oracleHintMinutes * 60) return null;
+  const regions = [...new Set(Object.values(w.galaxy.sectors).map((s) => s.region))].sort();
+  const next = rollDraw({ seasonSeed: w.seed, index: w.drawIndex + 1, previous: w.lastDraw ?? undefined, regions, beacons: w.galaxy.beacons });
+  return oracleHint(w.seed, next);
 }
 
 function endSeason(w: World, reason: 'silence' | 'renaissance'): void {

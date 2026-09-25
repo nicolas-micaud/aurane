@@ -1,5 +1,6 @@
 import type { Building, Decree, Faction, Fleet, Orbit, Persona, Policy, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
-import type { Galaxy } from './galaxy.js';
+import type { Galaxy, GalaxyOptions } from './galaxy.js';
+import type { SeasonRules } from './rules.js';
 import type { Relay } from './network.js';
 import type { Draw } from './draw.js';
 
@@ -32,6 +33,10 @@ export interface Colony {
   journal: JournalEntry[];
   /** Decrees in force (bought with Credits, public). */
   decrees: ActiveDecree[];
+  /** Opaque origin hash set by the server (device or address): colonies sharing it cannot trade or share transit. */
+  origin?: string;
+  /** Sim time of the last Night Watch change (cooldown, REVIEW-S0). */
+  watchChangedAt?: number;
 }
 
 /** One line of the General's journal: a structured note the client translates. */
@@ -70,6 +75,8 @@ export interface SystemState {
   engaged: boolean;
   /** Points of interest with an engagement under way. */
   engagedPois: string[];
+  /** Sim time of the last capture; cleared once the captor connects it (capture grace, REVIEW-S0). */
+  capturedAt?: number;
 }
 
 export type FleetOrder =
@@ -224,6 +231,14 @@ export interface World {
   treatiesByColony: Record<string, string[]>;
   /** Systems with hostiles on the plateau, ticked every second. */
   engagedSystems: string[];
+  /** Season rules (REVIEW-S0), configurable per season. */
+  rules: SeasonRules;
+  /** Barter value exchanged per colony pair and season day (pair transfer cap). */
+  transfers: Record<string, { day: number; value: number }>;
+  /** How the galaxy was generated (radius grows with the population; baseRadius keeps old sectors identical). */
+  galaxyOptions: GalaxyOptions;
+  /** The bloc (alliance or colony id) currently under Beacon Alert, or null. */
+  beaconAlert: string | null;
 }
 
 export const newId = (w: World, prefix: string): string => `${prefix}${(w.nextId++).toString(36)}`;
