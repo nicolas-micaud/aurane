@@ -4,7 +4,7 @@
 import type { Policy } from '@aurane/protocol';
 import { apply, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom,
+  InMemoryMemoryStore, LlmMetrics, MemoryJobStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom, fromSimCounsel,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
   type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
 } from '@aurane/general';
@@ -55,8 +55,13 @@ export class GeneralService {
   private lastCounselDraw = -1;
   private lastEpisodeDay = -1;
   private seq = 0;
-  /** Overridable by the world when the simulation's `counsel()` exists. */
-  counselSource: CounselSource = (w, c) => ({ tier: (c as Colony & { onboarding?: { tier: number } }).onboarding?.tier ?? 6, options: analyze(w, c).options });
+  /** The simulation's Counsel (`PlayerView.me.counsel`, 0009) when the sim carries it, else the analysis' options. Overridable. */
+  counselSource: CounselSource = (w, c) => {
+    const tier = (c as Colony & { onboarding?: { tier: number } }).onboarding?.tier ?? 6;
+    const me = viewFor(w, c).me as { counsel?: Parameters<typeof fromSimCounsel>[0] };
+    if (Array.isArray(me.counsel)) return { tier, options: fromSimCounsel(me.counsel) };
+    return { tier, options: analyze(w, c).options };
+  };
 
   constructor(readonly cfg: Config, private readonly deps: GeneralDeps) {
     this.metrics = deps.metrics ?? globalMetrics;
@@ -95,7 +100,7 @@ export class GeneralService {
   }
 
   private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string }> {
-    const record = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    const record = withJournalChoices((await this.memoryStore.load(c.id)) ?? emptyMemory(), c);
     return { record, text: renderMemory(factsFrom(this.deps.world(), c), record, lang) };
   }
 
@@ -434,6 +439,15 @@ export class GeneralService {
 // --- synchronous fallbacks (no model, no await on the queue) --------------------
 
 import { heuristicConverse, heuristicPolicy, renderAnalysis, templateBriefing, templateGazette, dayFacts } from '@aurane/general';
+
+/** The client answers a card through the simulation (`counsel_answer` → journal `counsel.taken` / `counsel.skipped`, note = id): those choices join the memory's *choices* layer. */
+function withJournalChoices(record: MemoryRecord, c: Colony): MemoryRecord {
+  const fromJournal = (c.journal as { at: number; kind: string; note?: string }[]).filter((j) => (j.kind === 'counsel.taken' || j.kind === 'counsel.skipped') && j.note);
+  if (!fromJournal.length) return record;
+  const seen = new Set(record.notes.map((n) => `${n.kind}|${n.text}|${n.at}`));
+  const extra = fromJournal.map((j) => ({ at: Math.round(j.at * 1000), kind: j.kind, text: j.note! })).filter((n) => !seen.has(`${n.kind}|${n.text}|${n.at}`));
+  return { ...record, notes: [...record.notes, ...extra].sort((a, b) => a.at - b.at).slice(-80) };
+}
 
 function converseSync(text: string, lang: 'fr' | 'en', c: Colony, ctx: DoctrineContext): ConverseResult {
   return heuristicConverse({ text, lang, persona: c.persona, history: [], ctx });

@@ -79,3 +79,30 @@ describe('memory: choices and episodes', () => {
     expect((await writeEpisode({ persona: 'solen', lang: 'fr', day: 3, facts: 'Absence : 6 h.' }, null)).text).toContain('Solen');
   });
 });
+
+describe('the simulation\'s Counsel, bridged', () => {
+  it('turns sim options into costed options with the client\'s fixed lines filled, a show target and the raw show kept', async () => {
+    const { fromSimCounsel, showOf, fillLine } = await import('../src/counsel-sim.js');
+    const opts = fromSimCounsel([
+      { id: 'turret:S9', kind: 'turret', urgency: 2, command: { type: 'build', system: 'S9', building: 'turret_light' }, show: { kind: 'plateau', system: 'S9', orbit: 2 }, cost: { metal: 40, energy: 20 }, params: { system: 'Kessa', ships: 5, eta: 30 } },
+      { id: 'link:S2', kind: 'link_first', urgency: 2, command: null, show: { kind: 'link', from: 'S1', to: 'S2' }, cost: { metal: 41, energy: 20 }, params: { from: 'Isno', to: 'Orun', metal: 41, energy: 20 } },
+      { id: 'recap:3', kind: 'read_recap', urgency: 0, command: null, show: { kind: 'tab', tab: 'log' }, cost: {}, params: { draw: 4 } },
+      { id: 'weird', kind: 'something_new', urgency: 1, command: null, show: { kind: 'tab', tab: 'general' }, cost: {}, params: {} },
+    ]);
+    expect(opts[0]!.label.fr).toBe('5 vaisseaux ennemis sur Kessa, arrivée dans 30 min. Une tourelle légère sur l\'orbite Défense, maintenant.');
+    expect(opts[0]!.label.en).toContain('5 enemy ships on Kessa');
+    expect(opts[0]!.show).toEqual({ screen: 'system', system: 'S9', slot: '2' });
+    expect(opts[0]!.raw).toEqual({ kind: 'plateau', system: 'S9', orbit: 2 });
+    expect(opts[0]!.risk).toBe('mid');
+    expect(opts[1]!.label.fr).toContain('Relie Orun depuis Isno : 41 Métal, 20 Énergie');
+    expect(opts[1]!.show).toEqual({ screen: 'galaxy', system: 'S1' });
+    expect(opts[2]!.show).toEqual({ screen: 'journal' });
+    expect(opts[3]!.label.en).toContain('Tell me what you want'); // unknown kind: the doctrine line, never a crash
+    expect(showOf({ kind: 'star', system: 'S1' })).toEqual({ screen: 'galaxy', system: 'S1' });
+    expect(fillLine('{a} and {b}', { a: 1 })).toBe('1 and {b}');
+    const r = await writeCounsel({ persona: 'vane', lang: 'fr', tier: 1, options: opts, minutesToDraw: 20 }, null);
+    expect(r.cards.map((c) => c.id)).toEqual(['turret:S9', 'link:S2', 'recap:3']);
+    expect(r.cards[0]!.raw).toEqual({ kind: 'plateau', system: 'S9', orbit: 2 });
+    expect(r.cards[0]!.line).toContain('30 min');
+  });
+});
