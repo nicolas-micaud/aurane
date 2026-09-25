@@ -6,7 +6,7 @@ import {
   apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { clientFromEnv, compilePolicy, converse, inboundWarning, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
+import { clientFromEnv, compilePolicy, converse, inboundWarning, limitsFromEnv, writeBriefing, writeGazette, PlayerQuota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -32,7 +32,7 @@ export class Engine {
   private dirtyColonies = new Set<string>();
   private lastDrawSeen = -1;
   private llm: LlmClient | null = clientFromEnv();
-  private quota = new Quota();
+  private quota = new PlayerQuota(limitsFromEnv());
   /** Sim time of the last briefing per colony, so the next one covers only what is new. */
   private lastBriefedAt = new Map<string, number>();
   private gazettes = new Map<string, GazetteIssue>();
@@ -312,7 +312,7 @@ export class Engine {
     for (const o of Object.values(this.world.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
     const alliances: Record<string, string> = {};
     for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
-    const client = this.quota.take(c.id, 'writes') ? this.llm : null;
+    const client = this.quota.take(c.id, 'doctrine') ? this.llm : null;
     const compiled = await compilePolicy(text, { lang, current: c.policy, systems, colonies, alliances, persona: c.persona }, client);
     // "__capital__" from the heuristic resolves to the real capital id.
     compiled.policy.defendFirst = compiled.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
@@ -362,7 +362,7 @@ export class Engine {
     const events = this.world.events.filter((e) => e.at > since && (e.actors.includes(c.id) || e.kind === 'draw'));
     const names: Record<string, string> = {};
     for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
-    const client = awaySeconds >= ABSENT_AFTER_S && this.quota.take(c.id, 'writes') ? this.llm : null;
+    const client = awaySeconds >= ABSENT_AFTER_S && this.quota.take(c.id, 'briefing') ? this.llm : null;
     const res = await writeBriefing({ view: viewFor(this.world, c), events, awaySeconds, persona: c.persona, lang, names }, client);
     this.lastBriefedAt.set(c.id, this.world.time);
     return { ...res, awaySeconds };

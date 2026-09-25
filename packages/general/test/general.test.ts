@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY } from '@aurane/protocol';
 import { createWorld, spawnColony, tick, viewFor } from '@aurane/sim';
-import { compilePolicy, dayFacts, extractJson, heuristicPolicy, templateBriefing, templateGazette, writeBriefing, Quota, type LlmClient } from '../src/index.js';
+import { compilePolicy, dayFacts, extractJson, heuristicPolicy, templateBriefing, templateGazette, writeBriefing, type LlmClient } from '../src/index.js';
 import { converse, situationSummary } from '../src/converse.js';
 
 const ctx = { lang: 'fr' as const, current: DEFAULT_POLICY, systems: { S1: 'Thair', S2: 'Amqua' }, colonies: { C1: 'Colonie Vantor', C2: 'Colonie Draven' }, alliances: { A1: 'Compact du Nord' } };
@@ -58,16 +58,6 @@ describe('briefing', () => {
     expect(r.source).toBe('llm');
     const r2 = await writeBriefing(input, { ...fake, chat: async () => { throw new Error('down'); } });
     expect(r2.source).toBe('template');
-  });
-});
-
-describe('quota', () => {
-  it('quotas reset per day and cap calls', () => {
-    const q = new Quota({ writes: 2, events: 1 });
-    expect(q.take('c', 'writes')).toBe(true);
-    expect(q.take('c', 'writes')).toBe(true);
-    expect(q.take('c', 'writes')).toBe(false);
-    expect(q.remaining('c').events).toBe(1);
   });
 });
 

@@ -2,7 +2,7 @@ export * from './llm/index.js';
 export * from './personas.js';
 export * from './doctrine.js';
 export * from './briefing.js';
-export * from './quota.js';
+export * from './queue/index.js';
 export * from './gazette.js';
 export * from './converse.js';
 export * from './alerts.js';
