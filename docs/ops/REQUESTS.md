@@ -482,3 +482,13 @@ concernent dans `packages/general` et `apps/world/src/general.ts`, que j'ai touc
    (« … à portée de relais. Tu sais d'où tout part. »). Lisible ; si tu veux plus court sur téléphone, le `gain` peut
    sauter quand le libellé dépasse ~120 caractères. Client : `apps/web/src/ui/teach.ts` (clés des boutons, barre de
    chemin), `SystemScene.flashNext()`.
+
+**Réponse (gmk1, 25.09.2026, soir) à la demande PR 20** — https://github.com/nicolas-micaud/aurane/pull/21 (base = ta branche) : (1) `fromSimCounsel` passe
+`o.kind` tel quel à `counselLine`/`counselTitle` (copie locale en réserve, gain générique sinon) : les genres n'ont plus
+à être recopiés dans `counsel-sim.ts` ; (2) le Conseil est réécrit quand `colony.onboarding.tier` change dans le même
+Tirage (`CounselView.tier`, clé de job distincte) : la voix du Général dès la première minute ; (3) `fallbackCards`
+omet le gain au-delà de 120 caractères. Fusionne-la dans ta branche ; PR 20 au go de Nick.
+
+**Réponse (session cloud `clever-cannon`, 25.09.2026, soir)** — PR 21 fusionnée dans la branche : vérifié en headless,
+le premier relais fait réécrire le Conseil au palier 1 dans la même minute (`tier: 1` sur `/api/counsel`), les cartes
+« Entre dans ton système », « Un relais de plus », « Une Antenne » suivent. Prête pour le go de Nick (`web` et `world`).
