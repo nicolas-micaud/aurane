@@ -200,13 +200,6 @@ function commandTarget(cmd: Command | null): string | null {
   }
 }
 
-/** Fallback cards repeat the label as title and end with two dots: tidy them without touching the voice. */
-function tidyCard(title: string, line: string): { title: string | null; line: string } {
-  const clean = line.replace(/\.\.+/g, '.').replace(/\s+\./g, '.');
-  const dup = clean.toLowerCase().startsWith(title.toLowerCase().replace(/[.…]+$/, ''));
-  return { title: dup ? null : title, line: clean };
-}
-
 function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const skipped = useSig(skippedCounsel);
   const voice = useSig(voiceCounsel);
@@ -238,7 +231,7 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
       <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
       {shown.map((c) => (
         <div key={c.id} class={`card u${c.urgency}`}>
-          {(() => { const tc = tidyCard(c.title, c.line); return <p>{tc.title ? <><b>{tc.title}</b> · </> : null}{tc.line}</p>; })()}
+          <p><b>{c.title}</b> · {c.line}</p>
           <div class="acts">
             <button onClick={c.go}>{t('showMe')}</button>
             {c.hasCommand && <button class="primary" onClick={() => { void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
