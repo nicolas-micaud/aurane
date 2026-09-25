@@ -232,5 +232,7 @@ export class Scheduler {
   }
 
   get inFlight(): number { return this.running; }
+  /** Is the loop running? When it is not, callers should do the work inline rather than wait on a deadline. */
+  get active(): boolean { return !this.stopped; }
   counts(): Promise<Record<JobState, number>> { return this.store.counts(); }
 }

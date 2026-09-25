@@ -6,9 +6,10 @@ import {
   apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { clientFromEnv, compilePolicy, converse, inboundWarning, limitsFromEnv, writeBriefing, writeGazette, PlayerQuota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
+import { inboundWarning, type GazetteIssue, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
+import { GeneralService, type GeneralDeps } from './general.js';
 
 const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
@@ -31,18 +32,15 @@ export class Engine {
   private decisionTick = 0;
   private dirtyColonies = new Set<string>();
   private lastDrawSeen = -1;
-  private llm: LlmClient | null = clientFromEnv();
-  private quota = new PlayerQuota(limitsFromEnv());
-  /** Sim time of the last briefing per colony, so the next one covers only what is new. */
-  private lastBriefedAt = new Map<string, number>();
-  private gazettes = new Map<string, GazetteIssue>();
-  private gazetteInFlight = new Map<string, Promise<GazetteIssue>>();
+  private lastDaySeen = -1;
   /** How far the event log has been read for the General's unprompted words. */
   private lastEventSeen = 0;
-  /** The language each player last spoke to their General in (the unprompted lines use it). */
-  private langs = new Map<string, 'fr' | 'en'>();
+  /** The Generals: conversation, doctrine, briefing, Gazette, behind the job queue. Never called from step(). */
+  readonly general: GeneralService;
 
-  constructor(readonly cfg: Config, private readonly store: Store) {}
+  constructor(readonly cfg: Config, private readonly store: Store, generalDeps: Partial<GeneralDeps> = {}) {
+    this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, ...generalDeps });
+  }
 
   async init(): Promise<void> {
     let snap = await this.store.loadSnapshot();
@@ -65,11 +63,13 @@ export class Engine {
       await this.snapshot();
     }
     this.lastDrawSeen = this.world.drawIndex;
+    this.lastDaySeen = Math.floor(this.world.time / 86400);
     this.lastEventSeen = this.world.events.length;
   }
 
   start(): void {
     if (this.timer) return;
+    this.general.start();
     this.lastReal = Date.now();
     this.timer = setInterval(() => void this.step(), 1000);
     this.systemTimer = setInterval(() => this.streamSystems(), SYSTEM_STREAM_MS);
@@ -80,6 +80,7 @@ export class Engine {
     if (this.systemTimer) clearInterval(this.systemTimer);
     this.timer = null;
     this.systemTimer = null;
+    await this.general.stop();
     await this.snapshot();
   }
 
@@ -101,6 +102,9 @@ export class Engine {
       this.lastDrawSeen = this.world.drawIndex;
       for (const id of this.listeners.keys()) this.dirtyColonies.add(id);
     }
+    // A new season day: yesterday's Gazette is queued (spread over the off-peak window), never written here.
+    const day = Math.floor(this.world.time / 86400);
+    if (day !== this.lastDaySeen) { this.lastDaySeen = day; this.general.scheduleDailyGazette(day); }
     this.flush();
     if (now - this.lastSnapshot >= this.cfg.snapshotEverySeconds * 1000) {
       this.lastSnapshot = now;
@@ -133,14 +137,12 @@ export class Engine {
       const c = w.colonies[e.actors[1] ?? ''];
       if (!c || c.npc) continue;
       const d = e.data as { system?: string; arriveAt?: number; size?: number } | undefined;
-      const lang = this.langs.get(c.id) ?? 'fr';
+      const lang = this.general.langOf(c.id);
       const text = inboundWarning(c.persona, lang, {
         system: w.galaxy.systems[d?.system ?? '']?.name ?? d?.system ?? '?', from: w.colonies[e.actors[0] ?? '']?.name ?? '?',
         minutes: Math.max(0, Math.round(((d?.arriveAt ?? w.time) - w.time) / 60)), size: d?.size ?? 0,
       });
-      const history = this.history(c.id);
-      this.talks.set(c.id, [...history, { who: 'general' as const, text, at: Date.now() }].slice(-16));
-      if (this.listeners.has(c.id)) this.dirtyColonies.add(c.id);
+      this.general.pushLine(c.id, text);
     }
     this.lastEventSeen = w.events.length;
   }
@@ -301,88 +303,14 @@ export class Engine {
     this.dirtyColonies.clear();
   }
 
-  // --- the General -----------------------------------------------------------
+  // --- the General (delegated to the service; nothing here touches a model) ---
 
-  async doctrine(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ policy: unknown; summary: string; source: string; warnings: string[]; reply: string } | null> {
-    const c = this.world.colonies[colonyId];
-    if (!c) return null;
-    const systems: Record<string, string> = {};
-    for (const [id, st] of Object.entries(this.world.systems)) if (st.owner === c.id) systems[id] = this.world.galaxy.systems[id]!.name;
-    const colonies: Record<string, string> = {};
-    for (const o of Object.values(this.world.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
-    const alliances: Record<string, string> = {};
-    for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
-    const client = this.quota.take(c.id, 'doctrine') ? this.llm : null;
-    const compiled = await compilePolicy(text, { lang, current: c.policy, systems, colonies, alliances, persona: c.persona }, client);
-    // "__capital__" from the heuristic resolves to the real capital id.
-    compiled.policy.defendFirst = compiled.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
-    apply(this.world, c.id, { type: 'set_policy', policy: compiled.policy });
-    this.dirtyColonies.add(c.id);
-    return { policy: compiled.policy, summary: compiled.summary, source: compiled.source, warnings: compiled.warnings, reply: compiled.reply };
-  }
-
-  /** Conversation with the General, per colony (last turns kept in memory; the snapshot does not carry them). */
-  private talks = new Map<string, Turn[]>();
-
-  history(colonyId: string): Turn[] { return this.talks.get(colonyId) ?? []; }
-
-  async talk(colonyId: string, text: string, lang: 'fr' | 'en'): Promise<{ reply: string; source: string; policyChanged: boolean; history: Turn[] } | null> {
-    const c = this.world.colonies[colonyId];
-    if (!c) return null;
-    const systems: Record<string, string> = {};
-    for (const [id, st] of Object.entries(this.world.systems)) if (st.owner === c.id) systems[id] = this.world.galaxy.systems[id]!.name;
-    const colonies: Record<string, string> = {};
-    for (const o of Object.values(this.world.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
-    const alliances: Record<string, string> = {};
-    for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
-    const names: Record<string, string> = {};
-    for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
-    this.langs.set(c.id, lang);
-    const history = this.history(c.id);
-    const client = this.quota.take(c.id, 'talk') ? this.llm : null;
-    const res = await converse({ text, lang, persona: c.persona, history, view: viewFor(this.world, c), ctx: { lang, current: c.policy, systems, colonies, alliances, persona: c.persona } }, client, names);
-    let policyChanged = false;
-    if (res.policy) {
-      res.policy.defendFirst = res.policy.defendFirst.map((id) => (id === '__capital__' ? c.capital : id));
-      apply(this.world, c.id, { type: 'set_policy', policy: res.policy });
-      this.dirtyColonies.add(c.id);
-      policyChanged = true;
-    }
-    const next = [...history, { who: 'me' as const, text: text.slice(0, 1500), at: Date.now() }, { who: 'general' as const, text: res.reply, at: Date.now() }].slice(-16);
-    this.talks.set(c.id, next);
-    return { reply: res.reply, source: res.source, policyChanged, history: next };
-  }
-
-  async briefing(colonyId: string, lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {
-    const c = this.world.colonies[colonyId];
-    if (!c) return null;
-    this.langs.set(c.id, lang);
-    const since = this.lastBriefedAt.get(c.id) ?? c.createdAt;
-    const awaySeconds = Math.max(0, this.world.time - since);
-    const events = this.world.events.filter((e) => e.at > since && (e.actors.includes(c.id) || e.kind === 'draw'));
-    const names: Record<string, string> = {};
-    for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
-    const client = awaySeconds >= ABSENT_AFTER_S && this.quota.take(c.id, 'briefing') ? this.llm : null;
-    const res = await writeBriefing({ view: viewFor(this.world, c), events, awaySeconds, persona: c.persona, lang, names }, client);
-    this.lastBriefedAt.set(c.id, this.world.time);
-    return { ...res, awaySeconds };
-  }
-
-  /** Yesterday's issue (the current day is still being written). Cached per day and language. */
-  async gazette(lang: 'fr' | 'en', day?: number): Promise<GazetteIssue | null> {
-    const today = Math.floor(this.world.time / 86400) + 1;
-    const target = day ?? today - 1;
-    if (target < 1 || target >= today) return null;
-    const key = `${target}:${lang}`;
-    const hit = this.gazettes.get(key);
-    if (hit) return hit;
-    let p = this.gazetteInFlight.get(key);
-    if (!p) {
-      p = writeGazette(this.world, target, lang, this.llm).then((issue) => { this.gazettes.set(key, issue); this.gazetteInFlight.delete(key); return issue; });
-      this.gazetteInFlight.set(key, p);
-    }
-    return p;
-  }
+  doctrine(colonyId: string, text: string, lang: 'fr' | 'en'): ReturnType<GeneralService['doctrine']> { return this.general.doctrine(colonyId, text, lang); }
+  confirmDoctrine(colonyId: string, id: string): ReturnType<GeneralService['confirmDoctrine']> { return this.general.confirmDoctrine(colonyId, id); }
+  history(colonyId: string): Turn[] { return this.general.history(colonyId); }
+  talk(colonyId: string, text: string, lang: 'fr' | 'en'): ReturnType<GeneralService['talk']> { return this.general.talk(colonyId, text, lang); }
+  briefing(colonyId: string, lang: 'fr' | 'en'): ReturnType<GeneralService['briefing']> { return this.general.briefing(colonyId, lang); }
+  gazette(lang: 'fr' | 'en', day?: number): Promise<GazetteIssue | null> { return this.general.gazette(lang, day); }
 
   publicColony(id: string): { id: string; name: string; faction: string; persona: string; alliance: string | null; score: number; connected: number; createdAt: number; npc: boolean; beacons: string[] } | null {
     const c = this.world.colonies[id];
