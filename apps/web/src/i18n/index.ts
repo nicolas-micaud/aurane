@@ -69,12 +69,17 @@ const STRINGS = {
     briefing: 'Briefing', dismiss: 'Compris', compiling: 'Ton Général relit ta doctrine…', compiled: 'Doctrine appliquée', viaModel: 'interprétée par ton Général', viaRules: 'interprétée par les règles de base (modèle indisponible)',
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
+    // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
+    tier0: 'Relier', tier1: 'Produire', tier2: 'Marché', tier3: 'Tenir', tier4: 'Frapper', tier5: 'Parler', tier6: 'Les Phares',
+    tierLocked: 'Pas encore : palier « {k} ». {w}',
+    tierWhy1: 'Relie d\'abord une voisine : le plateau du système s\'ouvre avec le premier relais.', tierWhy2: 'Le Marché attend le premier Tirage et trois systèmes reliés.', tierWhy3: 'Le Chantier et les tourelles arrivent après six heures de jeu ; la Garde de nuit te couvre en attendant.', tierWhy4: 'Raider ? On n\'a pas une coque, ou le bouclier tient encore. Chantier d\'abord.', tierWhy5: 'On parle aux voisins à partir du deuxième jour, quand on en voit un.', tierWhy6: 'Les Phares viennent avec dix systèmes reliés, ou quand l\'un d\'eux est à portée.',
+    tierOpened: 'Palier ouvert : {k}', showMeAll: 'Je connais le jeu : tout ouvrir', showMeAllDone: 'Tout est ouvert.',
     alertInbound: '{n} vaisseaux de {a} vers {s} · arrivée dans {t}', alertOffer: 'Offre de troc de {a}', alertProposal: 'Traité proposé par {a} : {k}', alertInvite: 'Invitation : {a}', review: 'Voir', alertsMore: 'et {n} de plus',
     decrees: 'Décrets', decreesHint: 'Publics, temporaires, payés en Crédits. La Gazette les annonce : tout le monde lit tes intentions.', enact: 'Proclamer', inForce: 'en vigueur', remaining: 'reste',
     decreeRange: 'Portée', decreeRangeDesc: 'Portée des relais +10 % pendant 24 h.', decreeFreefees: 'Franchise', decreeFreefeesDesc: 'Frais de Marché nuls pendant 3 Tirages.', decreeLongwatch: 'Longue Garde', decreeLongwatchDesc: 'Garde de nuit de 12 h au lieu de 8 pendant 24 h.',
     earlier: 'plus tôt', today: 'aujourd\'hui', markRead: 'Tout lu',
     events: {
-      'draw.recap': 'Tirage {n}', 'fleet.inbound': '{a} envoie {n} vaisseaux vers {s}, arrivée dans {t}', 'battle': 'Combat à {s} : {a} contre {b}, {n} coques perdues', 'blockade.start': '{a} met {s} sous blocus', 'relay.cut': '{a} a fait taire la station de {s}', 'system.captured': '{a} prend {s} à {b}', 'system.claimed': '{s} rejoint ton Réseau',
+      'onboarding.unlocked': 'Palier {n} ouvert : {k}', 'draw.recap': 'Tirage {n}', 'fleet.inbound': '{a} envoie {n} vaisseaux vers {s}, arrivée dans {t}', 'battle': 'Combat à {s} : {a} contre {b}, {n} coques perdues', 'blockade.start': '{a} met {s} sous blocus', 'relay.cut': '{a} a fait taire la station de {s}', 'system.captured': '{a} prend {s} à {b}', 'system.claimed': '{s} rejoint ton Réseau',
       'raid.loot': '{a} pille {s}', 'raid.bully': 'Raid refusé : {b} est bien plus faible que {a}', 'raid.refused': 'Raid refusé vers {s}', 'refinery.raided': '{a} brise la raffinerie de {s} et emporte {n} Rium', 'fleets.dry': '{n} flotte(s) à sec : plus de Rium pour les opérations', 'relays.unpowered': '{n} relais éteint(s) faute d\'Énergie',
       'barter.done': 'Troc réglé avec {b}', 'treaty.signed': 'Traité {k} signé avec {a}', 'alliance.created': 'Alliance « {k} » fondée', 'alliance.joined': 'Tu rejoins une alliance', 'beacon.lit': 'Le Phare {k} est rallumé', 'echo.bonus': 'Écho du Phare : +100 Cristal', 'decree': 'Décret proclamé : {k}',
       'convoy.sent': 'Convoi parti vers {s}', 'convoy.arrived': 'Convoi arrivé à {s}', 'depot.loaded': '{n} Rium chargés au dépôt de {s}', 'salvage': 'Épave fouillée à {s} : +{n} Métal', 'probe.done': '{s} sondé : {n} corps révélés', 'spy.done': 'Secteur espionné', 'envoy.done': 'Émissaire reçu par {b}', 'sabotage.success': 'Sabotage réussi contre {b}', 'sabotage.caught': 'Saboteur pris chez {b}',
@@ -83,6 +88,7 @@ const STRINGS = {
     notes: {
       barter: 'Troc proposé à {c}', 'expansion.energy': 'Expansion suspendue : l\'Énergie ne suivrait pas', expand: 'Relais vers {s}', turret: 'Tourelle posée à {s}', 'relay.backup': 'Relais de secours à {s}', refinery: 'Raffinerie lancée à {s}', shuttle: 'Navette de cargos vers {s}',
       retreat: 'Repli depuis {s} : flotte trop abîmée', relieve: 'Renfort envoyé à {s}', 'fuel.short': 'Sortie annulée : pas assez de Rium', blockade: 'Blocus de {s} ({c})', raid: 'Raid sur {s} ({c})',
+      'onboarding.1': 'Palier 1 : le plateau du système', 'onboarding.2': 'Palier 2 : le Marché', 'onboarding.3': 'Palier 3 : Chantier et tourelles', 'onboarding.4': 'Palier 4 : les sorties', 'onboarding.5': 'Palier 5 : traités et agents', 'onboarding.6': 'Palier 6 : les Phares', 'onboarding.all': 'Tout ouvert d\'un mot',
     } as Record<string, string>,
   },
   en: {
@@ -151,12 +157,17 @@ const STRINGS = {
     briefing: 'Briefing', dismiss: 'Got it', compiling: 'Your General is reading your doctrine…', compiled: 'Doctrine applied', viaModel: 'interpreted by your General', viaRules: 'interpreted by the base rules (model unavailable)',
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
+    // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
+    tier0: 'Link', tier1: 'Produce', tier2: 'Market', tier3: 'Hold', tier4: 'Strike', tier5: 'Talk', tier6: 'The Beacons',
+    tierLocked: 'Not yet: tier "{k}". {w}',
+    tierWhy1: 'Link a neighbour first: the system board opens with the first relay.', tierWhy2: 'The Market waits for the first Draw and three connected systems.', tierWhy3: 'The Shipyard and turrets come after six hours of play; the Night Watch covers you until then.', tierWhy4: 'Raid? We have no hull, or the shield still holds. Shipyard first.', tierWhy5: 'We talk to neighbours from day two, once we can see one.', tierWhy6: 'The Beacons come with ten connected systems, or when one is in range.',
+    tierOpened: 'Tier opened: {k}', showMeAll: 'I know the game: open everything', showMeAllDone: 'Everything is open.',
     alertInbound: '{n} ships from {a} heading for {s} · arrival in {t}', alertOffer: 'Barter offer from {a}', alertProposal: 'Treaty proposed by {a}: {k}', alertInvite: 'Invitation: {a}', review: 'View', alertsMore: 'and {n} more',
     decrees: 'Decrees', decreesHint: 'Public, temporary, paid in Credits. The Gazette announces them: everyone reads your intentions.', enact: 'Proclaim', inForce: 'in force', remaining: 'left',
     decreeRange: 'Range', decreeRangeDesc: 'Relay range +10% for 24 h.', decreeFreefees: 'Free Fees', decreeFreefeesDesc: 'No Market fees for 3 Draws.', decreeLongwatch: 'Long Watch', decreeLongwatchDesc: 'A 12 h Night Watch instead of 8 for 24 h.',
     earlier: 'earlier', today: 'today', markRead: 'All read',
     events: {
-      'draw.recap': 'Draw {n}', 'fleet.inbound': '{a} sends {n} ships towards {s}, arrival in {t}', 'battle': 'Battle at {s}: {a} against {b}, {n} hulls lost', 'blockade.start': '{a} blockades {s}', 'relay.cut': '{a} silenced the station of {s}', 'system.captured': '{a} takes {s} from {b}', 'system.claimed': '{s} joins your Network',
+      'onboarding.unlocked': 'Tier {n} opened: {k}', 'draw.recap': 'Draw {n}', 'fleet.inbound': '{a} sends {n} ships towards {s}, arrival in {t}', 'battle': 'Battle at {s}: {a} against {b}, {n} hulls lost', 'blockade.start': '{a} blockades {s}', 'relay.cut': '{a} silenced the station of {s}', 'system.captured': '{a} takes {s} from {b}', 'system.claimed': '{s} joins your Network',
       'raid.loot': '{a} plunders {s}', 'raid.bully': 'Raid refused: {b} is far weaker than {a}', 'raid.refused': 'Raid towards {s} refused', 'refinery.raided': '{a} breaks the refinery at {s} and carries off {n} Rium', 'fleets.dry': '{n} fleet(s) dry: no Rium left for operations', 'relays.unpowered': '{n} relay(s) dark for lack of Energy',
       'barter.done': 'Barter settled with {b}', 'treaty.signed': '{k} treaty signed with {a}', 'alliance.created': 'Alliance “{k}” founded', 'alliance.joined': 'You join an alliance', 'beacon.lit': 'Beacon {k} lit', 'echo.bonus': 'Beacon echo: +100 Crystal', 'decree': 'Decree proclaimed: {k}',
       'convoy.sent': 'Convoy left for {s}', 'convoy.arrived': 'Convoy arrived at {s}', 'depot.loaded': '{n} Rium loaded at the depot of {s}', 'salvage': 'Wreck salvaged at {s}: +{n} Metal', 'probe.done': '{s} probed: {n} bodies revealed', 'spy.done': 'Sector spied', 'envoy.done': 'Envoy received by {b}', 'sabotage.success': 'Sabotage succeeded against {b}', 'sabotage.caught': 'Saboteur caught at {b}',
@@ -165,6 +176,7 @@ const STRINGS = {
     notes: {
       barter: 'Barter offered to {c}', 'expansion.energy': 'Expansion paused: Energy would not keep up', expand: 'Relay to {s}', turret: 'Turret placed at {s}', 'relay.backup': 'Backup relay at {s}', refinery: 'Refinery started at {s}', shuttle: 'Cargo shuttle to {s}',
       retreat: 'Retreat from {s}: fleet too damaged', relieve: 'Relief sent to {s}', 'fuel.short': 'Sortie cancelled: not enough Rium', blockade: 'Blockade of {s} ({c})', raid: 'Raid on {s} ({c})',
+      'onboarding.1': 'Tier 1: the system board', 'onboarding.2': 'Tier 2: the Market', 'onboarding.3': 'Tier 3: Shipyard and turrets', 'onboarding.4': 'Tier 4: sorties', 'onboarding.5': 'Tier 5: treaties and agents', 'onboarding.6': 'Tier 6: the Beacons', 'onboarding.all': 'Everything opened in a word',
     } as Record<string, string>,
   },
 } as const;
@@ -188,5 +200,9 @@ export function t<K extends keyof Strings>(key: K): Strings[K] {
 }
 
 export function tError(reason: string): string {
+  if (reason.startsWith('locked:')) {
+    const tier = Number(reason.slice(7));
+    return t('tierLocked').replace('{k}', t(`tier${tier}` as 'tier1')).replace('{w}', t(`tierWhy${tier}` as 'tierWhy1') ?? '');
+  }
   return t('errors')[reason] ?? reason;
 }

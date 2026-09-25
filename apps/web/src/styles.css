@@ -142,7 +142,7 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .sysbar .recenter { padding: 4px 10px; font-size: 18px; line-height: 1; }
 
 /* Landing: existing colony on another device; General panel: device link. */
-.landing button.link { background: none; border: 0; color: var(--muted, #9fb0d0); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
+.landing button.link, .generalpanel button.link { background: none; border: 0; color: var(--muted, #9fb0d0); text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
 .landing .join { display: grid; gap: 8px; margin-top: 8px; }
 .devicelink { margin-top: 12px; display: grid; gap: 6px; }
 .devicelink input { width: 100%; font-size: 12px; }

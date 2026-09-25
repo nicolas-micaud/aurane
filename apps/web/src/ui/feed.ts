@@ -42,8 +42,8 @@ export function describeEvent(e: Ev, v: PlayerView, i: number): FeedLine | null 
   const other = e.actors.length === 2 && e.actors.includes(me) ? e.actors.find((x) => x !== me) : undefined;
   const a = name(e.actors[0]), b = name(e.kind === 'barter.done' && other ? other : e.actors[1]);
   const n = e.kind === 'battle' ? Number(d.kills ?? 0) : e.kind === 'fleet.inbound' ? Number(d.size ?? 0) : e.kind === 'refinery.raided' || e.kind === 'depot.loaded' ? Number(d.rium ?? 0)
-    : e.kind === 'salvage' ? Number(d.metal ?? 0) : e.kind === 'probe.done' ? Number(d.found ?? 0) : Number(d.count ?? d.index ?? 0);
-  const k = e.kind === 'decree' ? decreeLabel(String(d.kind ?? '')) : e.kind === 'treaty.signed' ? t(String(d.kind ?? 'nap') as 'nap') : String(d.name ?? d.beacon ?? (Array.isArray(d.bands) ? (d.bands as number[]).join(' · ') : ''));
+    : e.kind === 'salvage' ? Number(d.metal ?? 0) : e.kind === 'probe.done' ? Number(d.found ?? 0) : e.kind === 'onboarding.unlocked' ? Number(d.tier ?? 0) : Number(d.count ?? d.index ?? 0);
+  const k = e.kind === 'onboarding.unlocked' ? t(`tier${Number(d.tier ?? 0)}` as 'tier1') : e.kind === 'decree' ? decreeLabel(String(d.kind ?? '')) : e.kind === 'treaty.signed' ? t(String(d.kind ?? 'nap') as 'nap') : String(d.name ?? d.beacon ?? (Array.isArray(d.bands) ? (d.bands as number[]).join(' · ') : ''));
   const eta = e.kind === 'fleet.inbound' ? etaText(Number(d.arriveAt ?? e.at) - e.at) : '';
   const text = fill(tpl, { a, b, s: sysName(d.system), n, k, t: eta });
   // Hostile things done by me are operations; suffered, they are alarms.
