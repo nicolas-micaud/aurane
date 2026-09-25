@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global fetch, console, process */
 // Capacity projection for the Generals' LLM layer, from real metrics.
 //
 //   node tools/llm-capacity/project.mjs --players 1000 [--metrics https://…/api/admin/llm/metrics --token …]
