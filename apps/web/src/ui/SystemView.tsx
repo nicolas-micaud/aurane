@@ -69,7 +69,11 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
     scene.current = sc;
     void sc.mount(host.current!).then(() => { if (systemView.value) sc.update(systemView.value, ctxOf(v)); });
     const raf = requestAnimationFrame(() => setEntered(true));
-    return () => { cancelAnimationFrame(raf); sc.destroy(); watch(null); };
+    // The title bar wraps differently per phone: the scene keeps its real height free.
+    const bar = host.current!.parentElement?.querySelector<HTMLElement>('.sysbar') ?? null;
+    const ro = bar && 'ResizeObserver' in window ? new ResizeObserver(() => sc.setTopInset(bar.offsetHeight)) : null;
+    if (bar) { sc.setTopInset(bar.offsetHeight); ro?.observe(bar); }
+    return () => { cancelAnimationFrame(raf); ro?.disconnect(); sc.destroy(); watch(null); };
   }, [systemId]);
   useEffect(() => { if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sv, v]);
   useEffect(() => { scene.current?.setSelection(sel); if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sel]);
@@ -298,7 +302,7 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
         </>
       )}
       {!mine && !sel && sv.owner && <RaidButtons v={v} sv={sv} target={sv.id} />}
-      {!sel && !struct && <p class="muted">{t('coach6')}</p>}
+      {!sel && !struct && <p class="muted">{poi.kind === 'nebula' ? t('plateauNebula') : poi.orbitSlots.every((n) => n === 0) ? t('plateauNoSlots') : t('plateauHint')}</p>}
     </div>
   );
 }
