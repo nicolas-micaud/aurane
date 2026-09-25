@@ -121,7 +121,9 @@ const PRESETS: Record<PlanetType, { a: number[]; b: number[]; c: number[]; atmo:
 export class PlanetFilter extends Filter {
   constructor(type: PlanetType, seed: number, opts: { ring?: boolean; light?: [number, number, number] } = {}) {
     const p = PRESETS[type];
-    const pad = 0.28;
+    // Room around the sphere for the atmosphere, and for the ring, which reaches 2.2 radii on the x axis (a 0.28
+    // pad clipped it left and right on ringed gas giants).
+    const pad = opts.ring ? 0.62 : 0.28;
     super({
       glProgram: GlProgram.from({ vertex: defaultFilterVert, fragment: FRAG, name: 'planet' }),
       resources: {
