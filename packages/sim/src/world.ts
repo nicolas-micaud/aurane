@@ -360,7 +360,11 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
       if (score > bestScore) { bestScore = score; best = sys; }
     }
   }
-  if (!best) throw new Error('no room left on the rim');
+  if (!best) {
+    // A full rim is the strongest growth signal of all: open a ring and place the newcomer on it.
+    if (growGalaxy(w, true)) return spawnColony(w, opts);
+    throw new Error('no room left on the rim');
+  }
   const id = opts.id ?? newId(w, 'C');
   const colony: Colony = {
     id, name: opts.name, faction: opts.faction, persona: opts.persona, npc: opts.npc ?? false,
@@ -1655,18 +1659,24 @@ function lapseCaptures(w: World): void {
 }
 
 /** The galaxy grows a ring when the rim fills up (REVIEW-S0 § 4): existing sectors are untouched, new ones open for newcomers. */
-function maybeGrowGalaxy(w: World): void {
+function maybeGrowGalaxy(w: World): void { growGalaxy(w, false); }
+
+/** Grows one ring if the rules allow it and (unless forced) the rim is occupied enough. Returns whether it grew. */
+export function growGalaxy(w: World, force: boolean): boolean {
   const g = w.rules.galaxyGrowth;
-  if (!g.enabled || w.galaxy.radius >= g.maxRadius) return;
-  const rimMin = Math.max(0, w.galaxy.radius - 2);
-  const rim = Object.values(w.galaxy.sectors).filter((s) => s.ring >= rimMin);
-  const occupied = rim.filter((s) => s.systems.some((id) => { const o = w.systems[id]!.owner; return o !== null && w.colonies[o]?.capital === id; })).length;
-  if (occupied / Math.max(1, rim.length) < g.rimOccupancy) return;
+  if (!g.enabled || w.galaxy.radius >= g.maxRadius) return false;
+  if (!force) {
+    const rimMin = Math.max(0, w.galaxy.radius - 2);
+    const rim = Object.values(w.galaxy.sectors).filter((s) => s.ring >= rimMin);
+    const occupied = rim.filter((s) => s.systems.some((id) => { const o = w.systems[id]!.owner; return o !== null && w.colonies[o]?.capital === id; })).length;
+    if (occupied / Math.max(1, rim.length) < g.rimOccupancy) return false;
+  }
   const next = expandGalaxy(w.galaxy, w.galaxyOptions);
   for (const id of Object.keys(next.systems)) if (!w.systems[id]) { w.systems[id] = emptySystem(); w.systems[id]!.mainPoi = layoutOf(next, id).main; }
   w.galaxy = next;
   w.galaxyOptions = { ...w.galaxyOptions, radius: next.radius };
   logEvent(w, 'galaxy.expanded', [], { radius: next.radius });
+  return true;
 }
 
 /** The band of the next Draw the Oracles know ahead of time, or null outside their window (or when the perk is off). */

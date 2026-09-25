@@ -68,11 +68,22 @@ function contact() {
     rows.push({ colonies: n, radius, sectors, perColony: +(sectors / n).toFixed(1), contactBy72h: `${Math.round((hours.length / n) * 100)} %`, medianHours: median ?? '> 72', relays: Object.keys(w.relays).length });
   }
   console.table(rows);
-  console.log(`\n== Same, with galaxy growth from radius 4 (rim occupancy 0.5, max 12) ==`);
+}
+
+/** Galaxy growth from a small start: how far the ring opening goes for a given population arriving over the first day. */
+function growth() {
+  console.log(`\n== Galaxy growth from radius 4 (rim occupancy 0.5, max 12), colonies arriving in waves over the first day, 2 days ==`);
   const grown = [];
-  for (const colonies of [40, 120, 250]) {
-    const w = run({ seed: `review-g-${colonies}`, colonies, radius: 4, days: 1, rules: { galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 12 } } });
-    grown.push({ colonies: Object.keys(w.colonies).length, startRadius: 4, endRadius: w.galaxy.radius, sectors: Object.keys(w.galaxy.sectors).length, expansions: w.events.filter((e) => e.kind === 'galaxy.expanded').length });
+  for (const colonies of [40, 120, 250, 500]) {
+    const w = createWorld(`review-g-${colonies}`, { radius: 4, seasonDays: 7, rules: { galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 12 } } });
+    let spawned = 0, failed = 0, ti = 0;
+    const perWave = Math.ceil(colonies / 24);
+    while (w.time < 2 * 86400) {
+      if (ti % 2 === 0 && spawned < colonies) for (let i = 0; i < perWave && spawned < colonies; i++) { try { spawnColony(w, { name: `c${spawned}`, faction: FACTIONS[spawned % 4], persona: PERSONAS[spawned % 4], npc: true }); spawned++; } catch { failed++; } }
+      for (const c of Object.values(w.colonies)) { const d = decide(w, c, ti); for (const cmd of d.commands) apply(w, c.id, cmd); }
+      tick(w, 1800, 300); ti++;
+    }
+    grown.push({ colonies: spawned, failed, startRadius: 4, endRadius: w.galaxy.radius, sectors: Object.keys(w.galaxy.sectors).length, perColony: +(Object.keys(w.galaxy.sectors).length / spawned).toFixed(1), expansions: w.events.filter((e) => e.kind === 'galaxy.expanded').length });
   }
   console.table(grown);
 }
@@ -83,14 +94,15 @@ function transfers() {
     const w = createWorld('review-t', { radius: 4, rules });
     const main = spawnColony(w, { name: 'main', faction: 'guild', persona: 'oriel', origin: 'd' });
     const alts = [1, 2, 3].map((i) => spawnColony(w, { name: `alt${i}`, faction: 'guild', persona: 'oriel', origin: `d${i}` }));
-    const region = w.galaxy.systems[main.capital].region;
-    for (const a of alts) { const sys = Object.values(w.galaxy.systems).find((s) => s.region === region && !w.systems[s.id].owner); w.systems[sys.id].owner = main.id; w.systems[sys.id].owner = null; a.marketSystem = a.capital; }
+    // The usual set-up: the alts join the main's alliance at once, which opens barter between them.
+    main.influence = 1e6;
+    apply(w, main.id, { type: 'alliance_create', name: 'Farm' });
+    for (const a of alts) { apply(w, main.id, { type: 'alliance_invite', colony: a.id }); apply(w, a.id, { type: 'alliance_join', alliance: main.alliance }); }
     let ti = 0; let accepted = 0, refused = 0;
     while (w.time < 86400) {
       for (const a of alts) {
         const st = w.systems[a.capital].stock;
         const give = { metal: Math.floor(st.metal * 0.9), energy: Math.floor(st.energy * 0.9) };
-        // Reach: alts sit in the same region as the main by construction of the rim? Not guaranteed: fall back to alliance.
         const r = apply(w, a.id, { type: 'barter_offer', to: main.id, give, want: { food: 1 } });
         if (r.ok) { accepted++; apply(w, main.id, { type: 'barter_accept', offer: r.id }); } else refused++;
       }
@@ -117,4 +129,5 @@ function concordat() {
 if (what === 'factions' || what === 'all') factions();
 if (what === 'concordat') concordat();
 if (what === 'contact' || what === 'all') contact();
+if (what === 'growth' || what === 'all') growth();
 if (what === 'transfers' || what === 'all') transfers();
