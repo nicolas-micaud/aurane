@@ -122,7 +122,7 @@ describe('analysis: threats and options', () => {
     expect(a.options.length).toBeGreaterThanOrEqual(3);
     expect(a.options.length).toBeLessThanOrEqual(5);
     const kinds = a.options.map((o) => o.kind);
-    const rank: Record<string, number> = { turret: 0, defend: 1, buy_energy: 2, double_bridge: 3, backup_relay: 3, expand: 4, sell_surplus: 5, beacon: 6, raid: 7, hold: 9 };
+    const rank: Record<string, number> = { turret: 0, defend: 1, buy_energy: 2, double_bridge: 3, backup_relay: 3, expand: 4, extractor: 4, sell_surplus: 5, beacon: 6, raid: 7, hold: 9 };
     for (let i = 1; i < kinds.length; i++) expect(rank[kinds[i]!]!).toBeGreaterThanOrEqual(rank[kinds[i - 1]!]!);
     expect(kinds.includes('double_bridge') || kinds.includes('backup_relay')).toBe(true);
     const fr = renderAnalysis(a, 'fr');

@@ -4,7 +4,7 @@
 import type { LlmTask } from '../llm/types.js';
 
 /** Lower runs first. */
-export const PRIORITY = { talk: 0, doctrine: 1, briefing: 2, reaction: 3, gazette: 4, npc: 5 } as const;
+export const PRIORITY = { talk: 0, doctrine: 1, briefing: 2, counsel: 2, reaction: 3, episode: 3, gazette: 4, npc: 5 } as const;
 export type JobKind = keyof typeof PRIORITY;
 
 export type JobState = 'queued' | 'running' | 'done' | 'failed' | 'expired';
@@ -118,7 +118,7 @@ export class Scheduler {
    * Queue a job. `spreadMs` adds a random delay in [0, spreadMs] (the smoothing); `key` dedups; `ttlMs`
    * bounds the wait. The returned promise settles when the job ends (result, error, or expiry).
    */
-  async enqueue<P, R>(kind: JobKind, task: LlmTask, payload: P, o: { colony?: string | null; key?: string | null; spreadMs?: number; ttlMs?: number; random?: () => number } = {}): Promise<{ id: string; result: Promise<R>; reused: boolean }> {
+  async enqueue<P, R>(kind: JobKind, task: LlmTask, payload: P, o: { colony?: string | null; key?: string | null; spreadMs?: number; ttlMs?: number; random?: () => number; /** Not before this time (ms); the jitter adds to it. */ runAt?: number } = {}): Promise<{ id: string; result: Promise<R>; reused: boolean }> {
     if (o.key) {
       const existing = await this.store.findQueuedByKey(o.key);
       if (existing) return { id: existing.id, result: this.wait<R>(existing.id), reused: true };
@@ -127,7 +127,7 @@ export class Scheduler {
     const jitter = o.spreadMs ? Math.floor((o.random ?? Math.random)() * o.spreadMs) : 0;
     const job: Job<P, R> = {
       id: `j${now.toString(36)}${(this.seq++).toString(36)}`, kind, task, priority: PRIORITY[kind], colony: o.colony ?? null, key: o.key ?? null,
-      payload, createdAt: now, runAfter: now + jitter, expiresAt: now + (o.ttlMs ?? 3600000), attempts: 0, state: 'queued',
+      payload, createdAt: now, runAfter: Math.max(now, o.runAt ?? now) + jitter, expiresAt: Math.max(now, o.runAt ?? now) + (o.ttlMs ?? 3600000), attempts: 0, state: 'queued',
     };
     await this.store.put(job as Job);
     this.opts.onEvent?.({ kind: 'enqueued', job: job as Job });

@@ -51,7 +51,7 @@ export interface BeaconOutlook {
   link: { from: Named; metal: number; energy: number } | null;
 }
 
-export type OptionKind = 'turret' | 'defend' | 'buy_energy' | 'double_bridge' | 'backup_relay' | 'expand' | 'sell_surplus' | 'beacon' | 'raid' | 'hold';
+export type OptionKind = 'turret' | 'defend' | 'buy_energy' | 'double_bridge' | 'backup_relay' | 'expand' | 'extractor' | 'sell_surplus' | 'beacon' | 'raid' | 'hold';
 export interface Option {
   id: string;
   kind: OptionKind;
@@ -358,6 +358,19 @@ export function buildOptions(w: World, c: Colony, a: Omit<Analysis, 'options' | 
       });
     }
   }
+  // 5b. An Extractor where the yield is: the first economic move of a young colony.
+  {
+    const site = [c.capital, ...ownedSystems(w, c.id).filter((id) => id !== c.capital && net.has(id))].find((id) => !hasStructure(w.systems[id]!, 'extractor') && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 1) > 0 && !w.systems[id]!.buildQueue.some((j) => j.building === 'extractor'));
+    if (site) {
+      const cost = BUILDING_COST.extractor;
+      const sys = w.galaxy.systems[site]!;
+      out.push({
+        id: 'extractor', kind: 'extractor', cost, delayMin: Math.round(BUILDING_SECONDS.extractor / 60), risk: 'low', command: affordable(site, cost) ? { type: 'build', system: site, building: 'extractor' } : null,
+        label: { fr: `Extracteur à ${sys.name} [${sys.resource}] (${fmtCost(cost, 'fr')}, ${Math.round(BUILDING_SECONDS.extractor / 60)} min)`, en: `Extractor at ${sys.name} [${sys.resource}] (${fmtCost(cost, 'en')}, ${Math.round(BUILDING_SECONDS.extractor / 60)} min)` },
+        gain: { fr: `+50 % de ${sys.resource} à chaque Tirage sur ce système`, en: `+50 % ${sys.resource} at every Draw on this system` },
+      });
+    }
+  }
   // 6. Sell the biggest surplus where it pays.
   const surplus = a.economy.lines.filter((l) => l.surplus >= 40 && l.prices.length).map((l) => ({ l, best: l.prices.reduce((x, y) => (y.price > x.price ? y : x)) })).filter((x) => x.best.price >= x.l.reference * 0.85).sort((x, y) => y.l.surplus * y.best.price - x.l.surplus * x.best.price)[0];
   if (surplus) {
@@ -414,7 +427,7 @@ export function buildOptions(w: World, c: Colony, a: Omit<Analysis, 'options' | 
     }
   }
   // Rank: crisis answers first, then structure, then economy, then adventure. Cap at five.
-  const rank: Record<OptionKind, number> = { turret: 0, defend: 1, buy_energy: 2, double_bridge: 3, backup_relay: 3, expand: 4, sell_surplus: 5, beacon: 6, raid: 7, hold: 9 };
+  const rank: Record<OptionKind, number> = { turret: 0, defend: 1, buy_energy: 2, double_bridge: 3, backup_relay: 3, expand: 4, extractor: 4, sell_surplus: 5, beacon: 6, raid: 7, hold: 9 };
   out.sort((x, y) => rank[x.kind] - rank[y.kind]);
   const top = out.slice(0, 5);
   if (top.length < 3) {
@@ -422,6 +435,14 @@ export function buildOptions(w: World, c: Colony, a: Omit<Analysis, 'options' | 
       id: 'hold', kind: 'hold', cost: {}, delayMin: a.nextDrawMin, risk: 'low', command: null,
       label: { fr: `Tenir jusqu'au prochain Tirage (dans ${a.nextDrawMin} min) et laisser les entrepôts se remplir`, en: `Hold until the next Draw (in ${a.nextDrawMin} min) and let the warehouses fill` },
       gain: { fr: `+${r1(c.avgProduced.metal)} Métal, +${r1(c.avgProduced.energy)} Énergie attendus`, en: `+${r1(c.avgProduced.metal)} Metal, +${r1(c.avgProduced.energy)} Energy expected` },
+    });
+  }
+  if (top.length < 3) {
+    const cap = w.galaxy.systems[c.capital]!;
+    top.push({
+      id: 'watch', kind: 'hold', cost: {}, delayMin: 0, risk: 'low', command: { type: 'set_watch', startHour: (Math.floor(w.time / 3600) + 1) % 24 },
+      label: { fr: `Poser la Garde de nuit sur les ${a.threats.protections.watchHours} prochaines heures (Bastions doublés à ${cap.name})`, en: `Set the Night Watch on the next ${a.threats.protections.watchHours} hours (Bastions doubled at ${cap.name})` },
+      gain: { fr: 'une fenêtre où l\'on te dérange moins', en: 'a window in which you are disturbed less' },
     });
   }
   return top;
