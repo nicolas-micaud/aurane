@@ -140,6 +140,17 @@ export function createHttpServer(engine: Engine): Server {
         return json(res, r.ok ? 200 : 404, r);
       }
       if (req.method === 'POST' && url.pathname === '/api/doctrine/discard') { engine.general.discardDoctrine(colony.id); return json(res, 200, { ok: true }); }
+      // The Draw Counsel (decision 0009): three cards; "Do it" runs the card's command, "Not now" remembers the refusal.
+      if (req.method === 'GET' && url.pathname === '/api/counsel') return json(res, 200, await engine.general.counsel(colony.id, url.searchParams.get('lang') === 'en' ? 'en' : 'fr'));
+      if (req.method === 'POST' && (url.pathname === '/api/counsel/take' || url.pathname === '/api/counsel/skip')) {
+        const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid card' });
+        const r = await engine.general.decideCounsel(colony.id, parsed.data.id, url.pathname.endsWith('/take'));
+        return json(res, r.ok ? 200 : 404, r);
+      }
+      // What my General knows about me: readable, exportable, erasable (LPD/RGPD).
+      if (req.method === 'GET' && url.pathname === '/api/memory') return json(res, 200, await engine.general.exportMemory(colony.id));
+      if (req.method === 'DELETE' && url.pathname === '/api/memory') return json(res, 200, { ok: await engine.general.eraseMemory(colony.id) });
       if (req.method === 'POST' && url.pathname === '/api/cmd') {
         const parsed = CommandSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid command', issues: parsed.error.issues });
