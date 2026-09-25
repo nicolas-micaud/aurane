@@ -27,6 +27,7 @@ interface DayFacts {
   captures: { by: string; from: string; system: string }[];
   beacons: { by: string; name: string }[];
   treaties: number;
+  decrees: { by: string; kind: string }[];
   alliances: string[];
   founded: number;
   storms: number;
@@ -63,6 +64,7 @@ export function dayFacts(w: World, day: number): DayFacts {
     captures: events.filter((e) => e.kind === 'system.captured').map((e) => ({ by: name(w, e.actors[0]), from: name(w, e.actors[1]), system: w.galaxy.systems[(e.data as { system?: string })?.system ?? '']?.name ?? '?' })),
     beacons: events.filter((e) => e.kind === 'beacon.lit').map((e) => ({ by: name(w, e.actors[0]), name: String((e.data as { beacon?: string })?.beacon ?? beaconName(w, undefined)) })),
     treaties: count('treaty.signed'),
+    decrees: events.filter((e) => e.kind === 'decree').slice(0, 8).map((e) => ({ by: name(w, e.actors[0]), kind: String((e.data as { kind?: string } | undefined)?.kind ?? '') })),
     alliances: events.filter((e) => e.kind === 'alliance.created').map((e) => String((e.data as { name?: string })?.name ?? '')),
     founded: count('colony.founded'),
     storms: events.filter((e) => e.kind === 'draw' && (e.data as { event?: { kind: string } })?.event?.kind === 'storm').length,
@@ -87,7 +89,8 @@ export function templateGazette(f: DayFacts, lang: 'fr' | 'en', now: number): Ga
       if (f.convoysLost) parts.push(`${s(f.convoysLost, 'convoi perdu', 'convois perdus')} en route.`);
       sections.push({ heading: 'Les sièges', body: parts.join(' ') });
     }
-    sections.push({ heading: 'La Trame politique', body: `${s(f.treaties, 'traité signé', 'traités signés')}${f.alliances.length ? ` ; nouvelles alliances : ${f.alliances.join(', ')}` : ''}${f.founded ? ` ; ${s(f.founded, 'Colonie fondée', 'Colonies fondées')}` : ''}.` });
+    const decreeFr: Record<string, string> = { range: 'la Portée', freefees: 'la Franchise des frais', longwatch: 'la Longue Garde' };
+    sections.push({ heading: 'La Trame politique', body: `${s(f.treaties, 'traité signé', 'traités signés')}${f.alliances.length ? ` ; nouvelles alliances : ${f.alliances.join(', ')}` : ''}${f.founded ? ` ; ${s(f.founded, 'Colonie fondée', 'Colonies fondées')}` : ''}.${f.decrees.length ? ' Décrets : ' + f.decrees.map((d) => `${d.by} proclame ${decreeFr[d.kind] ?? d.kind}`).join(' ; ') + '.' : ''}` });
     if (f.beacons.length) sections.push({ heading: 'Les Phares', body: f.beacons.map((b) => `${b.by} rallume ${b.name}. Le Signal se souvient.`).join(' ') });
     sections.push({ heading: 'Le ciel', body: `${s(f.draws, 'Tirage', 'Tirages')}${f.storms ? `, ${s(f.storms, 'tempête', 'tempêtes')}` : ''}${f.eruptions ? `, ${s(f.eruptions, 'éruption', 'éruptions')}` : ''}. Titres : Grand Réseau ${f.titles.network}, Amirauté ${f.titles.admiralty}, Bourse ${f.titles.exchange}.` });
     sections.push({ heading: 'Le classement', body: f.top.map((t, i) => `${i + 1}. ${t.name} (${t.score})`).join(' · ') });
@@ -102,7 +105,8 @@ export function templateGazette(f: DayFacts, lang: 'fr' | 'en', now: number): Ga
     if (f.convoysLost) parts.push(`${s(f.convoysLost, 'convoy lost', 'convoys lost')} en route.`);
     sections.push({ heading: 'The sieges', body: parts.join(' ') });
   }
-  sections.push({ heading: 'Politics', body: `${s(f.treaties, 'treaty signed', 'treaties signed')}${f.alliances.length ? `; new alliances: ${f.alliances.join(', ')}` : ''}${f.founded ? `; ${s(f.founded, 'Colony founded', 'Colonies founded')}` : ''}.` });
+  const decreeEn: Record<string, string> = { range: 'Range', freefees: 'Free Fees', longwatch: 'the Long Watch' };
+  sections.push({ heading: 'Politics', body: `${s(f.treaties, 'treaty signed', 'treaties signed')}${f.alliances.length ? `; new alliances: ${f.alliances.join(', ')}` : ''}${f.founded ? `; ${s(f.founded, 'Colony founded', 'Colonies founded')}` : ''}.${f.decrees.length ? ' Decrees: ' + f.decrees.map((d) => `${d.by} proclaims ${decreeEn[d.kind] ?? d.kind}`).join('; ') + '.' : ''}` });
   if (f.beacons.length) sections.push({ heading: 'The Beacons', body: f.beacons.map((b) => `${b.by} lights ${b.name}. The Signal remembers.`).join(' ') });
   sections.push({ heading: 'The sky', body: `${s(f.draws, 'Draw', 'Draws')}${f.storms ? `, ${s(f.storms, 'storm', 'storms')}` : ''}${f.eruptions ? `, ${s(f.eruptions, 'eruption', 'eruptions')}` : ''}. Titles: Great Network ${f.titles.network}, Admiralty ${f.titles.admiralty}, Exchange ${f.titles.exchange}.` });
   sections.push({ heading: 'Standings', body: f.top.map((t, i) => `${i + 1}. ${t.name} (${t.score})`).join(' · ') });

@@ -16,10 +16,12 @@ import { planPath } from './routing.js';
 import { capacityOf, freeSlotsOnOrbit, hasStructure } from './structures.js';
 import {
   colonyNetwork, colonyRelays, colonyScore, hasBuilding, isShielded, networkUpkeep, offNetRium, ownedSystems, rangeContext,
-  reachableRegions, routeLimit, stockHas,
+  reachableRegions, routeLimit, stockHas, journal,
 } from './world.js';
 
-export interface Decision { commands: Command[]; notes: string[] }
+/** A structured note (translated by the client) on what the General did and why. */
+export interface GeneralNote { kind: string; system?: string; colony?: string }
+export interface Decision { commands: Command[]; notes: GeneralNote[] }
 
 interface Ctx {
   w: World;
@@ -33,7 +35,7 @@ interface Ctx {
   reserve: Stock;
   rng: ReturnType<typeof createRng>;
   out: Command[];
-  notes: string[];
+  notes: GeneralNote[];
 }
 
 const BASE_PRICE = B.BASE_PRICE;
@@ -94,7 +96,7 @@ function decideBarter(ctx: Ctx): void {
   const giveQty = Math.min(Math.floor(spare(ctx, surplus) * 0.5), Math.ceil((wantQty * BASE_PRICE[need]) / BASE_PRICE[surplus] * 1.05));
   if (giveQty < 1 || wantQty < 1) return;
   ctx.out.push({ type: 'barter_offer', to: to.id, give: { [surplus]: giveQty }, want: { [need]: wantQty } });
-  ctx.notes.push(`barter with ${to.name}`);
+  ctx.notes.push({ kind: 'barter', colony: to.id });
 }
 
 function decideMarket(ctx: Ctx): void {
@@ -163,9 +165,9 @@ function decideExpansion(ctx: Ctx): void {
   const income = c.avgProduced.energy;
   for (const cand of cands.slice(0, 5)) {
     const projected = networkUpkeep([...active, { id: '', a: '', b: '', owner: c.id, length: 0, upkeep: cand.upkeep, readyAt: 0, cutUntil: 0 }]);
-    if (w.drawIndex >= 0 && projected > income * 0.8) { ctx.notes.push('expansion capped by energy income'); break; }
+    if (w.drawIndex >= 0 && projected > income * 0.8) { ctx.notes.push({ kind: 'expansion.energy' }); break; }
     ctx.out.push({ type: 'build_relay', a: cand.a, b: cand.b });
-    ctx.notes.push(`expand to ${w.galaxy.systems[cand.b]!.name}`);
+    ctx.notes.push({ kind: 'expand', system: cand.b });
     return;
   }
   if (cands.length === 0) {
@@ -192,7 +194,7 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     // Guns go where the invasion passes: the last point of interest before the station, else the station itself.
     const poi = approachPoi(w, id);
     const where = freeSlotsOnOrbit(w, sys, 2, poi) > 0 ? poi : st.mainPoi;
-    if (freeSlotsOnOrbit(w, sys, 2, where) > 0 && canAffordAt(ctx, id, B.BUILDING_COST[kind])) { ctx.out.push({ type: 'build', system: id, building: kind, poi: where }); ctx.notes.push(`turret at ${sys.name}`); }
+    if (freeSlotsOnOrbit(w, sys, 2, where) > 0 && canAffordAt(ctx, id, B.BUILDING_COST[kind])) { ctx.out.push({ type: 'build', system: id, building: kind, poi: where }); ctx.notes.push({ kind: 'turret', system: id }); }
   }
   if (totalQueued >= 2) return;
   // A second relay on another body keeps the Network up when the station falls: capital first, then rich systems.
@@ -202,7 +204,7 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     if (id !== capital && !(threatened.has(id) || st.stock.metal > 250)) continue;
     const layout = layoutOf(w.galaxy, id);
     const spot = layout.pois.find((q) => q.id !== st.mainPoi && RELAY_KINDS.has(q.kind) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 3, q.id) > 0);
-    if (spot && canAffordAt(ctx, id, B.BUILDING_COST.relay) && (id !== capital || w.drawIndex >= 6)) { ctx.out.push({ type: 'build', system: id, building: 'relay', poi: spot.id }); ctx.notes.push(`backup relay at ${w.galaxy.systems[id]!.name}`); return; }
+    if (spot && canAffordAt(ctx, id, B.BUILDING_COST.relay) && (id !== capital || w.drawIndex >= 6)) { ctx.out.push({ type: 'build', system: id, building: 'relay', poi: spot.id }); ctx.notes.push({ kind: 'relay.backup', system: id }); return; }
   }
   // Warehouses before anything overflows.
   for (const id of ctx.productive) {
@@ -219,7 +221,7 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     const st = w.systems[id]!;
     if (st.buildQueue.some((j) => j.building === 'refinery')) continue;
     const gas = layoutOf(w.galaxy, id).pois.find((q) => q.kind === 'gas' && !st.structures.some((x) => x.kind === 'refinery' && x.poi === q.id) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 1, q.id) > 0);
-    if (gas && canAffordAt(ctx, id, B.BUILDING_COST.refinery)) { ctx.out.push({ type: 'build', system: id, building: 'refinery', poi: gas.id }); ctx.notes.push(`refinery at ${w.galaxy.systems[id]!.name}`); return; }
+    if (gas && canAffordAt(ctx, id, B.BUILDING_COST.refinery)) { ctx.out.push({ type: 'build', system: id, building: 'refinery', poi: gas.id }); ctx.notes.push({ kind: 'refinery', system: id }); return; }
   }
   // A synthesizer eats Energy: never before the second day, never while Energy itself is short.
   const energyOk = ctx.home.energy > ctx.reserve.energy * 2 && c.avgProduced.energy > B.RIUM_SYNTH_INPUT.energy * 2;
@@ -277,7 +279,7 @@ function decideLogistics(ctx: Ctx): void {
         ?? Object.values(w.fleets).find((f) => f.owner === c.id && f.units.cargo > 0 && combatSize(f.units) === 0 && f.order.kind === 'idle' && f.at === c.capital);
       if (!cargo) continue;
       const designation = layoutOf(w.galaxy, id).pois.find((q) => q.id === s.poi)?.designation;
-      if (designation) { ctx.out.push({ type: 'fleet_order', fleet: cargo.id, order: 'move', target: `${id}:${designation}` }); ctx.notes.push(`shuttle to ${w.galaxy.systems[id]!.name}`); }
+      if (designation) { ctx.out.push({ type: 'fleet_order', fleet: cargo.id, order: 'move', target: `${id}:${designation}` }); ctx.notes.push({ kind: 'shuttle', system: id }); }
     }
     if (id !== c.capital && st.structures.some((s) => s.kind === 'refinery') && st.stock.rium > 150 && routes < limit && !routeKeys.has(`${id}>${c.capital}:rium`)) {
       routes++; routeKeys.add(`${id}>${c.capital}:rium`); ctx.out.push({ type: 'route_set', from: id, to: c.capital, resource: 'rium', perTrip: 120, whenBelow: 400 });
@@ -328,7 +330,7 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
   for (const f of mine) {
     if (f.pos !== null && fleetHpFraction(f) < p.retreatBelow && f.at !== capital && (f.order.kind === 'raid' || f.order.kind === 'blockade')) {
       ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'return', target: capital });
-      ctx.notes.push('retreat');
+      ctx.notes.push({ kind: 'retreat', system: f.at! });
     }
   }
   const idle = mine.filter((f) => f.order.kind === 'idle');
@@ -336,7 +338,7 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
   for (const f of idle) {
     if (besieged && f.at !== besieged && combatSize(f.units) >= 4) {
       ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'defend', target: besieged });
-      ctx.notes.push('relieve');
+      ctx.notes.push({ kind: 'relieve', system: besieged });
       continue;
     }
     if (f.at !== capital && f.at !== null && !p.defendFirst.includes(f.at)) {
@@ -354,14 +356,14 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
       const need = plan.onNet ? 0 : 2 * offNetRium(plan.length, f.units);
       return w.systems[f.at!]!.stock.rium - (f.at === capital ? ctx.reserve.rium * 0.25 : 0) >= need;
     };
-    if (!fuelFor(victim.capital)) { ctx.notes.push('no fuel'); continue; }
+    if (!fuelFor(victim.capital)) { ctx.notes.push({ kind: 'fuel.short' }); continue; }
     const prey = ownedSystems(w, victim.id).filter((id) => id !== victim.capital && !w.systems[id]!.blockade);
     // A siege needs weight (a fleet of 8+) and picks the least defended system.
     const defences = (id: string): number => w.systems[id]!.structures.filter((s) => s.kind in B.TURRET_STATS && s.hp > 0).length;
     if (combatSize(f.units) >= 8 && prey.length && ctx.rng.next() < 0.6) {
       const weakest = prey.reduce((a, b) => (defences(b) < defences(a) ? b : a));
       ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'blockade', target: weakest });
-      ctx.notes.push(`blockade ${victim.name}`);
+      ctx.notes.push({ kind: 'blockade', system: weakest, colony: victim.id });
       continue;
     }
     // Raid the station of a bridge endpoint: cutting it splits the victim's network.
@@ -371,8 +373,45 @@ function decideMilitary(ctx: Ctx, threatened: Set<string>): void {
     const relay = relays.find((r) => bridges.has(r.id)) ?? (relays.length ? ctx.rng.pick(relays) : null);
     const targetSystem = relay ? (w.systems[relay.a]!.owner === victim.id ? relay.a : relay.b) : ctx.rng.pick(prey);
     ctx.out.push({ type: 'fleet_order', fleet: f.id, order: 'raid', target: targetSystem });
-    ctx.notes.push(`raid ${victim.name}`);
+    ctx.notes.push({ kind: 'raid', system: targetSystem, colony: victim.id });
   }
+}
+
+/**
+ * NPC Corsairs lean on human outposts from the second day: a small, announced raid every few hours at most,
+ * on the least defended outpost of a neighbour who is out of the newcomer shield. The living tutorial, military edition.
+ */
+function decideCorsairPressure(ctx: Ctx): void {
+  const { w, c } = ctx;
+  if (!c.npc || c.faction !== 'corsairs' || w.drawIndex < B.CORSAIR_PRESSURE_FROM_DRAW) return;
+  const recent = w.events.slice(-400).some((e) => e.kind === 'fleet.inbound' && e.actors[0] === c.id && w.time - e.at < B.CORSAIR_PRESSURE_COOLDOWN_S);
+  if (recent) return;
+  const fleet = Object.values(w.fleets).find((f) => f.owner === c.id && f.at === c.capital && f.order.kind === 'idle' && combatSize(f.units) >= 3);
+  if (!fleet) return;
+  const mine = w.galaxy.sectors[w.galaxy.systems[c.capital]!.sector]!.hex;
+  const near = (id: string): boolean => hexDistance(mine, w.galaxy.sectors[w.galaxy.systems[id]!.sector]!.hex) <= 4;
+  const victims = Object.values(w.colonies).filter((o) => !o.npc && o.id !== c.id && !isShielded(w, o) && !isAlly(w, c.id, o.id) && !atPeace(w, c.id, o.id)
+    && ownedSystems(w, o.id).some((id) => id !== o.capital && near(id)));
+  if (!victims.length) return;
+  const victim = ctx.rng.pick(victims);
+  const outposts = ownedSystems(w, victim.id).filter((id) => id !== victim.capital && near(id) && !w.systems[id]!.blockade && !w.systems[id]!.engaged);
+  if (!outposts.length) return;
+  const defences = (id: string): number => w.systems[id]!.structures.filter((s) => s.kind in B.TURRET_STATS && s.hp > 0).length;
+  const target = outposts.reduce((a, b) => (defences(b) < defences(a) ? b : a));
+  const plan = planPath(w, c, c.capital, target);
+  const need = plan.onNet ? 0 : 2 * offNetRium(plan.length, fleet.units);
+  if (w.systems[c.capital]!.stock.rium < need + ctx.reserve.rium * 0.25) { ctx.notes.push({ kind: 'fuel.short' }); return; }
+  // Keep it modest: a raiding party, not an invasion.
+  if (combatSize(fleet.units) > B.CORSAIR_PRESSURE_MAX_SHIPS) {
+    const keep = combatSize(fleet.units) - B.CORSAIR_PRESSURE_MAX_SHIPS;
+    const units = { corvette: 0, frigate: 0, cruiser: 0, cargo: fleet.units.cargo };
+    let left = keep;
+    for (const u of ['cruiser', 'frigate', 'corvette'] as const) { const n = Math.min(left, fleet.units[u]); units[u] = n; left -= n; }
+    ctx.out.push({ type: 'split_fleet', fleet: fleet.id, units });
+    return; // the raiding party leaves at the next decision
+  }
+  ctx.out.push({ type: 'fleet_order', fleet: fleet.id, order: 'raid', target });
+  ctx.notes.push({ kind: 'raid', system: target, colony: victim.id });
 }
 
 function decideDiplomacy(ctx: Ctx): void {
@@ -471,6 +510,7 @@ export function decide(w: World, colony: Colony, tickIndex: number): Decision {
   decideLogistics(ctx);
   decideExpansion(ctx);
   decideMilitary(ctx, threatened);
+  decideCorsairPressure(ctx);
   decideDiplomacy(ctx);
   decideBeacon(ctx);
   return { commands: ctx.out, notes: ctx.notes };
@@ -481,7 +521,14 @@ export function runGeneral(w: World, colony: Colony, tickIndex: number, applyFn:
   const d = decide(w, colony, tickIndex);
   let ok = 0;
   for (const cmd of d.commands) if (applyFn(w, colony.id, cmd).ok) ok++;
+  recordNotes(w, colony, d.notes);
   return ok;
+}
+
+/** Human colonies keep the General's notes as a journal; NPCs do not (nobody reads it). */
+export function recordNotes(w: World, colony: Colony, notes: GeneralNote[]): void {
+  if (colony.npc) return;
+  for (const n of notes) journal(w, colony, n);
 }
 
 export const _unused = { COMBAT_UNITS, fleetSize, stockHas } as { COMBAT_UNITS: typeof COMBAT_UNITS; fleetSize: typeof fleetSize; stockHas: typeof stockHas; f?: FleetState };

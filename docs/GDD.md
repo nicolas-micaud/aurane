@@ -148,6 +148,7 @@ Chaque heure, à la minute 0 (UTC), le serveur tire **trois bandes distinctes pa
 - Un système dont la bande est tirée produit **×3** son rendement de base ; les autres produisent **×1**. Il n'y a pas d'heure morte, seulement des heures fastes. Chaque système connecté ajoute un petit filet de chacune des quatre ressources (la capitale trois fois plus) : la spécialité fait la richesse, le filet évite la mort par asphyxie.
 - La production d'une Colonie est la somme des systèmes **connectés** à l'instant du Tirage. L'empreinte spatiale est donc littéralement le revenu.
 - Les Oracles connaissent une des trois bandes une heure à l'avance. Les autres voient l'historique : les bandes sont tirées avec une légère mémoire (une bande tirée deux fois de suite voit sa probabilité baisser), ce qui récompense l'observation sans permettre la certitude.
+- Chaque Colonie reçoit à chaque Tirage un **compte rendu** dans son Journal (décision 0007) : production par ressource, Crédits versés, systèmes reliés et dans les bandes, débordements d'entrepôt, relais éteints. C'est l'événement garanti de l'heure.
 - Une fois sur douze en moyenne, le Tirage porte un **événement** : *Éruption* (une bande produit ×5), *Tempête* (les relais d'une région perdent 20 % de portée jusqu'au prochain Tirage ; les relais trop longs s'éteignent), *Écho* (un Phare émet : le premier à s'y relier dans l'heure gagne une prime de Cristal).
 
 ### 5.3 Le Marché
@@ -227,7 +228,9 @@ Le combat est résolu à l'arrivée, en une passe, de façon déterministe à pa
 ### 7.5 Protections
 
 - **Bouclier de débutant** : 72 heures d'invulnérabilité à la création (impossible d'attaquer et d'être attaqué).
-- **Garde de nuit** : chaque Colonie définit une fenêtre quotidienne de 8 heures pendant laquelle ses Bastions valent double. C'est la protection du sommeil, sans rendre le monde figé.
+- **Garde de nuit** : chaque Colonie définit une fenêtre quotidienne de 8 heures pendant laquelle ses Bastions valent double. C'est la protection du sommeil, sans rendre le monde figé. Le décret *Longue Garde* la porte à 12 heures pendant un jour.
+- **Flotte en approche** : dès qu'un vaisseau de guerre part vers un système tenu par une autre Colonie non alliée, le propriétaire est prévenu (alerte et Journal) avec l'heure d'arrivée ; son Général le dit le premier, dans sa voix (0007).
+- **Pression corsaire** : dès le deuxième jour, les Colonies PNJ Corsaires lancent au plus toutes les six heures un raid modeste (six vaisseaux au plus), annoncé, sur l'avant-poste le moins défendu d'un joueur sorti du bouclier, à quatre secteurs au plus. Le tutoriel vivant, version militaire (0007).
 - **La capitale est incapturable.** On peut être ruiné, on ne repart jamais de rien.
 
 ### 7.6 Agents
@@ -246,7 +249,7 @@ C'est la dose de *Rebellion* : information cachée, coups de main, personnages q
 
 - **Alliances** : jusqu'à 20 Colonies, avec un nom, un blason, une charte (rédigée par les joueurs, résumée par un Général), une vision partagée, un chat, et un score commun.
 - **Traités** entre Colonies ou alliances, payés en Influence : *Non-agression* (7 jours, rupture publique et coûteuse), *Pacte commercial* (0 % de frais, transferts plafonnés), *Transit* (droit d'emprunter le Réseau), *Fédération* (scores fusionnés pour la victoire de saison, une seule Fédération par alliance).
-- **Décrets** : bonus temporaires achetés en Influence (portée +10 % pendant 24 h, frais nuls pendant 3 Tirage, etc.), annoncés publiquement : la diplomatie lit les intentions dans les décrets.
+- **Décrets** : bonus temporaires, publics, annoncés dans la Gazette : la diplomatie lit les intentions dans les décrets. En Saison 0 ils sont payés en **Crédits** (décision 0007, pour donner un usage aux Crédits qui dorment) : *Portée* (+10 % de portée des relais, 24 h, 120 Cr), *Franchise* (frais de Marché nuls, 3 Tirages, 60 Cr), *Longue Garde* (Garde de nuit de 12 h, 24 h, 90 Cr). Un seul de chaque à la fois. Le paiement en Influence reste possible plus tard.
 - **Réputation** : rompre un traité coûte de l'Influence et se voit. Les Généraux s'en souviennent d'une saison à l'autre et le disent.
 
 ---
@@ -267,7 +270,9 @@ Le LLM **ne joue jamais un tick**. Il fait deux choses : il **écrit** et il **c
 règles ou provocation, le Général répond en personnage, en une à trois phrases, et compile les ordres au passage.
 Chaque personnage a une fiche (tempérament, humour, style, interdits, spécialité) et connaît les mécaniques du jeu
 par un mémento joint à chaque appel ; il voit la situation réelle de la Colonie. Sans modèle, un repli à mots-clés
-répond encore dans sa voix.
+répond encore dans sa voix. Il **parle le premier** quand une flotte hostile part vers un de nos systèmes (une ligne
+dans sa voix, sans appel au modèle) et tient un **journal** de ses décisions (« Tourelle posée à Kessa », « Sortie
+annulée : pas assez de Rium »), lisible dans l'onglet Général (décision 0007).
 
 ### 9.2 Niveaux (via l'Académie)
 

@@ -5,15 +5,15 @@ import { layoutOf } from './pois.js';
 import type { Colony, Structure, SystemState, World } from './state.js';
 import { emptyDamage, emptyFleet } from './state.js';
 
-export interface WorldSnapshot { version: 4; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
+export interface WorldSnapshot { version: 5; galaxyOptions: GalaxyOptions; state: Omit<World, 'galaxy'> }
 /** v2: one plateau per system (0002). v1: one stock per colony, buildings as a list of kinds. */
-interface WorldSnapshotOld { version: 1 | 2 | 3; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
+interface WorldSnapshotOld { version: 1 | 2 | 3 | 4; galaxyOptions: GalaxyOptions; state: Record<string, unknown> }
 
 /** The galaxy is deterministic from the seed, so a snapshot stores only the mutable state. */
 export function snapshotWorld(w: World, galaxyOptions: GalaxyOptions): WorldSnapshot {
   const state: Partial<World> = { ...w };
   delete state.galaxy;
-  return { version: 4, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
+  return { version: 5, galaxyOptions, state: JSON.parse(JSON.stringify(state)) as Omit<World, 'galaxy'> };
 }
 
 export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
@@ -21,6 +21,7 @@ export function restoreWorld(snap: WorldSnapshot | WorldSnapshotOld): World {
   let state = snap.version === 1 ? migrateV1(snap.state) : (snap.state as Omit<World, 'galaxy'>);
   if (snap.version < 3) state = migrateV2(state, galaxy);
   if (snap.version < 4) state = migrateV3(state);
+  if (snap.version < 5) state = migrateV4(state);
   return { ...state, galaxy };
 }
 
@@ -97,5 +98,11 @@ function migrateV3(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
     if (cap && cap.stock.rium === 0) cap.stock.rium = B.STARTING_STOCK.rium;
   }
   s.depots ??= {};
+  return s;
+}
+
+/** v4 → v5: the General's journal and the decrees in force (0007). */
+function migrateV4(s: Omit<World, 'galaxy'>): Omit<World, 'galaxy'> {
+  for (const c of Object.values(s.colonies)) { c.journal ??= []; c.decrees ??= []; }
   return s;
 }

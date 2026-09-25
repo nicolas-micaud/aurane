@@ -62,6 +62,8 @@ export interface PlayerView {
     /** Sum of every system's warehouse. */
     stock: Stock; credits: number; influence: number;
     watchStartHour: number; watching: boolean; shielded: boolean; score: number; connectedCount: number;
+    /** The General's journal, newest last, and the decrees in force. */
+    journal: Colony['journal']; decrees: Colony['decrees'];
     alliance: string | null; policy: Colony['policy']; regions: { key: string; name: string }[]; lastProduced: Stock; lastOverflow: Stock;
     routeLimit: number;
   };
@@ -177,7 +179,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       watching: isWatching(w, colony), shielded: isShielded(w, colony), score: colonyScore(w, colony),
       connectedCount: ownedSystems(w, colony.id).filter((id) => net.has(id)).length, alliance: colony.alliance,
       policy: colony.policy, regions: [...reachableRegions(w, colony)].map((key) => ({ key, name: regionName(key) })), lastProduced: colony.lastProduced,
-      lastOverflow: colony.lastOverflow, routeLimit: routeLimit(w, colony),
+      lastOverflow: colony.lastOverflow, routeLimit: routeLimit(w, colony), journal: colony.journal, decrees: colony.decrees.filter((d) => d.until > w.time),
     },
     draw: w.lastDraw, linkTargets, sectors, systems, relays, fleets, colonies,
     routes: Object.values(w.routes).filter((r) => r.owner === colony.id).map((r) => ({ id: r.id, from: r.from, to: r.to, resource: r.resource, perTrip: r.perTrip, whenBelow: r.whenBelow, active: r.active, lastRunAt: r.lastRunAt })),
@@ -189,7 +191,7 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
     proposals: w.proposals.filter((p) => p.to === colony.id || p.from === colony.id).map((p) => ({ from: p.from, to: p.to, kind: p.kind })),
     invites: Object.values(w.alliances).filter((a) => a.invites.includes(colony.id)).map((a) => ({ alliance: a.id, name: a.name })),
     titles: w.titles,
-    events: w.events.filter((e) => e.actors.includes(colony.id) || e.kind === 'draw' || e.kind === 'season.ended').slice(-60),
+    events: w.events.filter((e) => e.actors.includes(colony.id) || e.kind === 'draw' || e.kind === 'season.ended').slice(-80),
     ended: w.ended,
   };
 }

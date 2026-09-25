@@ -227,3 +227,11 @@ appelé par le jeu. J'ai complété `deploy/docker-compose.yml` pour transmettre
 `EXTRA_BODY` et `DISABLE_REASONING` au service `world` (ils manquaient). Vaultwarden, collection `aurane` :
 `llm-scaleway-api-key`, `llm-scaleway-base-url`, `llm-alibaba-api-key`, `llm-alibaba-base-url`, et les
 `llm-primary-*` repointés sur Scaleway.
+
+## 2026-09-25 — PR 7 : le journal vivant (0007)
+
+Session cloud. Contenu : compte rendu du Tirage par Colonie, événement `fleet.inbound` et alertes (offres,
+traités, invitations, flottes en approche avec heure d'arrivée), le Général qui parle le premier, journal du
+Général, Décrets payés en Crédits, pression corsaire PNJ dès le deuxième jour. **Instantané v5** : la migration
+depuis v4 est automatique au démarrage (journal et décrets vides), aucune variable nouvelle, pas de changement
+de schéma Postgres. Quand elle est fusionnée : « PR 7 fusionnée, redéployer ».

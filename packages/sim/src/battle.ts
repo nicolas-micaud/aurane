@@ -97,7 +97,8 @@ export function damageFleet(f: FleetState, amount: number, prefer: UnitType | nu
 function shieldAt(w: World, st: SystemState, poi: string, defenderOwner: string | null, pos: XY): number {
   if (!defenderOwner) return 0;
   const colony = w.colonies[defenderOwner];
-  const watch = colony ? ((Math.floor(w.time / 3600) % 24) - colony.watchStartHour + 24) % 24 < B.WATCH_HOURS : false;
+  const hours = colony?.decrees.some((d) => d.kind === 'longwatch' && d.until > w.time) ? B.WATCH_HOURS_DECREE : B.WATCH_HOURS;
+  const watch = colony ? ((Math.floor(w.time / 3600) % 24) - colony.watchStartHour + 24) % 24 < hours : false;
   for (const s of st.structures) {
     if (s.kind !== 'bastion' || s.hp <= 0 || s.poi !== poi) continue;
     if (d2(toXY(structurePos(s)), pos) <= B.BASTION_RANGE) return watch ? B.BASTION_SHIELD_WATCH : B.BASTION_SHIELD;

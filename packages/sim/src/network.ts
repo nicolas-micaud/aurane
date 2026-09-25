@@ -30,6 +30,8 @@ export interface RangeContext {
   litBeacons: readonly string[];
   /** Sectors under a storm this hour. */
   stormSectors: ReadonlySet<string>;
+  /** Extra range multiplier (the Range decree), 1 when none. */
+  rangeMult?: number;
 }
 
 /** Effective range of a relay between two systems for a given owner. */
@@ -38,6 +40,7 @@ export function relayRange(galaxy: Galaxy, a: StarSystem, b: StarSystem, ctx: Ra
   if (a.kind === 'pulsar' || b.kind === 'pulsar') range *= PULSAR_RANGE_MULT;
   if (ctx.amplifiers.has(a.id) || ctx.amplifiers.has(b.id)) range *= AMPLIFIER_RANGE_MULT;
   if (ctx.faction === 'concordat') range *= CONCORDAT_RANGE_MULT;
+  if (ctx.rangeMult) range *= ctx.rangeMult;
   for (const bid of ctx.litBeacons) {
     const beacon = galaxy.systems[bid];
     if (!beacon) continue;

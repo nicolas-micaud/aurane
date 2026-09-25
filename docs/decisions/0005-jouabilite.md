@@ -125,5 +125,7 @@ qu'il faut d'abord des raisons de revenir *agir*.
    (elles existent déjà : « raffinerie à X », « pas de carburant », « expansion plafonnée par
    l'Énergie »), lisible dans l'onglet Général. C'est notre Screeps, gratuit.
 
+Les points 3, 4, 5 et 6 sont livrés par la décision 0007 (compte rendu du Tirage, alertes, Décrets en Crédits, pression
+corsaire, journal du Général). Restent le point 1 (rayon 6 à la saison `beta-2`) et la refonte mobile profonde.
 Après le week-end, les retours de Nick tranchent l'ordre. Les mesures de cette page se refont en une
 commande (`tools/season-sim` et les scripts de rythme) à chaque changement d'équilibrage.

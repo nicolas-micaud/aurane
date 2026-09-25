@@ -82,6 +82,10 @@ export const PERSONA_DEFAULTS: Record<Persona, Partial<Policy>> = {
   solen: { expansion: 0.4, aggression: 0, fuel: 'synthesizer' },
 };
 
+/** Decrees: public, temporary bonuses a colony buys with Credits (GDD § 8). */
+export const DECREES = ['range', 'freefees', 'longwatch'] as const;
+export type Decree = (typeof DECREES)[number];
+
 /** Commands a player (or their General) can issue. Validated at the world boundary. */
 export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('build_relay'), a: z.string(), b: z.string() }),
@@ -107,5 +111,6 @@ export const CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('alliance_join'), alliance: z.string() }),
   z.object({ type: z.literal('alliance_leave') }),
   z.object({ type: z.literal('set_policy'), policy: PolicySchema }),
+  z.object({ type: z.literal('decree'), kind: z.enum(DECREES) }),
 ]);
 export type Command = z.infer<typeof CommandSchema>;

@@ -13,7 +13,7 @@ import { layoutOf, type Lane, type PoiKind, type Template } from './pois.js';
 import type { BattleLog, Colony, FleetState, PlateauPos, World } from './state.js';
 import { combatSize, fleetSize } from './state.js';
 import { capacityOf, orbitSlots } from './structures.js';
-import { colonyNetwork, hiddenFrom, knownPois, ownedSystems, visibleSectors } from './world.js';
+import { colonyNetwork, hiddenFrom, knownPois, ownedSystems, visibleSectors, watchHours } from './world.js';
 
 export interface PlateauFleetView {
   id: string; owner: string; units: Fleet | null; size: number; combat: number; hp: number;
@@ -104,7 +104,7 @@ export function systemViewFor(w: World, colony: Colony, systemId: string): Syste
   if (!visible) return base;
 
   const owner = st.owner ? w.colonies[st.owner] : undefined;
-  const watch = owner ? ((Math.floor(w.time / 3600) % 24) - owner.watchStartHour + 24) % 24 < B.WATCH_HOURS : false;
+  const watch = owner ? ((Math.floor(w.time / 3600) % 24) - owner.watchStartHour + 24) % 24 < watchHours(w, owner) : false;
   const structView = (s: (typeof st.structures)[number]): StructureDetailView => {
     const t = B.TURRET_STATS[s.kind];
     return { id: s.id, kind: s.kind, poi: s.poi, orbit: s.orbit, angle: s.angle, hp: s.hp, maxHp: B.STRUCTURE_HP[s.kind], armed: !!t, range: t ? t.range : s.kind === 'bastion' ? B.BASTION_RANGE : null };

@@ -182,3 +182,18 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
   .hud .chips, .hud .status, .coach, .legend { display: none; }
   .panel.open, .panel.open:has(.generalpanel) { max-height: 70%; }
 }
+
+/* 0007: the living log, alerts that are not only battles, decrees, the General's journal. */
+.alert.inbound { background: linear-gradient(135deg, rgba(255,209,102,.22), rgba(14,23,48,.95)); border-color: var(--energy); } .alert.inbound i { background: var(--energy); }
+.alert.soft { background: linear-gradient(135deg, rgba(125,211,252,.18), rgba(14,23,48,.95)); border-color: var(--accent); } .alert.soft i { background: var(--accent); animation: none; }
+.alert span { flex: 1; } .alerts small { padding-left: 12px; }
+.badge { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--err); color: #fff; font-size: 10px; font-style: normal; font-weight: 700; line-height: 16px; text-align: center; margin-left: 4px; vertical-align: middle; }
+.feed li { font-size: 13px; gap: 8px; flex-wrap: nowrap; align-items: flex-start; } .feed li > span { flex: 1; } .feed li > small { white-space: nowrap; }
+.feed li > i { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--muted); }
+.feed li.tone-bad > i { background: var(--err); } .feed li.tone-good > i { background: var(--ok); } .feed li.tone-draw { display: block; }
+.feed li.has-sys { cursor: pointer; }
+.recap { background: rgba(125,211,252,.06); border: 1px solid rgba(125,211,252,.25); border-radius: 10px; padding: 8px 10px; }
+.recap .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; } .recap .head b { font-family: Rajdhani, Inter, sans-serif; font-size: 15px; letter-spacing: .04em; }
+.recap .chips { gap: 4px; margin-bottom: 4px; } .recap .chip { padding: 2px 6px; font-size: 12px; } .recap .chip b { font-size: 13px; }
+.decrees { margin-top: 14px; } .decrees .cards { grid-template-columns: repeat(3, 1fr); } @media (max-width: 480px) { .decrees .cards { grid-template-columns: 1fr 1fr; } }
+.journal li { font-size: 13px; gap: 8px; } .journal li small { white-space: nowrap; }
