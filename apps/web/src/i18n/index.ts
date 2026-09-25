@@ -72,20 +72,6 @@ const STRINGS = {
     tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
     counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', cannotPay: 'l\'entrepôt ne peut pas encore payer',
-    counsel: {
-      link_first: 'Relie {to} depuis {from} : {metal} Métal, {energy} Énergie. Un système relié, c\'est ton premier revenu.',
-      link_more: 'Le Métal est là : relie {to} depuis {from} ({metal} Métal). Chaque système relié compte au Tirage.',
-      warehouse: '{lost} ressources perdues au dernier Tirage, entrepôts pleins. Un Entrepôt à {system} et on garde tout.',
-      antenna: 'Une Antenne à {system} révèle les secteurs voisins : on voit venir avant de subir.',
-      turret: '{ships} vaisseaux ennemis sur {system}, arrivée dans {eta} min. Une tourelle légère sur l\'orbite Défense, maintenant.',
-      defend: 'Ta flotte de {ships} vaisseaux est libre : envoie-la défendre {system}.',
-      buy_energy: 'Plus que {draws} Tirage(s) d\'Énergie pour les relais. J\'achète {qty} Énergie au Marché ({credits} Crédits) avant que le Réseau s\'éteigne.',
-      sell_surplus: '{qty} {resource} dorment à la capitale. Vends-les au Marché : environ {credits} Crédits au Tirage.',
-      train: 'Le Chantier est ouvert et rien ne vole. {count} corvettes à {system}, pour voir venir et escorter.',
-      treaty: '{colony} nous voit. Un pacte de non-agression coûte 7 Influence et vaut un pont.',
-      doctrine: 'Dis-moi ce que tu veux : défendre, commercer, t\'étendre. Une phrase suffit, je m\'en occupe.',
-      read_recap: 'Le Tirage {draw} est passé : lis ce qu\'il a produit, c\'est ta feuille de route pour l\'heure.',
-    } as Record<string, string>,
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Relier', tier1: 'Produire', tier2: 'Marché', tier3: 'Tenir', tier4: 'Frapper', tier5: 'Parler', tier6: 'Les Phares',
     tierLocked: 'Pas encore : palier « {k} ». {w}',
@@ -177,20 +163,6 @@ const STRINGS = {
     tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
     counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', cannotPay: 'the warehouse cannot pay yet',
-    counsel: {
-      link_first: 'Link {to} from {from}: {metal} Metal, {energy} Energy. A connected system is your first income.',
-      link_more: 'The Metal is there: link {to} from {from} ({metal} Metal). Every connected system counts at the Draw.',
-      warehouse: '{lost} resources lost at the last Draw, warehouses full. A Warehouse at {system} and we keep it all.',
-      antenna: 'An Antenna at {system} reveals the neighbouring sectors: we see it coming before it hits.',
-      turret: '{ships} enemy ships on {system}, arriving in {eta} min. A light turret on the Defence orbit, now.',
-      defend: 'Your fleet of {ships} ships is free: send it to defend {system}.',
-      buy_energy: 'Only {draws} Draw(s) of Energy left for the relays. I buy {qty} Energy at the Market ({credits} Credits) before the Network goes dark.',
-      sell_surplus: '{qty} {resource} sleep at the capital. Sell them at the Market: about {credits} Credits at the Draw.',
-      train: 'The Shipyard is open and nothing flies. {count} corvettes at {system}, to see and to escort.',
-      treaty: '{colony} can see us. A non-aggression pact costs 7 Influence and is worth a bridge.',
-      doctrine: 'Tell me what you want: defend, trade, expand. One sentence is enough, I take it from there.',
-      read_recap: 'Draw {draw} is done: read what it produced, it is your road map for the hour.',
-    } as Record<string, string>,
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Link', tier1: 'Produce', tier2: 'Market', tier3: 'Hold', tier4: 'Strike', tier5: 'Talk', tier6: 'The Beacons',
     tierLocked: 'Not yet: tier "{k}". {w}',

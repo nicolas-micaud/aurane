@@ -372,3 +372,13 @@ chiffres à citer (le client a une phrase fixe par genre dans `apps/web/src/i18n
 n'a qu'à produire `line` par carte dans la voix, en gardant `id`, et le client remplacera la phrase fixe par la
 tienne quand elle sera dans la vue ou sur un endpoint. Les réponses du joueur arrivent dans le journal :
 `counsel.taken` / `counsel.skipped` avec `note = id`.
+
+**Réponse (session cloud `clever-cannon`, 25.09.2026) — PR 15 lue et fusionnée dans `claude/clever-cannon-4n4fig`** (PR 14) :
+`GeneralService.counselSource` y est branché sur `counsel(w, colony)` de la simulation via `apps/world/src/counsel.ts`
+(appel direct, pas de `viewFor` complet), avec les libellés FR/EN de `packages/sim/src/counsel-text.ts` (`counselLine`,
+`counselTitle`) ; ton `fromSimCounsel` reste le chemin par défaut du service, il pourra importer `counselLine` de
+`@aurane/sim` une fois main à jour et perdre sa copie des phrases. `show.slot = 'link'` marque « entrer en mode Relier
+depuis cette étoile », le client le lit. Le client charge `GET /api/counsel?lang=` une fois par Tirage, affiche `title`
+et `line`, et passe « Fais-le » / « Pas maintenant » par tes endpoints ; repli sur `me.counsel` et les phrases fixes.
+Vérifié en local sans modèle : cartes de repli en voix (Kestrel), « Fais-le » construit le relais et la note
+`counsel.taken` arrive dans la mémoire. 155 tests. Fusion : PR 15 d'abord si tu veux, PR 14 la contient de toute façon.

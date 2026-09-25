@@ -110,5 +110,11 @@ Livré au niveau 0 (25.09.2026, même PR) : `counsel(w, colony)` dans `packages/
 cartes, filtrées par palier, triées par urgence, trois au plus), exposé dans la vue (`me.counsel`) ; commande
 `counsel_answer` qui écrit `counsel.taken` / `counsel.skipped` dans le journal du Général (la couche mémoire lit
 déjà le journal) ; cartes dans le client avec « Montre-moi », « Fais-le », « Pas maintenant » et des phrases
-fixes FR/EN en attendant la voix ; au palier 0 les cartes remplacent le coach. Reste à la session locale : la
-tâche `counsel` qui rephrase `params` dans la voix du personnage, le job à T−20 min, la tâche `episode`.
+fixes FR/EN en attendant la voix ; au palier 0 les cartes remplacent le coach. La session locale a livré le
+niveau 1 dans la PR 15 (tâche `counsel` en voix, job à T−20 min, quota, couche *choix* et *épisodes* de la mémoire,
+`GET /api/counsel`, `POST /api/counsel/take|skip`, `GET|DELETE /api/memory`), fusionnée dans la PR 14 pour le
+branchement : `GeneralService.counselSource` lit désormais `counsel(w, colony)` de la simulation
+(`apps/world/src/counsel.ts`), les phrases fixes vivent dans `packages/sim/src/counsel-text.ts` (une source pour le
+client et pour les libellés donnés au modèle), et le client affiche les cartes en voix (`title`, `line`) avec repli sur
+les cartes fixes quand la couche n'a pas répondu ; « Fais-le » et « Pas maintenant » passent par les endpoints, la
+commande est exécutée par le monde et le choix entre dans la mémoire.

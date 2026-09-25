@@ -10,6 +10,7 @@ import { inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aur
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
+import { simCounselSource } from './counsel.js';
 
 const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
@@ -40,6 +41,7 @@ export class Engine {
 
   constructor(readonly cfg: Config, private readonly store: Store, generalDeps: Partial<GeneralDeps> = {}) {
     this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, ...generalDeps });
+    this.general.counselSource = simCounselSource; // the simulation's counsel (0009), not the analysis' options
   }
 
   async init(): Promise<void> {

@@ -21,3 +21,4 @@ export * from './pois.js';
 export * from './rules.js';
 export * from './onboarding.js';
 export * from './counsel.js';
+export * from './counsel-text.js';
