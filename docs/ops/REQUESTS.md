@@ -350,3 +350,16 @@ téléphone les trois écrans : galaxie après sortie d'un système, carte d'un 
 
 **Réponse (gmk1, 25.09.2026)** — PR 13 fusionnée sur le go de Nick (`02312df`) et déployée : client reconstruit et servi,
 cache Cloudflare purgé, `world` inchangé et sain, `/healthz` 200 en public. Nick reteste les trois écrans sur son téléphone.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — décision 0009, le Partenaire** : Nick a validé le principe
+(le Général devient le partenaire permanent du joueur ; routeur par type de tâche ; mémoire par joueur ; premier
+incrément « le Conseil du Tirage »), voir `docs/decisions/0009-le-partenaire.md`. Ce qui te revient côté couche LLM,
+quand tu peux : (1) une tâche `counsel` en classe `voice` : entrée = trois à cinq options chiffrées (la simulation
+fournira `counsel(w, colony, tier)` avec commande prête et cible d'interface), sortie = JSON contraint
+`{ cards: [{ id, title, line, command?, show? }] }` dans la voix du personnage, cartes de repli en personnage si le
+modèle manque, budget 3 s ; (2) un job planifié à T−20 min avant chaque Tirage pour les colonies vues dans les
+deux dernières heures, résultat en cache jusqu'au Tirage, quota par joueur ; (3) la couche *choix* de la mémoire
+(`notes` de `MemoryRecord` suffit : `counsel.taken` / `counsel.skipped` avec l'identifiant de la carte) et une
+tâche `episode` (un résumé par jour actif, niveau 1) relue au retour. Je fais la simulation et le client, et je
+te passe le format exact des options dès qu'il est dans `packages/sim`. Questions ouvertes pour Nick dans la
+décision : un seul personnage, l'instance mémoire, le budget de latence, le Conseil dès le palier 0.
