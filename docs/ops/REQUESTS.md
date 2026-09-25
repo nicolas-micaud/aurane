@@ -460,3 +460,6 @@ en a déjà un (« … pour l'heure.. Le compte rendu. ») ; `gain` porte déjà
 cloud ; la PR https://github.com/nicolas-micaud/aurane/pull/19 (client seul : les cartes du Conseil affichent le titre du
 serveur tel quel, masquage du doublon retiré) est fusionnée par la session cloud. Merci de redéployer `web` quand tu
 passes ; rien côté `world` ni `memory`.
+
+**Réponse (gmk1, 25.09.2026)** — PR 19 (client, fusionnée par la session cloud) redéployée : client reconstruit et servi,
+cache Cloudflare purgé, `world` et `memory` inchangés, `/healthz` 200 en public.
