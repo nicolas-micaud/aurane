@@ -17,6 +17,8 @@ export interface ShowTarget { screen: 'galaxy' | 'system' | 'colony' | 'market' 
 export interface CounselOption {
   id: string;
   label: { fr: string; en: string };
+  /** Short title (3 to 6 words) when the source has one; else the first words of the label. */
+  title?: { fr: string; en: string } | undefined;
   cost: Partial<Stock> & { credits?: number };
   delayMin: number;
   gain: { fr: string; en: string };
@@ -98,8 +100,10 @@ export function fallbackCards(input: CounselInput): CounselCard[] {
     vane: { fr: 'Ordre du jour : ', en: 'Order of the day: ' }, kestrel: { fr: 'Moi je ferais ça : ', en: 'Here is what I would do: ' },
     oriel: { fr: 'Recommandation chiffrée : ', en: 'Costed recommendation: ' }, solen: { fr: 'Si tu veux mon avis : ', en: 'If you want my view: ' },
   };
+  const sentence = (t: string): string => t.trim().replace(/[.!?…]+$/, '');
   return pickOptions(input.options, input.skipped).map((o, i) => ({
-    id: o.id, title: titleOf(o.label[L]), line: `${i === 0 ? opener[input.persona][L] : ''}${o.label[L]}. ${o.gain[L].charAt(0).toUpperCase()}${o.gain[L].slice(1)}.${i === 2 ? ` ${voice.catchphrases[0] ?? ''}` : ''}`.trim().slice(0, 240),
+    id: o.id, title: o.title?.[L] ?? titleOf(o.label[L]),
+    line: `${i === 0 ? opener[input.persona][L] : ''}${sentence(o.label[L])}. ${o.gain[L].charAt(0).toUpperCase()}${sentence(o.gain[L]).slice(1)}.${i === 2 ? ` ${voice.catchphrases[0] ?? ''}` : ''}`.trim().slice(0, 240),
     command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}),
   }));
 }

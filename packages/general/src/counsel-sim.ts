@@ -3,6 +3,7 @@
 // this package needs nothing from a sim that may not carry the Counsel yet. The fixed lines mirror the client's
 // (apps/web/src/i18n, key `counsel`): they are what the General rephrases, and what the client shows meanwhile.
 import type { Command, Stock } from '@aurane/protocol';
+import { counselLine, counselTitle } from '@aurane/sim';
 import type { CounselOption, ShowTarget } from './counsel.js';
 
 export type SimCounselKind = 'link_first' | 'link_more' | 'warehouse' | 'antenna' | 'turret' | 'defend' | 'buy_energy' | 'sell_surplus' | 'train' | 'treaty' | 'doctrine' | 'read_recap';
@@ -69,13 +70,25 @@ export function showOf(s: SimCounselOption['show']): ShowTarget {
 
 const RISK: Record<number, CounselOption['risk']> = { 0: 'low', 1: 'low', 2: 'mid' };
 
-/** The simulation's options, ready for `writeCounsel`: label = the client's fixed line filled in, gain per kind. */
+/** The simulation's own line and short title for a kind it knows; our copy of the phrases otherwise. */
+function simText(kind: SimCounselKind, params: Record<string, string | number>): { label: { fr: string; en: string }; title: { fr: string; en: string } | undefined } {
+  try {
+    const o = { kind, params } as Parameters<typeof counselLine>[0];
+    return { label: { fr: counselLine(o, 'fr'), en: counselLine(o, 'en') }, title: { fr: counselTitle(o, 'fr'), en: counselTitle(o, 'en') } };
+  } catch {
+    return { label: { fr: fillLine(SIM_COUNSEL_LINES.fr[kind], params), en: fillLine(SIM_COUNSEL_LINES.en[kind], params) }, title: undefined };
+  }
+}
+
+/** The simulation's options, ready for `writeCounsel`: label = the simulation's line filled in, title = its short title, gain per kind. */
 export function fromSimCounsel(options: readonly SimCounselOption[]): CounselOption[] {
   return options.map((o) => {
     const kind = (o.kind in SIM_COUNSEL_LINES.fr ? o.kind : 'doctrine') as SimCounselKind;
+    const text = simText(kind, o.params);
     return {
       id: o.id,
-      label: { fr: fillLine(SIM_COUNSEL_LINES.fr[kind], o.params), en: fillLine(SIM_COUNSEL_LINES.en[kind], o.params) },
+      label: text.label,
+      ...(text.title ? { title: text.title } : {}),
       cost: o.cost, delayMin: 0,
       gain: { fr: GAINS.fr[kind], en: GAINS.en[kind] },
       risk: RISK[Math.max(0, Math.min(2, Math.round(o.urgency)))] ?? 'low',
