@@ -13,6 +13,8 @@ import { readablePolicy } from './doctrine/readable.js';
 import { degradedReply, sheetOf, signaturesIn, systemPrompt, type DegradeReason, type Situation } from './persona/index.js';
 import { allowedNumbers, numbersIn, renderAnalysis, verifyNumbers, type Analysis } from './analysis/index.js';
 import { sanitizeText } from './security.js';
+import { tierUnlocked, wantsEverything } from './alerts.js';
+import type { Command } from '@aurane/protocol';
 import { askJson } from './voice.js';
 
 export interface Turn { who: 'me' | 'general'; text: string; at: number }
@@ -43,6 +45,8 @@ export interface ConverseResult {
   /** The General asks before acting: the doctrine was ambiguous. */
   question: string | null;
   source: 'llm' | 'heuristic' | 'degraded';
+  /** A command the conversation asks the world to run (e.g. onboarding_unlock), validated by the engine. */
+  command?: Command;
   /** Numbers the model invented were removed from the reply. */
   numbersStripped: boolean;
   /** Signature lines used in this reply, for the memory of recent phrases. */
@@ -80,6 +84,7 @@ const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavai
 /** Small talk, questions and orders, answered in one model call; the persona fallback when no model is available. */
 export async function converse(input: ConverseInput, client: LlmClient | null, _names: Record<string, string> = {}): Promise<ConverseResult> {
   const fallback = heuristicConverse(input);
+  if (fallback.command) return fallback; // "show me everything": deterministic, no model needed
   const L = input.lang;
   const seed = input.seed ?? `${input.text}:${input.history.length}`;
   if (input.overQuota) return { ...fallback, source: 'degraded', degradeReason: 'quota', reply: fallback.question ?? `${degradedReply(input.persona, L, 'quota', seed)} ${fallback.policy ? fallback.reply : ''}`.trim() };
@@ -160,6 +165,7 @@ export function heuristicConverse(input: ConverseInput): ConverseResult {
   const voice = PERSONA_VOICES[input.persona];
   const sheet = sheetOf(input.persona);
   const base = { readable: null, question: null, source: 'heuristic' as const, numbersStripped: false, usedPhrases: [] as string[] };
+  if (wantsEverything(input.text)) return { ...base, reply: tierUnlocked(input.persona, L, 6, true), policy: null, command: { type: 'onboarding_unlock' } };
   const compiled = heuristicPolicy(input.text, input.ctx);
   if (compiled.question) return { ...base, reply: compiled.question, policy: null, question: compiled.question };
   const changed = compiled.summary !== summarize(input.ctx.current, L) || compiled.policy.defendFirst.join() !== input.ctx.current.defendFirst.join();

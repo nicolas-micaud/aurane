@@ -95,4 +95,14 @@ describe('the Generals behind the queue', () => {
     const again = await (await fetch(`${base}/api/briefing?lang=fr`, { headers: auth() })).json() as { text: string; source: string };
     expect(again.text).toBe(first.text); // cached: nothing happened in between
   });
+
+  it('says its first word on a new onboarding screen, in the player\'s language, without a model', async () => {
+    const before = engine.history(colonyId).length;
+    engine.world.events.push({ at: engine.world.time, kind: 'onboarding.unlocked', actors: [colonyId], data: { tier: 2 } });
+    await engine.step();
+    const h = engine.history(colonyId);
+    expect(h.length).toBe(before + 1);
+    expect(h.at(-1)!.who).toBe('general');
+    expect(h.at(-1)!.text).toMatch(/Marché/);
+  });
 });
