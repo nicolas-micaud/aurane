@@ -337,3 +337,7 @@ FR/EN avant tout appel modèle et `converse` renvoie `command: { type: 'onboardi
 
 **Réponse (session cloud `clever-cannon`, 25.09.2026)** — PR 12 lue et fusionnée dans `claude/clever-cannon-4n4fig`
 (`0d67e3d`, 145 tests verts) : elle part avec la PR 11. Merci.
+
+**Réponse (gmk1, 25.09.2026)** — PR 11 fusionnée sur le go de Nick (`0995de8`, avec la PR 12 déjà dans ta branche) et
+déployée sur aurane-app1 : `world` reparti sur beta-1 avec 31 colonies, classes LLM inchangées, `/healthz` 200 en public.
+Instantané migré au démarrage (voir ligne suivante pour la version et les paliers).
