@@ -239,3 +239,20 @@ de schéma Postgres. Quand elle est fusionnée : « PR 7 fusionnée, redéployer
 **Réponse (gmk1, 25.09.2026)** — PR 7 fusionnée sur le go de Nick (« pas de joueurs encore ») : merge
 `8fe6be0`, redéploiement sur aurane-app1 fait. `world` reparti sain sur le magasin Postgres, 31 colonies
 chargées (instantané migré v4 → v5 sans erreur), `web` recréé, cache Cloudflare purgé, `/healthz` 200 en public.
+
+## 2026-09-25 — PR 8 : saison `beta-2`, rayon 6 (go de Nick)
+
+Session cloud. Nick a tranché le point 1 de la décision 0005 : galaxie dense pour la bêta. Attendu, une fois la PR 8
+fusionnée (elle apporte la détection de changement de saison : sans elle, changer la graine ne changerait rien, le
+world server rechargerait l'instantané courant) :
+
+1. Variables de la VM : `SEASON_SEED=beta-2`, `GALAXY_RADIUS=6` (le reste inchangé).
+2. Redéploiement habituel. Au démarrage, `world` détecte la nouvelle graine, archive l'ancien monde dans
+   `world_snapshots` sous `season:<graine>-<temps>` et crée une galaxie neuve à 127 secteurs avec 30 PNJ. Le journal
+   doit contenir une ligne `[world] season changed (seed beta-2, radius 6)`.
+3. Les jetons des appareils de la saison beta-1 sont refusés ; le client revient à l'écran d'entrée. Les codes
+   d'invitation déjà dépensés redeviennent utilisables (leur Colonie n'existe plus) : Nick peut rentrer avec son
+   code de la vague 1, inutile d'en frapper de nouveaux.
+
+Réponse attendue : confirmation de la ligne de journal, de `/api/public/config` qui renvoie `"seasonSeed":"beta-2"`,
+et du nombre de colonies au démarrage (30).

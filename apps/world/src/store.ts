@@ -11,6 +11,8 @@ export interface InviteRecord { code: string; note: string; createdAt: number; u
 export interface Store {
   loadSnapshot(): Promise<WorldSnapshot | null>;
   saveSnapshot(snap: WorldSnapshot): Promise<void>;
+  /** Keep the current snapshot under a label (a finished season) before a fresh world replaces it. */
+  archiveSnapshot(label: string): Promise<void>;
   createPlayer(p: PlayerRecord): Promise<void>;
   findPlayerByToken(tokenHash: string): Promise<PlayerRecord | null>;
   createInvite(i: InviteRecord): Promise<void>;
@@ -18,6 +20,8 @@ export interface Store {
   /** Marks the invitation used; false when it was already used or unknown. */
   useInvite(code: string, colonyId: string, at: number): Promise<boolean>;
   listInvites(): Promise<InviteRecord[]>;
+  /** Make a used invitation usable again (its colony belonged to a season that is over). */
+  releaseInvite(code: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -53,6 +57,11 @@ export class FileStore implements Store {
     await rename(tmp, join(this.dir, 'world.json'));
   }
 
+  async archiveSnapshot(label: string): Promise<void> {
+    await this.ensure();
+    try { await rename(join(this.dir, 'world.json'), join(this.dir, `world-${label.replace(/[^\w.-]/g, '_')}.json`)); } catch { /* nothing to archive */ }
+  }
+
   async createPlayer(p: PlayerRecord): Promise<void> {
     await this.ensure();
     this.players.set(p.tokenHash, p);
@@ -76,6 +85,13 @@ export class FileStore implements Store {
     return true;
   }
   async listInvites(): Promise<InviteRecord[]> { await this.ensure(); return [...this.invites.values()]; }
+  async releaseInvite(code: string): Promise<void> {
+    await this.ensure();
+    const i = this.invites.get(code);
+    if (!i) return;
+    i.usedBy = null; i.usedAt = null;
+    await this.flushInvites();
+  }
 
   async close(): Promise<void> { /* nothing to release */ }
 }
@@ -104,6 +120,13 @@ export class PgStore implements Store {
     );
   }
 
+  async archiveSnapshot(label: string): Promise<void> {
+    await this.pool.query(
+      'insert into world_snapshots (id, data, updated_at) select $1, data, now() from world_snapshots where id = $2 on conflict (id) do update set data = excluded.data, updated_at = now()',
+      [`season:${label}`, 'current'],
+    );
+  }
+
   async createPlayer(p: PlayerRecord): Promise<void> {
     await this.pool.query('insert into players (id, colony_id, token_hash, name, created_at) values ($1, $2, $3, $4, $5)', [p.id, p.colonyId, p.tokenHash, p.name, p.createdAt]);
   }
@@ -129,6 +152,9 @@ export class PgStore implements Store {
   async listInvites(): Promise<InviteRecord[]> {
     const r = await this.pool.query<{ code: string; note: string; created_at: string; used_by: string | null; used_at: string | null }>('select * from invites order by created_at');
     return r.rows.map((row) => ({ code: row.code, note: row.note, createdAt: Number(row.created_at), usedBy: row.used_by, usedAt: row.used_at === null ? null : Number(row.used_at) }));
+  }
+  async releaseInvite(code: string): Promise<void> {
+    await this.pool.query('update invites set used_by = null, used_at = null where code = $1', [code]);
   }
 
   async close(): Promise<void> { await this.pool.end(); }

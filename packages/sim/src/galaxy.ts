@@ -103,9 +103,12 @@ export interface GalaxyOptions {
   systemsPerSector?: [number, number];
 }
 
+/** The numeric root of a season seed, as stored in `Galaxy.seed` (so a snapshot can be matched to a configured season). */
+export const seedNumber = (seed: number | string): number => (typeof seed === 'string' ? createRng(seed).state() : seed >>> 0);
+
 /** Deterministic galaxy for a season seed. Same seed and options ⇒ identical galaxy. */
 export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}): Galaxy {
-  const root = typeof seed === 'string' ? createRng(seed).state() : seed >>> 0;
+  const root = seedNumber(seed);
   const radius = opts.radius ?? 12;
   const [minSys, maxSys] = opts.systemsPerSector ?? [10, 16];
   const galaxy: Galaxy = { seed: root, radius, sectors: {}, systems: {}, beacons: [], candidates: {} };

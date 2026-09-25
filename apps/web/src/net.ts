@@ -56,6 +56,14 @@ export function connect(): void {
   const token = getToken();
   if (!token) return;
   status.value = 'connecting';
+  // A token from a past season (or a wiped server) is refused at the upgrade with a plain 401 the socket cannot see:
+  // probe once over HTTP and go back to the landing page instead of retrying forever.
+  void fetch('/api/me', { headers: { authorization: `Bearer ${token}` } })
+    .then((r) => { if (r.status === 401) { forget(); view.value = null; status.value = 'idle'; return; } openSocket(token); })
+    .catch(() => openSocket(token));
+}
+
+function openSocket(token: string): void {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onopen = () => { status.value = 'online'; retry = 1000; if (watched) ws?.send(JSON.stringify({ watch: watched })); };

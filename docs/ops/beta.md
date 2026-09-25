@@ -11,7 +11,8 @@ Décidé le 24.09.2026. Une saison courte (7 jours) sur playaurane.com, 20 à 30
 | `ADMIN_TOKEN` | jeton des routes `/api/admin/*` (en-tête `x-admin-token`) ; absent = routes désactivées | secret Vaultwarden, 32 octets aléatoires |
 | `AUTH_SECRET` | signe les liens d'appareil (`/#join=…`, 24 h) ; absent = aléatoire par processus, les liens meurent au redémarrage | secret Vaultwarden, 32 octets aléatoires |
 | `PUBLIC_ORIGIN` | origine des liens d'appareil | `https://play.playaurane.com` |
-| `SEASON_SEED` | graine de la saison ; changer la graine = nouvelle galaxie | `beta-1` |
+| `SEASON_SEED` | graine de la saison ; changer la graine (ou le rayon) = nouvelle saison : le monde précédent est archivé au démarrage (`world_snapshots.season:<graine>-<temps>` en Postgres, `world-<…>.json` en fichier), une galaxie neuve est créée | `beta-2` (depuis le 25.09) |
+| `GALAXY_RADIUS` | rayon de la galaxie en secteurs ; 6 = 127 secteurs, dense pour 20 à 40 Colonies ; 12 = 200 à 500 Colonies | `6` (depuis le 25.09, décision 0005 § 4.1) |
 | `SEASON_DAYS` | durée de la saison | `7` |
 
 Les secrets vivent dans Vaultwarden, puis dans l'env de la VM ; jamais dans le dépôt.
@@ -24,7 +25,9 @@ curl -X POST https://play.playaurane.com/api/admin/invites -H "x-admin-token: $A
 curl https://play.playaurane.com/api/admin/invites -H "x-admin-token: $ADMIN_TOKEN"
 ```
 
-Un code a la forme `AUR-XXXXXXXX` (alphabet sans 0/O/1/I), insensible à la casse, à usage unique.
+Un code a la forme `AUR-XXXXXXXX` (alphabet sans 0/O/1/I), insensible à la casse, à usage unique **par saison** : un code
+dépensé sur une Colonie d'une saison terminée redevient utilisable. Les jetons d'appareil d'une saison passée sont refusés ;
+le client revient à l'écran d'entrée.
 
 ## Comptes
 

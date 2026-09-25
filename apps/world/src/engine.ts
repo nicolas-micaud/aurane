@@ -3,7 +3,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@aurane/protocol';
 import {
-  apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
+  apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
 import { clientFromEnv, compilePolicy, converse, inboundWarning, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
@@ -45,7 +45,14 @@ export class Engine {
   constructor(readonly cfg: Config, private readonly store: Store) {}
 
   async init(): Promise<void> {
-    const snap = await this.store.loadSnapshot();
+    let snap = await this.store.loadSnapshot();
+    // A new seed or radius in the configuration means a new season: the old world is archived, a fresh one starts.
+    if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
+      const label = `${snap.state.seed}-${Math.floor(snap.state.time)}`;
+      console.log(`[world] season changed (seed ${this.cfg.seasonSeed}, radius ${this.cfg.galaxyRadius}): archiving the previous world as ${label}`);
+      await this.store.archiveSnapshot(label);
+      snap = null;
+    }
     if (snap) {
       this.world = restoreWorld(snap);
     } else {
@@ -152,6 +159,9 @@ export class Engine {
       if (!(await this.store.findInvite(code)) && this.cfg.inviteCodes.map((x) => x.toUpperCase()).includes(code)) {
         await this.store.createInvite({ code, note: 'env', createdAt: Date.now(), usedBy: null, usedAt: null });
       }
+      // A code spent on a colony of a past season is good again: the tester keeps their invitation across seasons.
+      const known = await this.store.findInvite(code);
+      if (known?.usedBy && !known.usedBy.startsWith('pending:') && !this.world.colonies[known.usedBy]) await this.store.releaseInvite(code);
       const pending = `pending:${randomBytes(4).toString('hex')}`;
       if (!(await this.store.useInvite(code, pending, Date.now()))) return { error: 'invalid invite' };
       const colony = spawnColony(this.world, { name, faction, persona, npc: false });
