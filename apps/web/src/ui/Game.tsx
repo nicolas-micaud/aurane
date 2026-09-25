@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import type { Resource } from '@aurane/protocol';
-import { AGENT_COST_INFLUENCE, type PlayerView, type SystemView } from '@aurane/sim';
+import { DECREES, type Resource } from '@aurane/protocol';
+import { AGENT_COST_INFLUENCE, DECREE_COST_CREDITS, DECREE_HOURS, type PlayerView, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, fetchBriefing, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type Turn } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
@@ -10,6 +10,7 @@ import { Icon } from './Icon.js';
 import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
 import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
+import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt';
@@ -77,17 +78,34 @@ export function Game() {
   );
 }
 
-/** Live alerts: fights and blockades on the colony's systems, one tap from the plateau. */
+/** Live alerts: fights and blockades first, then hostile fleets on their way (with the hour of arrival), then what waits for an answer. */
 function Alerts({ v }: { v: PlayerView }) {
-  const hot = v.systems.filter((s) => s.owner === v.me.id && (s.engaged || s.blockadedBy));
-  if (!hot.length) return null;
+  const [, force] = useState(0);
+  useEffect(() => { const i = setInterval(() => force((x) => x + 1), 30000); return () => clearInterval(i); }, []);
+  const name = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
+  const mine = new Set(v.systems.filter((s) => s.owner === v.me.id).map((s) => s.id));
+  const rows: { key: string; kind: 'hot' | 'inbound' | 'soft'; text: string; cta: string; go: () => void }[] = [];
+  for (const s of v.systems) if (mine.has(s.id) && (s.engaged || s.blockadedBy)) rows.push({ key: `hot-${s.id}`, kind: 'hot', text: (s.engaged ? t('alertBattle') : t('alertBlockade')).replace('{s}', s.name), cta: t('enter'), go: () => { systemMode.value = s.id; } });
+  const now = v.time + ((Date.now() - hudReceivedAt) / 1000) * v.timeScale;
+  for (const f of v.fleets) {
+    if (f.owner === v.me.id || !f.destination || !mine.has(f.destination) || f.combat === 0 || f.at !== null) continue;
+    if (v.colonies.find((c) => c.id === f.owner)?.ally) continue;
+    const sys = v.systems.find((x) => x.id === f.destination);
+    rows.push({ key: `in-${f.id}`, kind: 'inbound', text: t('alertInbound').replace('{n}', String(f.combat)).replace('{a}', name(f.owner)).replace('{s}', sys?.name ?? f.destination).replace('{t}', etaText(f.arriveAt - now)), cta: t('enter'), go: () => { systemMode.value = f.destination; } });
+  }
+  for (const b of v.barters) if (b.to === v.me.id && !b.accepted) rows.push({ key: `offer-${b.id}`, kind: 'soft', text: t('alertOffer').replace('{a}', name(b.from)), cta: t('review'), go: () => { tab.value = 'market'; } });
+  for (const p of v.proposals) if (p.to === v.me.id) rows.push({ key: `prop-${p.from}-${p.kind}`, kind: 'soft', text: t('alertProposal').replace('{a}', name(p.from)).replace('{k}', t(p.kind as 'nap')), cta: t('review'), go: () => { tab.value = 'diplomacy'; } });
+  for (const i of v.invites) rows.push({ key: `inv-${i.alliance}`, kind: 'soft', text: t('alertInvite').replace('{a}', i.name), cta: t('review'), go: () => { tab.value = 'diplomacy'; } });
+  if (!rows.length) return null;
+  const shown = rows.slice(0, 3);
   return (
     <div class="alerts">
-      {hot.slice(0, 3).map((s) => (
-        <button key={s.id} class="alert" onClick={() => { systemMode.value = s.id; }}>
-          <i /> {(s.engaged ? t('alertBattle') : t('alertBlockade')).replace('{s}', s.name)} <b>{t('enter')} ›</b>
+      {shown.map((r) => (
+        <button key={r.key} class={`alert ${r.kind}`} onClick={r.go}>
+          <i /> <span>{r.text}</span> <b>{r.cta} ›</b>
         </button>
       ))}
+      {rows.length > shown.length && <small class="muted">{t('alertsMore').replace('{n}', String(rows.length - shown.length))}</small>}
     </div>
   );
 }
@@ -190,13 +208,16 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   // On a phone the panel stays folded until something is selected or a tab is tapped: the map comes first.
   useEffect(() => { if (sel && isNarrow()) setOpen(true); }, [sel]);
   const all: Tab[] = ['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'];
-  const primary: Tab[] = ['colony', 'system', 'general'];
+  const primary: Tab[] = ['colony', 'system', 'general', 'log'];
+  const read = useSig(logRead);
+  const unread = current === 'log' ? 0 : v.events.filter((e) => e.at > read && e.kind !== 'draw').length;
+  useEffect(() => { if (current === 'log') markLogRead(v); }, [current, v.events.length]);
   const tabs: Tab[] = isNarrow() && !more ? [...primary, ...(primary.includes(current) ? [] : [current])] : all;
   const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), logistics: t('tabLogistics'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog') };
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
-        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && v.events.length > 0 ? <i class="dotn" /> : null}</button>)}
+        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && unread > 0 ? <i class="badge">{unread > 9 ? '9+' : unread}</i> : null}</button>)}
         {isNarrow() && <button class={more ? 'on' : ''} onClick={(e) => { e.stopPropagation(); setMore(!more); }} title={t('more')}>⋯</button>}
         <button class="collapse" onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? '▾' : '▴'}</button>
       </div>
@@ -229,6 +250,31 @@ function ColonyPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | nu
         ))}
       </ul>
       {v.ended && <p class="tag">{v.ended.reason === 'silence' ? t('ended') : t('renaissance')}</p>}
+      <Decrees v={v} />
+    </div>
+  );
+}
+
+/** Decrees: three public, temporary bonuses bought with Credits (GDD § 8). */
+function Decrees({ v }: { v: PlayerView }) {
+  const now = v.time;
+  const desc = { range: t('decreeRangeDesc'), freefees: t('decreeFreefeesDesc'), longwatch: t('decreeLongwatchDesc') } as const;
+  return (
+    <div class="decrees">
+      <h3>{t('decrees')} <small>{Math.floor(v.me.credits)} {t('credits')}</small></h3>
+      <p class="muted small">{t('decreesHint')}</p>
+      <div class="cards">
+        {DECREES.map((k) => {
+          const active = v.me.decrees.find((d) => d.kind === k && d.until > now);
+          const cost = DECREE_COST_CREDITS[k];
+          return (
+            <button key={k} class={`card-btn ${active ? 'has' : ''}`} disabled={!!active || v.me.credits < cost} onClick={() => void act({ type: 'decree', kind: k })}>
+              <b>{decreeLabel(k)}</b><small>{desc[k]}</small>
+              {active ? <small class="ok">{t('inForce')} · {hms(active.until - now)} {t('remaining')}</small> : <small class="r-credits">{cost} {t('credits')} · {DECREE_HOURS[k]} h</small>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -449,6 +495,10 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   const endRef = useRef<HTMLDivElement>(null);
   const p = v.me.policy;
   useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } }, []);
+  // The General speaks first when a hostile fleet heads our way: pick up its line when such an event lands.
+  const inboundCount = v.events.filter((e) => e.kind === 'fleet.inbound' && e.actors[1] === v.me.id).length;
+  useEffect(() => { if (talkLoaded && inboundCount > 0) void fetchTalk().then((h) => { if (h.length > talk.value.length) talk.value = h; }); }, [inboundCount]);
+  const journal = [...v.me.journal].reverse().slice(0, 12);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
   const submit = async () => {
     const said = text.trim();
@@ -474,6 +524,10 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         <div ref={endRef} />
       </div>
       {p.notes && <p class="muted small">{t('doctrine')} : {p.notes}</p>}
+      <h3>{t('journalGeneral')}</h3>
+      {journal.length === 0 ? <p class="muted small">{t('journalEmpty')}</p> : (
+        <ul class="list journal">{journal.map((n, i) => <li key={`${n.at}-${i}`}><small>{stamp(n.at)}</small> <span>{describeNote(n, v)}</span></li>)}</ul>
+      )}
       <h3>{t('policy')}</h3>
       <p>{t('expansion')}: {(p.expansion * 100).toFixed(0)} % · {t('aggression')}: {(p.aggression * 100).toFixed(0)} %</p>
       <div class="row">
@@ -504,13 +558,37 @@ function DeviceLink() {
   );
 }
 
+const LOG_READ_KEY = 'aurane.logread';
+const logRead = signal<number>((() => { try { return Number(localStorage.getItem(LOG_READ_KEY) ?? -1); } catch { return -1; } })());
+function markLogRead(v: PlayerView): void {
+  const last = v.events.length ? v.events[v.events.length - 1]!.at : v.time;
+  if (last <= logRead.value) return;
+  logRead.value = last;
+  try { localStorage.setItem(LOG_READ_KEY, String(last)); } catch { /* ignore */ }
+}
+
+/** The living log: one readable line per event, the hourly recap as a card, newest first. */
 function LogPanel({ v }: { v: PlayerView }) {
-  const events = [...v.events].reverse();
-  if (!events.length) return <p class="muted">{t('noEvents')}</p>;
-  const name = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
+  const lines = v.events.map((e, i) => describeEvent(e, v, i)).filter((x): x is NonNullable<typeof x> => x !== null).reverse();
+  if (!lines.length) return <p class="muted">{t('noEvents')}</p>;
   return (
-    <ul class="list log">
-      {events.map((e, i) => <li key={i}><small>{hms(e.at)}</small> <b>{e.kind}</b> {e.actors.map(name).join(' → ')}</li>)}
+    <ul class="list feed">
+      {lines.map((l) => (
+        <li key={l.key} class={`tone-${l.tone} ${l.system ? 'has-sys' : ''}`} onClick={l.system ? () => { selected.value = l.system; } : undefined}>
+          {l.recap ? (
+            <div class="recap">
+              <div class="head"><b>{l.text}</b> <small>{stamp(l.at)}</small></div>
+              <div class="chips">
+                {RES.map((r) => <span key={r} class={`chip r-${r}`}><Icon name={r} size={12} /> <b>+{fmt(l.recap!.produced[r] ?? 0)}</b></span>)}
+                <span class="chip r-credits"><Icon name="credits" size={12} /> <b>+{l.recap.credits}</b></span>
+              </div>
+              <small class="muted">{l.recap.productive} {t('recapSystems')} · {l.recap.drawn} {t('recapDrawn')}{l.recap.overflow > 0 ? <> · <span class="bad">{l.recap.overflow} {t('recapLost')}</span></> : null}{l.recap.unpowered > 0 ? <> · <span class="bad">{l.recap.unpowered} {t('recapUnpowered')}</span></> : null}</small>
+            </div>
+          ) : (
+            <><i /> <span>{l.text}</span> <small>{stamp(l.at)}</small></>
+          )}
+        </li>
+      ))}
     </ul>
   );
 }

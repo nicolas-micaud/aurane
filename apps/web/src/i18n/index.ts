@@ -67,6 +67,23 @@ const STRINGS = {
     tplForge: 'Forge', tplOasis: 'Oasis', tplCrossroads: 'Carrefour', tplGraveyard: 'Cimetière', tplSanctuary: 'Sanctuaire', tplLair: 'Repaire', tplBurnt: 'Brûlé',
     recenter: 'Recentrer (double-clic)', depot: 'Dépôt de Rium', shuttleHere: 'Navette de cargos ici', salvage: 'Épave à fouiller', salvageHere: 'Fouiller l\'épave', laneTravel: 'en transit vers', mainBody: 'corps principal', bodies: 'corps', sendHere: 'Envoyer ici', relayHere: 'Relais de secours ici',
     briefing: 'Briefing', dismiss: 'Compris', compiling: 'Ton Général relit ta doctrine…', compiled: 'Doctrine appliquée', viaModel: 'interprétée par ton Général', viaRules: 'interprétée par les règles de base (modèle indisponible)',
+    // 0007 — the living log, alerts, the General's journal, decrees.
+    tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
+    alertInbound: '{n} vaisseaux de {a} vers {s} · arrivée dans {t}', alertOffer: 'Offre de troc de {a}', alertProposal: 'Traité proposé par {a} : {k}', alertInvite: 'Invitation : {a}', review: 'Voir', alertsMore: 'et {n} de plus',
+    decrees: 'Décrets', decreesHint: 'Publics, temporaires, payés en Crédits. La Gazette les annonce : tout le monde lit tes intentions.', enact: 'Proclamer', inForce: 'en vigueur', remaining: 'reste',
+    decreeRange: 'Portée', decreeRangeDesc: 'Portée des relais +10 % pendant 24 h.', decreeFreefees: 'Franchise', decreeFreefeesDesc: 'Frais de Marché nuls pendant 3 Tirages.', decreeLongwatch: 'Longue Garde', decreeLongwatchDesc: 'Garde de nuit de 12 h au lieu de 8 pendant 24 h.',
+    earlier: 'plus tôt', today: 'aujourd\'hui', markRead: 'Tout lu',
+    events: {
+      'draw.recap': 'Tirage {n}', 'fleet.inbound': '{a} envoie {n} vaisseaux vers {s}, arrivée dans {t}', 'battle': 'Combat à {s} : {a} contre {b}, {n} coques perdues', 'blockade.start': '{a} met {s} sous blocus', 'relay.cut': '{a} a fait taire la station de {s}', 'system.captured': '{a} prend {s} à {b}', 'system.claimed': '{s} rejoint ton Réseau',
+      'raid.loot': '{a} pille {s}', 'raid.bully': 'Raid refusé : {b} est bien plus faible que {a}', 'raid.refused': 'Raid refusé vers {s}', 'refinery.raided': '{a} brise la raffinerie de {s} et emporte {n} Rium', 'fleets.dry': '{n} flotte(s) à sec : plus de Rium pour les opérations', 'relays.unpowered': '{n} relais éteint(s) faute d\'Énergie',
+      'barter.done': 'Troc réglé avec {b}', 'treaty.signed': 'Traité {k} signé avec {a}', 'alliance.created': 'Alliance « {k} » fondée', 'alliance.joined': 'Tu rejoins une alliance', 'beacon.lit': 'Le Phare {k} est rallumé', 'echo.bonus': 'Écho du Phare : +100 Cristal', 'decree': 'Décret proclamé : {k}',
+      'convoy.sent': 'Convoi parti vers {s}', 'convoy.arrived': 'Convoi arrivé à {s}', 'depot.loaded': '{n} Rium chargés au dépôt de {s}', 'salvage': 'Épave fouillée à {s} : +{n} Métal', 'probe.done': '{s} sondé : {n} corps révélés', 'spy.done': 'Secteur espionné', 'envoy.done': 'Émissaire reçu par {b}', 'sabotage.success': 'Sabotage réussi contre {b}', 'sabotage.caught': 'Saboteur pris chez {b}',
+      'colony.founded': 'Colonie fondée', 'season.ended': 'Fin de saison', 'draw': 'Tirage {n} : bandes {k}',
+    } as Record<string, string>,
+    notes: {
+      barter: 'Troc proposé à {c}', 'expansion.energy': 'Expansion suspendue : l\'Énergie ne suivrait pas', expand: 'Relais vers {s}', turret: 'Tourelle posée à {s}', 'relay.backup': 'Relais de secours à {s}', refinery: 'Raffinerie lancée à {s}', shuttle: 'Navette de cargos vers {s}',
+      retreat: 'Repli depuis {s} : flotte trop abîmée', relieve: 'Renfort envoyé à {s}', 'fuel.short': 'Sortie annulée : pas assez de Rium', blockade: 'Blocus de {s} ({c})', raid: 'Raid sur {s} ({c})',
+    } as Record<string, string>,
   },
   en: {
     tagline: "can't stop the signal",
@@ -132,6 +149,23 @@ const STRINGS = {
     tplForge: 'Forge', tplOasis: 'Oasis', tplCrossroads: 'Crossroads', tplGraveyard: 'Graveyard', tplSanctuary: 'Sanctuary', tplLair: 'Lair', tplBurnt: 'Burnt',
     recenter: 'Recentre (double-click)', depot: 'Rium depot', shuttleHere: 'Cargo shuttle here', salvage: 'Salvage left', salvageHere: 'Salvage the wreck', laneTravel: 'in transit to', mainBody: 'main body', bodies: 'bodies', sendHere: 'Send here', relayHere: 'Backup relay here',
     briefing: 'Briefing', dismiss: 'Got it', compiling: 'Your General is reading your doctrine…', compiled: 'Doctrine applied', viaModel: 'interpreted by your General', viaRules: 'interpreted by the base rules (model unavailable)',
+    // 0007 — the living log, alerts, the General's journal, decrees.
+    tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
+    alertInbound: '{n} ships from {a} heading for {s} · arrival in {t}', alertOffer: 'Barter offer from {a}', alertProposal: 'Treaty proposed by {a}: {k}', alertInvite: 'Invitation: {a}', review: 'View', alertsMore: 'and {n} more',
+    decrees: 'Decrees', decreesHint: 'Public, temporary, paid in Credits. The Gazette announces them: everyone reads your intentions.', enact: 'Proclaim', inForce: 'in force', remaining: 'left',
+    decreeRange: 'Range', decreeRangeDesc: 'Relay range +10% for 24 h.', decreeFreefees: 'Free Fees', decreeFreefeesDesc: 'No Market fees for 3 Draws.', decreeLongwatch: 'Long Watch', decreeLongwatchDesc: 'A 12 h Night Watch instead of 8 for 24 h.',
+    earlier: 'earlier', today: 'today', markRead: 'All read',
+    events: {
+      'draw.recap': 'Draw {n}', 'fleet.inbound': '{a} sends {n} ships towards {s}, arrival in {t}', 'battle': 'Battle at {s}: {a} against {b}, {n} hulls lost', 'blockade.start': '{a} blockades {s}', 'relay.cut': '{a} silenced the station of {s}', 'system.captured': '{a} takes {s} from {b}', 'system.claimed': '{s} joins your Network',
+      'raid.loot': '{a} plunders {s}', 'raid.bully': 'Raid refused: {b} is far weaker than {a}', 'raid.refused': 'Raid towards {s} refused', 'refinery.raided': '{a} breaks the refinery at {s} and carries off {n} Rium', 'fleets.dry': '{n} fleet(s) dry: no Rium left for operations', 'relays.unpowered': '{n} relay(s) dark for lack of Energy',
+      'barter.done': 'Barter settled with {b}', 'treaty.signed': '{k} treaty signed with {a}', 'alliance.created': 'Alliance “{k}” founded', 'alliance.joined': 'You join an alliance', 'beacon.lit': 'Beacon {k} lit', 'echo.bonus': 'Beacon echo: +100 Crystal', 'decree': 'Decree proclaimed: {k}',
+      'convoy.sent': 'Convoy left for {s}', 'convoy.arrived': 'Convoy arrived at {s}', 'depot.loaded': '{n} Rium loaded at the depot of {s}', 'salvage': 'Wreck salvaged at {s}: +{n} Metal', 'probe.done': '{s} probed: {n} bodies revealed', 'spy.done': 'Sector spied', 'envoy.done': 'Envoy received by {b}', 'sabotage.success': 'Sabotage succeeded against {b}', 'sabotage.caught': 'Saboteur caught at {b}',
+      'colony.founded': 'Colony founded', 'season.ended': 'Season over', 'draw': 'Draw {n}: bands {k}',
+    } as Record<string, string>,
+    notes: {
+      barter: 'Barter offered to {c}', 'expansion.energy': 'Expansion paused: Energy would not keep up', expand: 'Relay to {s}', turret: 'Turret placed at {s}', 'relay.backup': 'Backup relay at {s}', refinery: 'Refinery started at {s}', shuttle: 'Cargo shuttle to {s}',
+      retreat: 'Retreat from {s}: fleet too damaged', relieve: 'Relief sent to {s}', 'fuel.short': 'Sortie cancelled: not enough Rium', blockade: 'Blockade of {s} ({c})', raid: 'Raid on {s} ({c})',
+    } as Record<string, string>,
   },
 } as const;
 

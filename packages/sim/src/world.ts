@@ -1,4 +1,4 @@
-import type { Building, Command, Faction, Fleet, Orbit, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
+import type { Building, Command, Decree, Faction, Fleet, Orbit, Persona, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
 import { COMBAT_UNITS, DEFAULT_POLICY, PERSONA_DEFAULTS, PolicySchema } from '@aurane/protocol';
 import * as B from './balance.js';
 import { generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
@@ -16,7 +16,7 @@ import { capacityOf, defaultOrbit, depositClamped, freeSlotsOnOrbit, hasStructur
 import { RELAY_KINDS, entryJump, laneBetween, layoutOf, pathInSystem, poiOf } from './pois.js';
 import {
   combatSize, emptyDamage, emptyFleet, fleetSize, newId,
-  type Colony, type FleetOrder, type FleetState, type SystemState, type World, type WorldEvent, type TreatyKind,
+  type Colony, type FleetOrder, type FleetState, type JournalEntry, type SystemState, type World, type WorldEvent, type TreatyKind,
 } from './state.js';
 
 export type ApplyResult = { ok: true; id?: string } | { ok: false; reason: string };
@@ -100,7 +100,9 @@ export function stormSectors(w: World): Set<string> {
 export function rangeContext(w: World, colony: Colony): RangeContext {
   const amplifiers = new Set<string>();
   for (const id of ownedSystems(w, colony.id)) if (hasStructure(w.systems[id]!, 'amplifier')) amplifiers.add(id);
-  return { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w) };
+  const ctx: RangeContext = { faction: colony.faction, amplifiers, litBeacons: Object.keys(w.litBeacons), stormSectors: stormSectors(w) };
+  if (hasDecree(w, colony, 'range')) ctx.rangeMult = B.DECREE_RANGE_MULT;
+  return ctx;
 }
 
 /** A relay carries the Signal only when both stations stand. */
@@ -205,7 +207,35 @@ export function isShielded(w: World, colony: Colony): boolean {
 
 export function isWatching(w: World, colony: Colony): boolean {
   const h = currentHour(w);
-  return (h - colony.watchStartHour + 24) % 24 < B.WATCH_HOURS;
+  return (h - colony.watchStartHour + 24) % 24 < watchHours(w, colony);
+}
+
+/** The Night Watch window, stretched by the Long Watch decree. */
+export function watchHours(w: World, colony: Colony): number {
+  return hasDecree(w, colony, 'longwatch') ? B.WATCH_HOURS_DECREE : B.WATCH_HOURS;
+}
+
+export function hasDecree(w: World, colony: Colony, kind: Decree): boolean {
+  return colony.decrees.some((d) => d.kind === kind && d.until > w.time);
+}
+
+/** Buy a decree with Credits: public (an event), temporary, one of each kind at a time. */
+function enactDecree(w: World, colony: Colony, kind: Decree): ApplyResult {
+  if (hasDecree(w, colony, kind)) return { ok: false, reason: 'decree already in force' };
+  const cost = B.DECREE_COST_CREDITS[kind];
+  if (colony.credits < cost) return { ok: false, reason: 'not enough credits' };
+  colony.credits -= cost;
+  colony.decrees = colony.decrees.filter((d) => d.until > w.time);
+  const until = w.time + B.DECREE_HOURS[kind] * 3600;
+  colony.decrees.push({ kind, until });
+  logEvent(w, 'decree', [colony.id], { kind, until });
+  return { ok: true };
+}
+
+/** One line in the General's journal (what it did and why), capped. */
+export function journal(w: World, colony: Colony, entry: Omit<JournalEntry, 'at'>): void {
+  colony.journal.push({ at: w.time, ...entry });
+  if (colony.journal.length > B.JOURNAL_MAX) colony.journal.splice(0, colony.journal.length - B.JOURNAL_MAX);
 }
 
 export function colonyScore(w: World, colony: Colony): number {
@@ -306,7 +336,7 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
     id, name: opts.name, faction: opts.faction, persona: opts.persona, npc: opts.npc ?? false,
     capital: best.id, marketSystem: best.id, credits: 300, influence: B.STARTING_INFLUENCE,
     createdAt: w.time, watchStartHour: 0, policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...PERSONA_DEFAULTS[opts.persona] }),
-    alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastOverflow: B.emptyStock(), lastSeenAt: w.time,
+    alliance: null, scoreWindow: [], marketVolume7d: [], lastProduced: B.emptyStock(), avgProduced: B.emptyStock(), lastOverflow: B.emptyStock(), lastSeenAt: w.time, journal: [], decrees: [],
   };
   w.colonies[id] = colony;
   const st = w.systems[best.id]!;
@@ -444,6 +474,7 @@ export function apply(w: World, colonyId: string, cmd: Command): ApplyResult {
     case 'treaty': return proposeTreaty(w, colony, cmd.with, cmd.kind);
     case 'set_watch': colony.watchStartHour = cmd.startHour; return { ok: true };
     case 'set_policy': colony.policy = cmd.policy; return { ok: true };
+    case 'decree': return enactDecree(w, colony, cmd.kind);
     case 'light_beacon': {
       const sys = w.galaxy.systems[cmd.system];
       if (!sys || sys.kind !== 'beacon') return { ok: false, reason: 'not a beacon' };
@@ -629,6 +660,11 @@ function depart(w: World, colony: Colony, f: FleetState, to: string, order: Flee
     f.arriveAt = w.time + Math.ceil(plan.length / speed);
   }
   f.departAt = w.time;
+  // A warship heading for someone else's system is announced to its owner: the tension of the approach, with an hour of arrival.
+  const dst = w.systems[to];
+  if (dst?.owner && dst.owner !== colony.id && combatSize(f.units) > 0 && !isAlly(w, colony.id, dst.owner) && order.kind !== 'convoy' && order.kind !== 'return') {
+    logEvent(w, 'fleet.inbound', [colony.id, dst.owner], { system: to, arriveAt: f.arriveAt, size: combatSize(f.units) });
+  }
   return { ok: true };
 }
 
@@ -1352,6 +1388,13 @@ function runDraw(w: World): void {
     if (draw.event.kind === 'echo' && net.has(draw.event.beacon)) { depositClamped(w, draw.event.beacon, { crystal: 100 }); logEvent(w, 'echo.bonus', [colony.id]); }
     colony.scoreWindow.push(productive.length);
     if (colony.scoreWindow.length > B.SCORE_WINDOW_DRAWS) colony.scoreWindow.shift();
+    // The hourly recap a player reads in the log: what the Draw brought, what was lost, what it cost.
+    if (!colony.npc) {
+      const round = (st: Stock): Stock => { const o = B.emptyStock(); for (const r of B.RESOURCE_LIST) o[r] = Math.round(st[r]); return o; };
+      const drawnMine = productive.filter((id) => drawn.has(w.galaxy.systems[id]!.band)).length;
+      logEvent(w, 'draw.recap', [colony.id], { index: draw.index, produced: round(produced), overflow: Math.round(B.RESOURCE_LIST.reduce((s, r) => s + overflow[r], 0)), credits: productive.length * B.CREDITS_PER_SYSTEM_PER_DRAW, productive: productive.length, drawn: drawnMine, unpowered });
+    }
+    colony.decrees = colony.decrees.filter((d) => d.until > w.time);
   }
 
   settleMarkets(w);
@@ -1416,6 +1459,7 @@ function settleMarkets(w: World): void {
       let fee = B.MARKET_FEE;
       if (ownedSystems(w, colony.id).some((s) => hasBuilding(w, s, 'tradepost'))) fee = B.MARKET_FEE_TRADEPOST;
       if (colony.faction === 'guild') fee *= B.GUILD_FEE_MULT;
+      if (hasDecree(w, colony, 'freefees')) fee = 0;
       if (o.side === 'buy') {
         depositClamped(w, colony.marketSystem, { [resource]: f.qty });
         colony.credits += f.qty * (o.price - f.price);

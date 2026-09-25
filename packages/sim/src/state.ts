@@ -1,4 +1,4 @@
-import type { Building, Faction, Fleet, Orbit, Persona, Policy, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
+import type { Building, Decree, Faction, Fleet, Orbit, Persona, Policy, Resource, Stock, StockDelta, UnitType } from '@aurane/protocol';
 import type { Galaxy } from './galaxy.js';
 import type { Relay } from './network.js';
 import type { Draw } from './draw.js';
@@ -28,7 +28,15 @@ export interface Colony {
   /** Resources lost to full warehouses at the last Draw (a signal for the player and the General). */
   lastOverflow: Stock;
   lastSeenAt: number;
+  /** What the General did and why, newest last (capped); the player reads it in the General tab. */
+  journal: JournalEntry[];
+  /** Decrees in force (bought with Credits, public). */
+  decrees: ActiveDecree[];
 }
+
+/** One line of the General's journal: a structured note the client translates. */
+export interface JournalEntry { at: number; kind: string; system?: string; colony?: string }
+export interface ActiveDecree { kind: Decree; until: number }
 
 export interface BuildJob { building: Building; orbit: Orbit; readyAt: number; poi: string }
 export interface TrainJob { unit: UnitType; count: number; readyAt: number }

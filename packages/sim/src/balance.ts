@@ -141,6 +141,17 @@ export const CORSAIR_SHIP_COST_MULT = 0.85;
 export const CORSAIR_SPEED_MULT = 1.1;
 export const BASTION_DEFENSE_MULT = 2;
 export const WATCH_HOURS = 8;
+export const WATCH_HOURS_DECREE = 12;         // the Long Watch decree stretches the window
+/** Decrees (GDD § 8): public, temporary, paid in Credits. */
+export const DECREE_COST_CREDITS = { range: 120, freefees: 60, longwatch: 90 } as const;
+export const DECREE_HOURS = { range: 24, freefees: 3, longwatch: 24 } as const;
+export const DECREE_RANGE_MULT = 1.1;
+/** NPC Corsairs raid human outposts from the second day: modest, announced, every few hours at most. */
+export const CORSAIR_PRESSURE_FROM_DRAW = 24;
+export const CORSAIR_PRESSURE_COOLDOWN_S = 6 * 3600;
+export const CORSAIR_PRESSURE_MAX_SHIPS = 6;
+/** The General's journal keeps this many entries per colony. */
+export const JOURNAL_MAX = 40;
 export const WATCH_DEFENSE_MULT = 2;
 export const NEWCOMER_SHIELD_HOURS = 72;
 export const BLOCKADE_CAPTURE_HOURS = 12;

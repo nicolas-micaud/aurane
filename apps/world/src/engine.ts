@@ -3,10 +3,10 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { FACTIONS, PERSONAS, type Command, type Faction, type Persona } from '@aurane/protocol';
 import {
-  apply, battleList, battleReport, createWorld, decide, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
+  apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { clientFromEnv, compilePolicy, converse, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
+import { clientFromEnv, compilePolicy, converse, inboundWarning, writeBriefing, writeGazette, Quota, type GazetteIssue, type LlmClient, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 
@@ -37,6 +37,10 @@ export class Engine {
   private lastBriefedAt = new Map<string, number>();
   private gazettes = new Map<string, GazetteIssue>();
   private gazetteInFlight = new Map<string, Promise<GazetteIssue>>();
+  /** How far the event log has been read for the General's unprompted words. */
+  private lastEventSeen = 0;
+  /** The language each player last spoke to their General in (the unprompted lines use it). */
+  private langs = new Map<string, 'fr' | 'en'>();
 
   constructor(readonly cfg: Config, private readonly store: Store) {}
 
@@ -54,6 +58,7 @@ export class Engine {
       await this.snapshot();
     }
     this.lastDrawSeen = this.world.drawIndex;
+    this.lastEventSeen = this.world.events.length;
   }
 
   start(): void {
@@ -83,6 +88,7 @@ export class Engine {
       this.lastDecisionSim = this.world.time;
       this.runGenerals();
     }
+    this.speakFirst();
     const drawHappened = this.world.drawIndex !== this.lastDrawSeen;
     if (drawHappened) {
       this.lastDrawSeen = this.world.drawIndex;
@@ -104,9 +110,32 @@ export class Engine {
       const seen = c.lastSeenAt;
       const d = decide(this.world, c, this.decisionTick);
       for (const cmd of d.commands) apply(this.world, c.id, cmd);
+      recordNotes(this.world, c, d.notes);
       c.lastSeenAt = seen; // the General acting does not count as the player being present
       if (d.commands.length && this.listeners.has(c.id)) this.dirtyColonies.add(c.id);
     }
+  }
+
+  /** A hostile fleet heading for a player's system: their General says so in the conversation, unprompted and free. */
+  private speakFirst(): void {
+    const w = this.world;
+    if (this.lastEventSeen > w.events.length) this.lastEventSeen = 0;
+    for (let i = this.lastEventSeen; i < w.events.length; i++) {
+      const e = w.events[i]!;
+      if (e.kind !== 'fleet.inbound') continue;
+      const c = w.colonies[e.actors[1] ?? ''];
+      if (!c || c.npc) continue;
+      const d = e.data as { system?: string; arriveAt?: number; size?: number } | undefined;
+      const lang = this.langs.get(c.id) ?? 'fr';
+      const text = inboundWarning(c.persona, lang, {
+        system: w.galaxy.systems[d?.system ?? '']?.name ?? d?.system ?? '?', from: w.colonies[e.actors[0] ?? '']?.name ?? '?',
+        minutes: Math.max(0, Math.round(((d?.arriveAt ?? w.time) - w.time) / 60)), size: d?.size ?? 0,
+      });
+      const history = this.history(c.id);
+      this.talks.set(c.id, [...history, { who: 'general' as const, text, at: Date.now() }].slice(-16));
+      if (this.listeners.has(c.id)) this.dirtyColonies.add(c.id);
+    }
+    this.lastEventSeen = w.events.length;
   }
 
   async snapshot(): Promise<void> {
@@ -298,6 +327,7 @@ export class Engine {
     for (const a of Object.values(this.world.alliances)) alliances[a.id] = a.name;
     const names: Record<string, string> = {};
     for (const o of Object.values(this.world.colonies)) names[o.id] = o.name;
+    this.langs.set(c.id, lang);
     const history = this.history(c.id);
     const client = this.quota.take(c.id, 'talk') ? this.llm : null;
     const res = await converse({ text, lang, persona: c.persona, history, view: viewFor(this.world, c), ctx: { lang, current: c.policy, systems, colonies, alliances, persona: c.persona } }, client, names);
@@ -316,6 +346,7 @@ export class Engine {
   async briefing(colonyId: string, lang: 'fr' | 'en'): Promise<{ text: string; source: string; awaySeconds: number } | null> {
     const c = this.world.colonies[colonyId];
     if (!c) return null;
+    this.langs.set(c.id, lang);
     const since = this.lastBriefedAt.get(c.id) ?? c.createdAt;
     const awaySeconds = Math.max(0, this.world.time - since);
     const events = this.world.events.filter((e) => e.at > since && (e.actors.includes(c.id) || e.kind === 'draw'));

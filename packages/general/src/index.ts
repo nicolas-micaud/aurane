@@ -5,3 +5,4 @@ export * from './briefing.js';
 export * from './quota.js';
 export * from './gazette.js';
 export * from './converse.js';
+export * from './alerts.js';
