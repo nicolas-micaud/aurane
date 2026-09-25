@@ -1,0 +1,11 @@
+{
+  "name": "@aurane/site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "playaurane.com: the landing page, its rules and privacy pages. Static, no dependency.",
+  "scripts": {
+    "build": "node build.mjs",
+    "preview": "node build.mjs && npx --yes serve -l 4180 dist"
+  }
+}
