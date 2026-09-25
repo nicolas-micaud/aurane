@@ -71,6 +71,26 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
     const raf = requestAnimationFrame(() => setEntered(true));
     return () => { cancelAnimationFrame(raf); sc.destroy(); watch(null); };
   }, [systemId]);
+  // The title bar wraps differently per phone and the dock is as tall as its content: the scene keeps their real
+  // heights free, so a short dock shows more of the plateau. Measured after every render (the dock's content
+  // changes with the tab and the selection) and whenever either element resizes.
+  const observed = useRef<{ ro: ResizeObserver | null; nodes: HTMLElement[] }>({ ro: null, nodes: [] });
+  useEffect(() => {
+    const sc = scene.current, root = host.current?.parentElement;
+    if (!sc || !root) return;
+    const bar = root.querySelector<HTMLElement>('.sysbar'), dock = root.querySelector<HTMLElement>('.dock');
+    const measure = (): void => sc.setInsets(bar?.offsetHeight ?? 0, dock?.offsetHeight ?? 0);
+    measure();
+    const nodes = [bar, dock].filter((n): n is HTMLElement => n !== null);
+    const o = observed.current;
+    if ('ResizeObserver' in window && (nodes.length !== o.nodes.length || nodes.some((n, i) => n !== o.nodes[i]))) {
+      o.ro?.disconnect();
+      o.ro = new ResizeObserver(measure);
+      for (const n of nodes) o.ro.observe(n);
+      o.nodes = nodes;
+    }
+  });
+  useEffect(() => () => { observed.current.ro?.disconnect(); }, []);
   useEffect(() => { if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sv, v]);
   useEffect(() => { scene.current?.setSelection(sel); if (sv && scene.current) scene.current.update(sv, ctxOf(v)); }, [sel]);
   useEffect(() => { scene.current?.setFocus(focus); }, [focus]);
@@ -298,7 +318,7 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
         </>
       )}
       {!mine && !sel && sv.owner && <RaidButtons v={v} sv={sv} target={sv.id} />}
-      {!sel && !struct && <p class="muted">{t('coach6')}</p>}
+      {!sel && !struct && <p class="muted">{poi.kind === 'nebula' ? t('plateauNebula') : poi.orbitSlots.every((n) => n === 0) ? t('plateauNoSlots') : t('plateauHint')}</p>}
     </div>
   );
 }

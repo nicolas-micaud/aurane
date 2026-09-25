@@ -67,7 +67,10 @@ export class GalaxyMap {
     if (this.view) { this.render(this.view); this.centerOn(this.view.me.capital); }
   }
 
-  destroy(): void { this.app.destroy(true, { children: true }); }
+  /** Removes the canvas and frees this scene's GPU objects. `releaseGlobalResources` stays off: with `true` Pixi
+   *  empties pools shared by every renderer on the page (the batch pool among them), and the other scene's next
+   *  frame crashes on a destroyed batch, which left the galaxy black after leaving a system. */
+  destroy(): void { this.app.destroy({ removeView: true, releaseGlobalResources: false }, { children: true }); }
 
   setSelection(id: string | null): void { this.selected = id; if (this.view && this.ready) this.render(this.view); }
   setLinkFrom(id: string | null): void { this.linkFrom = id; if (this.view && this.ready) this.render(this.view); }
