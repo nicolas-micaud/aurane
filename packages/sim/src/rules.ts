@@ -31,6 +31,8 @@ export interface SeasonRules {
   oracleHintMinutes: number;
   /** The Concordat's relay range multiplier: +5 % in Season 0 (+10 % gave the faction +42 % of score in a week, REVIEW-S0 § 3). */
   concordatRangeMult: number;
+  /** Corsair capitals prefer lair systems (hidden main body); others avoid them. Measured in REVIEW-S0 § 3. */
+  spawnLairBias: boolean;
 }
 
 export const DEFAULT_RULES: SeasonRules = {
@@ -49,6 +51,7 @@ export const DEFAULT_RULES: SeasonRules = {
   galaxyGrowth: { enabled: true, rimOccupancy: 0.5, maxRadius: 12 },
   oracleHintMinutes: 60,
   concordatRangeMult: 1.05,
+  spawnLairBias: true,
 };
 
 /** The rules of the first prototype seasons, for measuring what each guard-rail changes. */
@@ -68,6 +71,7 @@ export const LEGACY_RULES: SeasonRules = {
   galaxyGrowth: { enabled: false, rimOccupancy: 1, maxRadius: 12 },
   oracleHintMinutes: 0,
   concordatRangeMult: 1.1,
+  spawnLairBias: true,
 };
 
 export function mergeRules(partial?: Partial<SeasonRules>): SeasonRules {

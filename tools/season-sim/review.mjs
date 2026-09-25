@@ -127,7 +127,21 @@ function concordat() {
 }
 
 if (what === 'factions' || what === 'all') factions();
+function corsairs() {
+  console.log(`\n== Corsairs and the lair capitals: ${seeds} seed(s) × ${days} days × 40 colonies, radius 6 ==`);
+  for (const [label, rules] of [['lair bias on (default)', {}], ['lair bias off', { spawnLairBias: false }]]) {
+    const scores = { concordat: [], guild: [], oracles: [], corsairs: [] };
+    for (let s = 0; s < seeds; s++) {
+      const w = run({ seed: `review-f-${s}`, colonies: 40, radius: 6, days, rules });
+      for (const c of Object.values(w.colonies)) scores[c.faction].push(colonyScore(w, c));
+    }
+    const all = mean(Object.values(scores).flat());
+    console.log(`-- ${label}: ` + FACTIONS.map((f) => `${f} ${mean(scores[f]).toFixed(1)} (${pct(mean(scores[f]) / all - 1)})`).join(' · '));
+  }
+}
+
 if (what === 'concordat') concordat();
+if (what === 'corsairs') corsairs();
 if (what === 'contact' || what === 'all') contact();
 if (what === 'growth' || what === 'all') growth();
 if (what === 'transfers' || what === 'all') transfers();
