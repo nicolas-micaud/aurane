@@ -165,7 +165,8 @@ function decideExpansion(ctx: Ctx): void {
   const income = c.avgProduced.energy;
   for (const cand of cands.slice(0, 5)) {
     const projected = networkUpkeep([...active, { id: '', a: '', b: '', owner: c.id, length: 0, upkeep: cand.upkeep, readyAt: 0, cutUntil: 0 }]);
-    if (w.drawIndex >= 0 && projected > income * 0.8) { ctx.notes.push({ kind: 'expansion.energy' }); break; }
+    // The cap needs a measured income: a colony that has not seen its first Draw yet (late joiner) is not capped.
+    if (c.scoreWindow.length > 0 && projected > income * 0.8) { ctx.notes.push({ kind: 'expansion.energy' }); break; }
     ctx.out.push({ type: 'build_relay', a: cand.a, b: cand.b });
     ctx.notes.push({ kind: 'expand', system: cand.b });
     return;
@@ -204,7 +205,7 @@ function decideBuildings(ctx: Ctx, threatened: Set<string>): void {
     if (id !== capital && !(threatened.has(id) || st.stock.metal > 250)) continue;
     const layout = layoutOf(w.galaxy, id);
     const spot = layout.pois.find((q) => q.id !== st.mainPoi && RELAY_KINDS.has(q.kind) && freeSlotsOnOrbit(w, w.galaxy.systems[id]!, 3, q.id) > 0);
-    if (spot && canAffordAt(ctx, id, B.BUILDING_COST.relay) && (id !== capital || w.drawIndex >= 6)) { ctx.out.push({ type: 'build', system: id, building: 'relay', poi: spot.id }); ctx.notes.push({ kind: 'relay.backup', system: id }); return; }
+    if (spot && canAffordAt(ctx, id, B.BUILDING_COST.relay) && (id !== capital || w.time - c.createdAt >= 6 * 3600)) { ctx.out.push({ type: 'build', system: id, building: 'relay', poi: spot.id }); ctx.notes.push({ kind: 'relay.backup', system: id }); return; }
   }
   // Warehouses before anything overflows.
   for (const id of ctx.productive) {
