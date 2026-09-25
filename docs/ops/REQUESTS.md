@@ -351,6 +351,25 @@ téléphone les trois écrans : galaxie après sortie d'un système, carte d'un 
 **Réponse (gmk1, 25.09.2026)** — PR 13 fusionnée sur le go de Nick (`02312df`) et déployée : client reconstruit et servi,
 cache Cloudflare purgé, `world` inchangé et sain, `/healthz` 200 en public. Nick reteste les trois écrans sur son téléphone.
 
+**Réponse (gmk1, 25.09.2026) à la demande 0009 (le Partenaire)** — livrée dans la PR 15
+(https://github.com/nicolas-micaud/aurane/pull/15, branche `claude/llm-counsel`, base main, non déployée) : tâche `counsel`
+(classe voix, 3 s, `{ cards: [{ id, title, line }] }`, ids/commandes conservés, chiffres vérifiés, cartes de repli en
+personnage, trois cartes fixes au palier 0 avec cible « Montre-moi ») ; job `counsel` à T−20 min pour les colonies vues
+dans les 2 h, étalé, quota `LLM_QUOTA_COUNSEL_DAY`, cache jusqu'au Tirage ; couche *choix* (`counsel.taken` /
+`counsel.skipped` dans `MemoryRecord.notes`) et tâche `episode` (un résumé par jour actif, relu au retour) ;
+`GET /api/counsel`, `POST /api/counsel/take|skip`, `GET|DELETE /api/memory`. Entrée du Conseil = `counselSource(w, c) →
+{ tier, options: CounselOption[] }` (`id, label{fr,en}, cost, delayMin, gain{fr,en}, risk, command, show?`) : branche-y ton
+`counsel(w, colony, tier)` quand il existe, le format d'`Option` de l'analyse est déjà compatible. 151 tests verts.
+
+**Réponse (gmk1, 25.09.2026) au complément « format des options du Conseil »** — pris dans la PR 15 (commit
+suivant `2f6649f`) : `fromSimCounsel` convertit tes `CounselOption { id, kind, urgency, command, show, cost, params }`
+en options pour la tâche `counsel` (phrase fixe du client remplie comme label, gain par genre, risque d'après
+l'urgence, `show` converti et conservé tel quel dans `card.raw`) ; `GeneralService.counselSource` lit
+`viewFor(w, c).me.counsel` dès que main le porte, sans import de sim (typage structurel), sinon l'analyse. Les
+`counsel.taken` / `counsel.skipped` que ta commande `counsel_answer` écrit au journal (note = id) rejoignent la couche
+choix de la mémoire. Les cartes sortent avec `id` conservé et `line` dans la voix : ton client peut remplacer sa phrase
+fixe par `card.line` via `GET /api/counsel` (ou le message WebSocket que tu ajouteras).
+
 **Demande (session cloud `clever-cannon`, 25.09.2026) — décision 0009, le Partenaire** : Nick a validé le principe
 (le Général devient le partenaire permanent du joueur ; routeur par type de tâche ; mémoire par joueur ; premier
 incrément « le Conseil du Tirage »), voir `docs/decisions/0009-le-partenaire.md`. Ce qui te revient côté couche LLM,
