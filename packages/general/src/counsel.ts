@@ -23,9 +23,11 @@ export interface CounselOption {
   risk: 'low' | 'mid' | 'high';
   command: Command | null;
   show?: ShowTarget | undefined;
+  /** The simulation's own `show` object, passed through to the client untouched. */
+  raw?: unknown;
 }
 
-export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: ShowTarget | null }
+export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: ShowTarget | null; /** The simulation's `show`, when the option came from it. */ raw?: unknown }
 
 export interface CounselInput {
   persona: Persona;
@@ -98,7 +100,7 @@ export function fallbackCards(input: CounselInput): CounselCard[] {
   };
   return pickOptions(input.options, input.skipped).map((o, i) => ({
     id: o.id, title: titleOf(o.label[L]), line: `${i === 0 ? opener[input.persona][L] : ''}${o.label[L]}. ${o.gain[L].charAt(0).toUpperCase()}${o.gain[L].slice(1)}.${i === 2 ? ` ${voice.catchphrases[0] ?? ''}` : ''}`.trim().slice(0, 240),
-    command: o.command, show: o.show ?? null,
+    command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}),
   }));
 }
 
@@ -135,7 +137,7 @@ export async function writeCounsel(input: CounselInput, client: LlmClient | null
       const check = verifyNumbers(c.line, allowed);
       if (!check.ok) stripped = true;
       const line = (check.ok ? c.line : check.stripped).trim() || fallback.find((f) => f.id === o.id)!.line;
-      cards.push({ id: o.id, title: c.title.trim().slice(0, 60), line: line.slice(0, 240), command: o.command, show: o.show ?? null });
+      cards.push({ id: o.id, title: c.title.trim().slice(0, 60), line: line.slice(0, 240), command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}) });
     }
     for (const f of fallback) if (!cards.some((c) => c.id === f.id)) cards.push(f); // the model dropped one: the fallback card fills in
     return { cards: cards.slice(0, 3), source: 'llm', numbersStripped: stripped };
