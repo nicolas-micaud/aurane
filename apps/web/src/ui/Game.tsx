@@ -207,8 +207,12 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   const sel = useSig(selected);
   // On a phone the panel stays folded until something is selected or a tab is tapped: the map comes first.
   useEffect(() => { if (sel && isNarrow()) setOpen(true); }, [sel]);
-  const all: Tab[] = ['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'];
+  // Progressive onboarding: a tab appears with its tier (docs/design/ONBOARDING-S0.md), the General says why.
+  const tier = v.me.onboarding?.tier ?? 6;
+  const TAB_TIER: Partial<Record<Tab, number>> = { logistics: 1, market: 2, fleets: 3, diplomacy: 5 };
+  const all: Tab[] = (['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'] as Tab[]).filter((k) => (TAB_TIER[k] ?? 0) <= tier);
   const primary: Tab[] = ['colony', 'system', 'general', 'log'];
+  useEffect(() => { if (!all.includes(current)) tab.value = 'colony'; }, [tier]);
   const read = useSig(logRead);
   const unread = current === 'log' ? 0 : v.events.filter((e) => e.at > read && e.kind !== 'draw').length;
   useEffect(() => { if (current === 'log') markLogRead(v); }, [current, v.events.length]);
@@ -513,6 +517,9 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   return (
     <div class="generalpanel">
       <h2>{t(v.me.persona as 'vane')} <small class="muted">{t(`${v.me.persona}Desc` as 'vaneDesc')}</small></h2>
+      {(v.me.onboarding?.tier ?? 6) < 6 && (
+        <p class="tag">{t('tierOpened').replace('{k}', t(`tier${v.me.onboarding.tier}` as 'tier1'))} · <button class="link" onClick={() => void act({ type: 'onboarding_unlock' }, t('showMeAllDone'))}>{t('showMeAll')}</button></p>
+      )}
       <div class="say">
         <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
         <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>

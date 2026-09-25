@@ -80,7 +80,7 @@ function makeName(rng: Rng): string {
  * core, food towards the rim, metal everywhere. Nobody is self-sufficient.
  */
 function resourceWeights(ring: number, radius: number): Record<Resource, number> {
-  const t = radius === 0 ? 0 : ring / radius; // 0 core .. 1 rim
+  const t = radius === 0 ? 0 : Math.min(1, ring / radius); // 0 core .. 1 rim (rings added later count as rim)
   return {
     metal: 1,
     energy: 0.4 + 1.0 * (1 - t),
@@ -101,6 +101,8 @@ function weightedPick(rng: Rng, weights: Record<Resource, number>): Resource {
 export interface GalaxyOptions {
   radius?: number;
   systemsPerSector?: [number, number];
+  /** Radius the resource geography was drawn for; a galaxy that grew keeps it so its first sectors stay identical. */
+  baseRadius?: number;
 }
 
 /** The numeric root of a season seed, as stored in `Galaxy.seed` (so a snapshot can be matched to a configured season). */
@@ -110,6 +112,7 @@ export const seedNumber = (seed: number | string): number => (typeof seed === 's
 export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}): Galaxy {
   const root = seedNumber(seed);
   const radius = opts.radius ?? 12;
+  const baseRadius = opts.baseRadius ?? radius;
   const [minSys, maxSys] = opts.systemsPerSector ?? [10, 16];
   const galaxy: Galaxy = { seed: root, radius, sectors: {}, systems: {}, beacons: [], candidates: {} };
   const hexes = hexDisk(radius);
@@ -137,7 +140,7 @@ export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}):
     }
 
     const count = rng.int(minSys, maxSys);
-    const weights = resourceWeights(ring, radius);
+    const weights = resourceWeights(ring, baseRadius);
     const placed: Point[] = [];
     for (let tries = 0; tries < 4000 && placed.length < count; tries++) {
       const p = { x: origin.x + rng.range(60, SECTOR_SIZE - 60), y: origin.y + rng.range(60, SECTOR_SIZE - 60) };
@@ -170,6 +173,15 @@ export function generateGalaxy(seed: number | string, opts: GalaxyOptions = {}):
   }
   computeCandidates(galaxy);
   return galaxy;
+}
+
+/**
+ * The galaxy one ring larger, same seed: every existing sector is regenerated bit for bit (per-sector seeds,
+ * geography drawn for `baseRadius`), the new ring is added, relay candidates are recomputed.
+ */
+export function expandGalaxy(g: Galaxy, opts: GalaxyOptions): Galaxy {
+  const next: GalaxyOptions = { ...opts, radius: g.radius + 1, baseRadius: opts.baseRadius ?? opts.radius ?? g.radius };
+  return generateGalaxy(g.seed, next);
 }
 
 /** Static geometry of every possible relay (same or adjacent sector, within MAX_LINK_LENGTH). */

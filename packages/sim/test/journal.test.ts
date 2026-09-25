@@ -11,7 +11,7 @@ const rich = (w: World, c: Colony): void => { w.systems[c.capital]!.stock = { me
 
 describe('journal, alerts and decrees', () => {
   it('writes an hourly recap for human colonies only', () => {
-    const w = createWorld('j1', { radius: 4 });
+    const w = createWorld('j1', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const npc = spawnColony(w, { name: 'Npc', faction: 'concordat', persona: 'vane', npc: true });
     tick(w, 3600);
@@ -26,7 +26,7 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('announces a hostile warship heading for one of our systems, with its arrival time', () => {
-    const w = createWorld('j2', { radius: 4 });
+    const w = createWorld('j2', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     me.createdAt = -1e9; atk.createdAt = -1e9;
@@ -51,7 +51,7 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('keeps the General\'s notes as a capped journal for human colonies', () => {
-    const w = createWorld('j3', { radius: 4 });
+    const w = createWorld('j3', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const npc = spawnColony(w, { name: 'Npc', faction: 'concordat', persona: 'vane', npc: true });
     for (let i = 0; i < B.JOURNAL_MAX + 5; i++) recordNotes(w, me, [{ kind: 'expand', system: me.capital }]);
@@ -66,7 +66,7 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('decrees cost Credits, are public, and change range, fees and the Watch for a while', () => {
-    const w = createWorld('j4', { radius: 4 });
+    const w = createWorld('j4', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     me.credits = 1000;
     const base = rangeContext(w, me);
@@ -89,7 +89,7 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('free fees: a sale settles at the full price while the decree lasts', () => {
-    const w = createWorld('j5', { radius: 4 });
+    const w = createWorld('j5', { radius: 4, rules: { onboarding: false } });
     const seller = spawnColony(w, { name: 'S', faction: 'concordat', persona: 'vane' });
     const buyer = spawnColony(w, { name: 'B', faction: 'oracles', persona: 'solen' });
     rich(w, seller); rich(w, buyer);
@@ -109,7 +109,7 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('NPC Corsairs raid a nearby human outpost from the second day, then wait', () => {
-    const w = createWorld('j6', { radius: 4 });
+    const w = createWorld('j6', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const corsair = spawnColony(w, { name: 'Cor', faction: 'corsairs', persona: 'kestrel', npc: true });
     me.createdAt = -1e9; corsair.createdAt = -1e9;
@@ -139,13 +139,13 @@ describe('journal, alerts and decrees', () => {
   });
 
   it('snapshots carry the journal and decrees, and v4 snapshots migrate', () => {
-    const w = createWorld('j7', { radius: 4 });
+    const w = createWorld('j7', { radius: 4, rules: { onboarding: false } });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     me.credits = 500;
     apply(w, me.id, { type: 'decree', kind: 'range' });
     recordNotes(w, me, [{ kind: 'expand', system: me.capital }]);
     const snap = snapshotWorld(w, { radius: 4 });
-    expect(snap.version).toBe(5);
+    expect(snap.version).toBe(7);
     const back = restoreWorld(JSON.parse(JSON.stringify(snap)) as typeof snap);
     expect(back.colonies[me.id]!.journal).toEqual(me.journal);
     expect(back.colonies[me.id]!.decrees).toEqual(me.decrees);
@@ -160,7 +160,7 @@ describe('journal, alerts and decrees', () => {
 
 describe('late joiners', () => {
   it('a colony founded mid-season expands before its first Draw instead of stalling on an unmeasured income', () => {
-    const w = createWorld('late1', { radius: 4 });
+    const w = createWorld('late1', { radius: 4, rules: { onboarding: false } });
     spawnColony(w, { name: 'Early', faction: 'concordat', persona: 'vane', npc: true });
     tick(w, 3600 * 30); // day two of the season
     const late = spawnColony(w, { name: 'Late', faction: 'guild', persona: 'oriel' });

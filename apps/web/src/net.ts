@@ -2,6 +2,7 @@
 import { signal } from '@preact/signals';
 import type { Command, Faction, Persona } from '@aurane/protocol';
 import type { ApplyResult, BattleReport, PlayerView, SystemDetailView } from '@aurane/sim';
+import { tError } from './i18n/index.js';
 
 export const view = signal<PlayerView | null>(null);
 export const status = signal<'idle' | 'connecting' | 'online' | 'offline'>('idle');
@@ -105,7 +106,7 @@ export function send(command: Command): Promise<ApplyResult> {
 export async function act(command: Command, okText?: string): Promise<boolean> {
   const r = await send(command);
   if (r.ok) { if (okText) toast.value = { text: okText, kind: 'ok' }; }
-  else toast.value = { text: r.reason, kind: 'err' };
+  else toast.value = { text: tError(r.reason), kind: 'err' };
   setTimeout(() => { toast.value = null; }, 2500);
   return r.ok;
 }

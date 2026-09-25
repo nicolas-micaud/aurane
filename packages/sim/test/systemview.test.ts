@@ -5,7 +5,7 @@ import * as B from '../src/balance.js';
 
 describe('system view', () => {
   it('shows a plateau in full to its owner and only the header to a stranger', () => {
-    const w = createWorld('sv1', { radius: 5 });
+    const w = createWorld('sv1', { radius: 5, rules: { onboarding: false } });
     const a = spawnColony(w, { name: 'A', faction: 'guild', persona: 'oriel' });
     const b = spawnColony(w, { name: 'B', faction: 'oracles', persona: 'solen' });
     const mine = systemViewFor(w, a, a.capital)!;
@@ -29,7 +29,7 @@ describe('system view', () => {
   });
 
   it('streams a live battle with positions, then a report with kills and losses per side', () => {
-    const w = createWorld('sv2', { radius: 4 });
+    const w = createWorld('sv2', { radius: 4, rules: { onboarding: false } });
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     const def = spawnColony(w, { name: 'Def', faction: 'concordat', persona: 'vane' });
     atk.createdAt = -1e9; def.createdAt = -1e9;

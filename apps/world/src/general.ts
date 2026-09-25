@@ -145,6 +145,7 @@ export class GeneralService {
     }
     let policyChanged = false;
     let pending: TalkResponse['pending'] = null;
+    if (res.command) { apply(this.deps.world(), c.id, res.command); this.deps.dirty(c.id); }
     if (res.policy) {
       if (this.cfg.doctrineConfirm) pending = { id: this.hold(c, { policy: res.policy, readable: res.readable ?? [], summary: '', reply: res.reply }, lang).id, readable: res.readable ?? [] };
       else { this.applyPolicy(c, res.policy); policyChanged = true; }

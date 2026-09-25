@@ -6,7 +6,7 @@ import {
   apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { inboundWarning, type GazetteIssue, type Turn } from '@aurane/general';
+import { inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
@@ -45,7 +45,8 @@ export class Engine {
   async init(): Promise<void> {
     let snap = await this.store.loadSnapshot();
     // A new seed or radius in the configuration means a new season: the old world is archived, a fresh one starts.
-    if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
+    // The radius may have grown during the season (galaxy growth): the base radius is what the season was configured with.
+    if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.baseRadius ?? snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
       const label = `${snap.state.seed}-${Math.floor(snap.state.time)}`;
       console.log(`[world] season changed (seed ${this.cfg.seasonSeed}, radius ${this.cfg.galaxyRadius}): archiving the previous world as ${label}`);
       await this.store.archiveSnapshot(label);
@@ -133,6 +134,13 @@ export class Engine {
     if (this.lastEventSeen > w.events.length) this.lastEventSeen = 0;
     for (let i = this.lastEventSeen; i < w.events.length; i++) {
       const e = w.events[i]!;
+      if (e.kind === 'onboarding.unlocked') {
+        // A new screen opens: the General says its first word on it, in the player's language, no model.
+        const c = w.colonies[e.actors[0] ?? ''];
+        const d = e.data as { tier?: number; all?: boolean } | undefined;
+        if (c && !c.npc) this.general.pushLine(c.id, tierUnlocked(c.persona, this.general.langOf(c.id), d?.tier ?? 1, d?.all === true));
+        continue;
+      }
       if (e.kind !== 'fleet.inbound') continue;
       const c = w.colonies[e.actors[1] ?? ''];
       if (!c || c.npc) continue;
@@ -148,12 +156,13 @@ export class Engine {
   }
 
   async snapshot(): Promise<void> {
-    await this.store.saveSnapshot(snapshotWorld(this.world, { radius: this.cfg.galaxyRadius }));
+    await this.store.saveSnapshot(snapshotWorld(this.world));
   }
 
   // --- players -------------------------------------------------------------
 
-  async createGuest(name: string, faction: Faction, persona: Persona, invite?: string): Promise<{ token: string; colony: Colony } | { error: 'invite required' | 'invalid invite' }> {
+  async createGuest(name: string, faction: Faction, persona: Persona, invite?: string, origin?: string): Promise<{ token: string; colony: Colony } | { error: 'invite required' | 'invalid invite' }> {
+    const spawn = (): Colony => spawnColony(this.world, { name, faction, persona, npc: false, ...(origin ? { origin } : {}) });
     // Closed beta: the invitation must exist (store, or the environment's bootstrap list) and be unused.
     const code = (invite ?? '').trim().toUpperCase();
     if (this.cfg.requireInvite) {
@@ -166,13 +175,19 @@ export class Engine {
       if (known?.usedBy && !known.usedBy.startsWith('pending:') && !this.world.colonies[known.usedBy]) await this.store.releaseInvite(code);
       const pending = `pending:${randomBytes(4).toString('hex')}`;
       if (!(await this.store.useInvite(code, pending, Date.now()))) return { error: 'invalid invite' };
-      const colony = spawnColony(this.world, { name, faction, persona, npc: false });
+      const colony = spawn();
       await this.store.createInvite({ code, note: 'env', createdAt: Date.now(), usedBy: colony.id, usedAt: Date.now() }).catch(() => undefined);
       await this.store.useInvite(code, colony.id, Date.now()).catch(() => undefined);
       return this.issueToken(colony, name);
     }
-    const colony = spawnColony(this.world, { name, faction, persona, npc: false });
+    const colony = spawn();
     return this.issueToken(colony, name);
+  }
+
+  /** Opaque origin of a request (client address hashed with the auth secret): same origin ⇒ same household, no trade between its colonies. */
+  originHash(ip: string | undefined): string | undefined {
+    if (!ip) return undefined;
+    return createHmac('sha256', this.cfg.authSecret).update(`origin:${ip}`).digest('hex').slice(0, 16);
   }
 
   private async issueToken(colony: Colony, name: string): Promise<{ token: string; colony: Colony }> {

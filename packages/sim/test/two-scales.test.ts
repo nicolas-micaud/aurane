@@ -21,7 +21,7 @@ function nearestBuildable(w: World, c: Colony): { a: string; b: string } {
 
 /** A colony with one connected outpost and warm relays. */
 function withOutpost(seed: string, faction: 'concordat' | 'guild' | 'oracles' | 'corsairs' = 'concordat'): { w: World; c: Colony; outpost: string } {
-  const w = createWorld(seed, { radius: 4 });
+  const w = createWorld(seed, { radius: 4, rules: { onboarding: false } });
   const c = spawnColony(w, { name: 'C', faction, persona: 'vane' });
   c.createdAt = -1e9;
   const { a, b } = nearestBuildable(w, c);
@@ -129,7 +129,7 @@ describe('convoys and routes', () => {
 
 describe('continuous combat', () => {
   it('an unescorted convoy is lost to an ambush; an escorted one fights through', () => {
-    const w = createWorld('cb1', { radius: 4 });
+    const w = createWorld('cb1', { radius: 4, rules: { onboarding: false } });
     const vic = spawnColony(w, { name: 'Vic', faction: 'concordat', persona: 'vane' });
     const atk = spawnColony(w, { name: 'Atk', faction: 'corsairs', persona: 'kestrel' });
     vic.createdAt = -1e9; atk.createdAt = -1e9;
@@ -185,7 +185,7 @@ describe('continuous combat', () => {
 
   it('counters matter: corvettes beat cruisers of equal cost, frigates beat corvettes', () => {
     const duel = (seed: string, au: 'corvette' | 'frigate' | 'cruiser', an: number, du: 'corvette' | 'frigate' | 'cruiser', dn: number): 'attacker' | 'defender' => {
-      const w = createWorld(seed, { radius: 4 });
+      const w = createWorld(seed, { radius: 4, rules: { onboarding: false } });
       const atk = spawnColony(w, { name: 'A', faction: 'guild', persona: 'oriel' });
       const def = spawnColony(w, { name: 'D', faction: 'guild', persona: 'oriel' });
       atk.createdAt = -1e9; def.createdAt = -1e9;
@@ -256,7 +256,7 @@ describe('continuous combat', () => {
 
 describe('snapshots', () => {
   it('migrates a v1 snapshot: colony stock to the capital, buildings to structures', () => {
-    const w = createWorld('mig', { radius: 4 });
+    const w = createWorld('mig', { radius: 4, rules: { onboarding: false } });
     const c = spawnColony(w, { name: 'M', faction: 'oracles', persona: 'solen' });
     const snap = snapshotWorld(w, { radius: 4 });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

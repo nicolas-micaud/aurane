@@ -3,7 +3,7 @@ import { createWorld, spawnColony, tick, viewFor, snapshotWorld, restoreWorld, a
 
 describe('player view and snapshots', () => {
   it('hides what the colony cannot see and survives a snapshot round-trip', () => {
-    const w = createWorld('view', { radius: 5 });
+    const w = createWorld('view', { radius: 5, rules: { onboarding: false } });
     const a = spawnColony(w, { name: 'A', faction: 'guild', persona: 'oriel' });
     const b = spawnColony(w, { name: 'B', faction: 'corsairs', persona: 'kestrel' });
     tick(w, 3600);

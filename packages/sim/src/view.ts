@@ -6,7 +6,7 @@ import type { Draw } from './draw.js';
 import type { Colony, FleetOrder, LitBeacon, PlateauPos, World } from './state.js';
 import { combatSize, fleetSize } from './state.js';
 import { isAlly } from './diplomacy.js';
-import { colonyNetwork, colonyScore, colonyStockTotal, findBridgesFor, hiddenFrom, isShielded, isWatching, ownedSystems, rangeContext, reachableRegions, routeLimit, visibleSectors } from './world.js';
+import { colonyNetwork, colonyScore, colonyStockTotal, findBridgesFor, hiddenFrom, isShielded, isWatching, nextDrawHint, ownedSystems, rangeContext, reachableRegions, routeLimit, visibleSectors } from './world.js';
 import { layoutOf } from './pois.js';
 import { linkOptions } from './network.js';
 import { regionName } from './galaxy.js';
@@ -64,6 +64,10 @@ export interface PlayerView {
     watchStartHour: number; watching: boolean; shielded: boolean; score: number; connectedCount: number;
     /** The General's journal, newest last, and the decrees in force. */
     journal: Colony['journal']; decrees: Colony['decrees'];
+    /** Oracles only: one band of the next Draw, known inside their window; null otherwise. */
+    oracleBand: number | null;
+    /** Progressive onboarding tier; the client hides what is not open yet. */
+    onboarding: Colony['onboarding'];
     alliance: string | null; policy: Colony['policy']; regions: { key: string; name: string }[]; lastProduced: Stock; lastOverflow: Stock;
     routeLimit: number;
   };
@@ -180,6 +184,8 @@ export function viewFor(w: World, colony: Colony, timeScale = 1): PlayerView {
       connectedCount: ownedSystems(w, colony.id).filter((id) => net.has(id)).length, alliance: colony.alliance,
       policy: colony.policy, regions: [...reachableRegions(w, colony)].map((key) => ({ key, name: regionName(key) })), lastProduced: colony.lastProduced,
       lastOverflow: colony.lastOverflow, routeLimit: routeLimit(w, colony), journal: colony.journal, decrees: colony.decrees.filter((d) => d.until > w.time),
+      oracleBand: colony.faction === 'oracles' ? nextDrawHint(w) : null,
+      onboarding: colony.onboarding,
     },
     draw: w.lastDraw, linkTargets, sectors, systems, relays, fleets, colonies,
     routes: Object.values(w.routes).filter((r) => r.owner === colony.id).map((r) => ({ id: r.id, from: r.from, to: r.to, resource: r.resource, perTrip: r.perTrip, whenBelow: r.whenBelow, active: r.active, lastRunAt: r.lastRunAt })),
