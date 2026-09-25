@@ -8,3 +8,4 @@ export * from './converse.js';
 export * from './alerts.js';
 export * from './security.js';
 export * from './analysis/index.js';
+export * from './persona/index.js';
