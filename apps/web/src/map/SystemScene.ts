@@ -103,7 +103,10 @@ export class SystemScene {
     void loadSprites().then(() => { if (this.ready && this.view && this.ctx) this.render(this.view, this.ctx); });
   }
 
-  destroy(): void { this.app.destroy(true, { children: true }); }
+  /** Removes the canvas and frees this scene's GPU objects. `releaseGlobalResources` stays off: with `true` Pixi
+   *  empties pools shared by every renderer on the page (the batch pool among them), and the other scene's next
+   *  frame crashes on a destroyed batch, which left the galaxy black after leaving a system. */
+  destroy(): void { this.app.destroy({ removeView: true, releaseGlobalResources: false }, { children: true }); }
 
   private stationXY(): { x: number; y: number } { return this.xy(SystemScene.STATION_VIS.r, SystemScene.STATION_VIS.a); }
 
