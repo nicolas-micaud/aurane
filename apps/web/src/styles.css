@@ -170,6 +170,8 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
   .legend { max-height: 40vh; overflow: auto; }
   .panel.open { max-height: 58%; }
   .briefing { top: 72px; }
+  /* The toast sits above the tab bar, not over the centre of the map where a flashed star lands. */
+  .toast { bottom: calc(52px + var(--safe-b)); max-width: 80vw; }
 }
 
 /* Talking to the General with the keyboard open: the composer sits at the top of the panel, the map stays above. */

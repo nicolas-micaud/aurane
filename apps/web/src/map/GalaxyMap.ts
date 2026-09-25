@@ -32,6 +32,8 @@ export class GalaxyMap {
   private systemLayer = new Container();
   private fleetLayer = new Container();
   private reticle = new Graphics();
+  /** Flashes live in their own layer: the render pass rebuilds the others on every view. */
+  private flashLayer = new Container();
   private labelLayer = new Container();
   private view: PlayerView | null = null;
   private selected: string | null = null;
@@ -59,7 +61,7 @@ export class GalaxyMap {
     await this.app.init({ resizeTo: el, background: 0x05070f, antialias: true, resolution: Math.min(2, window.devicePixelRatio || 1), autoDensity: true });
     el.appendChild(this.app.canvas);
     this.tex = { glow: glowTexture(), core: coreTexture(), dot: dotTexture(), ring: ringTexture(), ship: shipTexture(), cargo: cargoTexture(), pulse: pulseTexture() };
-    this.world.addChild(this.starfield, this.fogLayer, this.sectorLayer, this.nebulaLayer, this.holeLayer, this.relayGlow, this.relayLayer, this.pulseLayer, this.systemLayer, this.fleetLayer, this.reticle, this.labelLayer);
+    this.world.addChild(this.starfield, this.fogLayer, this.sectorLayer, this.nebulaLayer, this.holeLayer, this.relayGlow, this.relayLayer, this.pulseLayer, this.systemLayer, this.fleetLayer, this.reticle, this.flashLayer, this.labelLayer);
     this.app.stage.addChild(this.world);
     this.world.scale.set(Math.min(0.5, Math.max(0.28, el.clientWidth / 2600)));
     this.world.position.set(el.clientWidth / 2, el.clientHeight / 2);
@@ -79,7 +81,7 @@ export class GalaxyMap {
     const sys = this.systemById.get(systemId);
     if (!sys || !this.ready) return;
     const g = new Graphics();
-    this.pulseLayer.addChild(g);
+    this.flashLayer.addChild(g);
     this.flashes.push({ g, x: sys.x, y: sys.y, t: 0 });
   }
 
