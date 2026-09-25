@@ -71,7 +71,7 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
-    counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', cannotPay: 'l\'entrepôt ne peut pas encore payer',
+    counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', counselDone: 'Fait. Regarde.', cannotPay: 'l\'entrepôt ne peut pas encore payer',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Relier', tier1: 'Produire', tier2: 'Marché', tier3: 'Tenir', tier4: 'Frapper', tier5: 'Parler', tier6: 'Les Phares',
     tierLocked: 'Pas encore : palier « {k} ». {w}',
@@ -162,7 +162,7 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
-    counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', cannotPay: 'the warehouse cannot pay yet',
+    counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', counselDone: 'Done. Look.', cannotPay: 'the warehouse cannot pay yet',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Link', tier1: 'Produce', tier2: 'Market', tier3: 'Hold', tier4: 'Strike', tier5: 'Talk', tier6: 'The Beacons',
     tierLocked: 'Not yet: tier "{k}". {w}',

@@ -50,6 +50,8 @@ export class GalaxyMap {
   private lastLabelScale = -1;
   private tex!: { glow: Texture; core: Texture; dot: Texture; ring: Texture; ship: Texture; cargo: Texture; pulse: Texture };
   private engagedRings: Graphics[] = [];
+  /** Expanding rings on a star where the General just acted (Counsel "Do it"): the player sees where it happened. */
+  private flashes: { g: Graphics; x: number; y: number; t: number }[] = [];
 
   constructor(private readonly cb: MapCallbacks) {}
 
@@ -71,6 +73,15 @@ export class GalaxyMap {
    *  empties pools shared by every renderer on the page (the batch pool among them), and the other scene's next
    *  frame crashes on a destroyed batch, which left the galaxy black after leaving a system. */
   destroy(): void { this.app.destroy({ removeView: true, releaseGlobalResources: false }, { children: true }); }
+
+  /** Three expanding rings on a star, over about 1.6 s. */
+  flash(systemId: string): void {
+    const sys = this.systemById.get(systemId);
+    if (!sys || !this.ready) return;
+    const g = new Graphics();
+    this.pulseLayer.addChild(g);
+    this.flashes.push({ g, x: sys.x, y: sys.y, t: 0 });
+  }
 
   setSelection(id: string | null): void { this.selected = id; if (this.view && this.ready) this.render(this.view); }
   setLinkFrom(id: string | null): void { this.linkFrom = id; if (this.view && this.ready) this.render(this.view); }
@@ -365,6 +376,17 @@ export class GalaxyMap {
       s.sprite.position.set(s.fromX + (s.toX - s.fromX) * t, s.fromY + (s.toY - s.fromY) * t);
     }
     for (const r of this.rings) r.rotation += dtMs * 0.00008;
+    for (const f of this.flashes.slice()) {
+      f.t += dtMs / 1600;
+      f.g.clear();
+      if (f.t >= 1) { f.g.destroy(); this.flashes.splice(this.flashes.indexOf(f), 1); continue; }
+      for (let i = 0; i < 3; i++) {
+        const u = f.t - i * 0.18;
+        if (u <= 0 || u >= 1) continue;
+        f.g.circle(f.x, f.y, 14 + u * 90);
+        f.g.stroke({ color: 0x7dd3fc, width: 3 * (1 - u) + 0.5, alpha: (1 - u) * 0.9 });
+      }
+    }
     const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 180);
     for (const eg of this.engagedRings) eg.alpha = pulse;
     const sel = this.selected ? this.systemById.get(this.selected) : undefined;
