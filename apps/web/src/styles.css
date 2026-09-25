@@ -119,7 +119,7 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 /* system mode */
 .sysmode { position: absolute; inset: 0; z-index: 4; background: #04060d; opacity: 0; transform: scale(1.12); transition: opacity .35s ease, transform .45s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column; }
 .sysmode.in { opacity: 1; transform: none; }
-.sysmap { position: absolute; inset: 0; bottom: 46%; }
+.sysmap { position: absolute; inset: 0; }
 .sysbar { position: relative; z-index: 2; padding: calc(10px + var(--safe-t)) 12px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; background: linear-gradient(rgba(4,6,13,.96), rgba(4,6,13,0)); pointer-events: none; }
 .sysbar > * { pointer-events: auto; }
 .sysbar h2 { margin: 0; font-size: 22px; letter-spacing: .04em; display: flex; align-items: center; gap: 8px; } .sysbar h2 small { color: var(--muted); font-size: 14px; font-weight: 400; }

@@ -148,13 +148,19 @@ export class SystemScene {
     if (this.ready) this.render(view, ctx);
   }
 
+  private topInset: number | null = null;
+  /** Height of the title bar that overlays the scene, measured by the view; the layout keeps it free. */
+  setTopInset(px: number): void { const v = Math.round(px) + 8; if (v !== this.topInset) { this.topInset = v; if (this.ready) this.layout(); } }
+
   private layout(): void {
     const w = this.app.screen.width, h = this.app.screen.height;
     const narrow = w < 700;
-    const top = narrow ? 150 : 100; // the title bar overlays the top of the scene
-    this.unit = Math.max(22, Math.min(w / 2 / 4.6, (h - top) / 2 / 4.5));
-    this.mapUnit = Math.max(10, Math.min(w / 2 / 10.2, (h - top) / 2 / 10.2));
-    this.centre = { x: w / 2, y: top + (h - top) / 2 };
+    const top = this.topInset ?? (narrow ? 150 : 100); // the title bar overlays the top of the scene
+    const bottom = narrow ? h * 0.46 : 0; // on phones the dock overlays the bottom of the scene
+    const free = h - top - bottom;
+    this.unit = Math.max(22, Math.min(w / 2 / 4.6, free / 2 / 4.5));
+    this.mapUnit = Math.max(10, Math.min(w / 2 / 10.2, free / 2 / 10.2));
+    this.centre = { x: w / 2, y: top + free / 2 };
     this.applyCamera();
   }
 
@@ -251,7 +257,7 @@ export class SystemScene {
     this.mapFx.clear(); this.laneShips = []; this.mapPulse = [];
     const { view: v, poi } = this.focusedView(v0);
     this.drawBackground(v, poi);
-    this.drawRings(v);
+    this.drawRings(v, poi);
     this.drawSlots(v);
     this.drawStructures(v, ctx);
     this.drawStation(v, ctx);
@@ -474,6 +480,10 @@ export class SystemScene {
     } else if (poi && (poi.kind === 'wreck' || poi.kind === 'derelict')) {
       const model = this.spriteNode(poi.kind, (poi.hue * Math.PI) / 180, this.unit * (poi.kind === 'wreck' ? 1.9 : 2.3), 0xffb060, 1);
       if (model) this.bg.addChild(model);
+    } else if (poi?.kind === 'nebula') {
+      // A nebula pocket has no body and no slot: a soft cloud, so the plateau is not an empty ring.
+      const n = new Sprite(this.tex.glow); n.anchor.set(0.5); n.tint = poi.hue % 2 ? 0x8a46c9 : 0x2a8f9d; n.blendMode = 'add'; n.alpha = 0.5; n.width = n.height = this.unit * 4.6; this.bg.addChild(n);
+      const n2 = new Sprite(this.tex.glow); n2.anchor.set(0.5); n2.tint = 0x5a4bd6; n2.blendMode = 'add'; n2.alpha = 0.35; n2.width = this.unit * 3.4; n2.height = this.unit * 2.2; n2.rotation = 0.6; this.bg.addChild(n2);
     }
     // Plateau edge: where fleets arrive.
     const edge = new Graphics();
@@ -484,10 +494,11 @@ export class SystemScene {
     this.bg.addChild(edge);
   }
 
-  private drawRings(v: SystemDetailView): void {
+  private drawRings(v: SystemDetailView, poi: PoiView | null): void {
     const g = this.rings;
     g.clear();
     this.orbitLabels.removeChildren();
+    if (poi && poi.orbitSlots.every((n) => n === 0)) return; // nothing to build here: no Defence / Industry rings
     const orbits = v.orbitSlots[2] > 0 ? 3 : 2;
     const names = this.orbitNames;
     for (let o = 1; o <= orbits; o++) {
