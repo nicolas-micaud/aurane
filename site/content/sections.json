@@ -1,0 +1,382 @@
+{
+  "intro": {
+    "id": "intro",
+    "title": {
+      "fr": "Le jeu",
+      "en": "The game"
+    },
+    "intro": {
+      "fr": [
+        "Aurane est un jeu de stratégie web, gratuit, persistant et massivement multijoueur : cinq minutes sur mobile, cinq heures sur grand écran. Tu incarnes une <strong>Colonie</strong> qui étend un réseau de relais à travers une galaxie partagée. Un seul verbe : <strong>relier</strong>. Deux étoiles reliées forment un relais, et seul ce qui est relié à ta capitale existe vraiment.",
+        "Le temps est celui des ordres, pas du réflexe : chaque décision aboutit dans un délai connu, que tu sois là ou non. Chaque heure, la galaxie bat au rythme du <strong>Tirage</strong> : ressources tirées, échanges réglés, nouvelles publiées. Un vétéran de six semaines ne t'écrase pas par ses statistiques, seulement par son réseau, ses alliés et son intelligence. Pas de pay-to-win : aucun achat n'influence la simulation."
+      ],
+      "en": [
+        "Aurane is a free, persistent, massively multiplayer web strategy game: five minutes on your phone, five hours on a big screen. You are a <strong>Colony</strong> stretching a network of relays across a shared galaxy. One verb: <strong>link</strong>. Two linked stars make a relay, and only what is linked to your capital truly exists.",
+        "Time belongs to orders, not reflexes: every decision resolves within a known delay, whether you are there or not. Every hour the galaxy beats to the <strong>Draw</strong>: resources drawn, trades settled, news published. A six-week veteran cannot crush you with stats, only with a better network, better allies and a sharper mind. No pay-to-win: nothing you buy touches the simulation."
+      ]
+    },
+    "sections": []
+  },
+  "work": {
+    "id": "work",
+    "title": {
+      "fr": "L'Aurane",
+      "en": "L'Aurane"
+    },
+    "intro": {
+      "fr": [
+        "Il y a mille ans, les Anciens avaient tendu <strong>le Réseau</strong> entre toutes les étoiles habitées de l'Aurane. Sur ce Réseau circulait <strong>le Signal</strong> : les données, les voix, le commerce et, dit-on, les âmes. Puis vint <strong>le Silence</strong>. En une nuit, tout s'éteignit. Mille ans de nuit.",
+        "Aujourd'hui les relais anciens se rallument par intermittence : c'est <strong>le Réveil</strong>. À chaque Réveil, des Colonies se lèvent pour retisser le Réseau et rallumer <strong>les Sept Phares</strong>, dont la légende dit que, réunis, ils ramèneraient le Signal pour de bon. Mais le Silence revient par vagues, toutes les huit semaines environ, et efface tout ce qui a été bâti. Seuls survivent les récits, les titres et les Généraux. Quatre factions se disputent les ruines : le Concordat, la Guilde des Marchands, les Oracles, les Corsaires. Personne n'a raison."
+      ],
+      "en": [
+        "A thousand years ago, the Ancients strung <strong>the Network</strong> between every inhabited star of the Aurane. Over it ran <strong>the Signal</strong>: data, voices, trade and, some say, souls. Then came <strong>the Silence</strong>. In a single night, everything went dark. A thousand years of night.",
+        "Today the old relays flicker back to life: this is <strong>the Awakening</strong>. With each Awakening, Colonies rise to reweave the Network and relight <strong>the Seven Beacons</strong>, which legend says would bring the Signal back for good if lit together. But the Silence returns in waves, roughly every eight weeks, and wipes out everything that was built. Only the stories, the titles and the Generals survive. Four factions fight over the ruins: the Concordat, the Merchants' Guild, the Oracles, the Corsairs. Nobody is right."
+      ]
+    },
+    "sections": []
+  },
+  "play": {
+    "id": "play",
+    "title": {
+      "fr": "Jouer",
+      "en": "How to play"
+    },
+    "intro": {
+      "fr": [
+        "Tout le jeu tient en une carte et un rendez-vous horaire. Voici les règles, telles qu'elles sont conçues pour la Saison 0."
+      ],
+      "en": [
+        "The whole game fits in one map and one hourly rendezvous. Here are the rules as designed for Season 0."
+      ]
+    },
+    "sections": [
+      {
+        "title": {
+          "fr": "Relier",
+          "en": "Link"
+        },
+        "icons": [
+          {
+            "src": "/images/game/structure-relay.png",
+            "alt": "Relais — Relay",
+            "fr": "Relais",
+            "en": "Relay"
+          },
+          {
+            "src": "/images/game/structure-station.png",
+            "alt": "Station",
+            "fr": "Station",
+            "en": "Station"
+          },
+          {
+            "src": "/images/game/structure-derelict.png",
+            "alt": "Épave ancienne — Derelict",
+            "fr": "Épave",
+            "en": "Derelict"
+          }
+        ],
+        "fr": [
+          "La galaxie est un plateau de <strong>secteurs</strong> hexagonaux, 469 en Saison 0, chacun avec dix à seize systèmes stellaires. Un <strong>relais</strong> relie deux systèmes ; il se construit en Métal et en Énergie, en deux à vingt minutes selon sa longueur, et porte à 260 unités, une fois et demie plus loin depuis un pulsar. Un système ne produit, ne construit et ne compte au score que s'il existe un chemin de relais actifs jusqu'à ta capitale : couper un relais coupe tout ce qui est derrière. Chaque relais consomme de l'Énergie à chaque Tirage, et cet entretien grimpe plus vite que le nombre de relais : un Réseau trop grand pour son énergie voit ses relais les plus lointains s'éteindre en premier. La vraie compétence, c'est la topologie : repérer ses ponts, les doubler, tenir les goulets, ne pas s'étirer. Les nébuleuses doublent le coût, les trous noirs ne se traversent pas."
+        ],
+        "en": [
+          "The galaxy is a board of hexagonal <strong>sectors</strong>, 469 in Season 0, each holding ten to sixteen star systems. A <strong>relay</strong> links two systems; it costs Metal and Energy, takes two to twenty minutes depending on its length, and reaches 260 units, half again as far from a pulsar. A system only produces, builds and scores if a path of active relays leads to your capital: cut one relay and everything behind it goes dark. Every relay burns Energy at each Draw, and that upkeep grows faster than the number of relays, so a Network too big for its energy loses its farthest relays first. The real skill is topology: find your bridges, double them, hold the chokepoints, do not overreach. Nebulae double the cost; black holes cannot be crossed."
+        ],
+        "id": {
+          "fr": "relier",
+          "en": "link"
+        }
+      },
+      {
+        "title": {
+          "fr": "Le Tirage et les ressources",
+          "en": "The Draw and resources"
+        },
+        "icons": [],
+        "fr": [
+          "Quatre ressources s'échangent : le <strong>Métal</strong> (relais, bâtiments, coques), l'<strong>Énergie</strong> (relais et flottes, abondante au cœur, rare en bordure), les <strong>Vivres</strong> (population et équipages, abondants en bordure, rares au cœur) et le <strong>Cristal</strong> (Phares, unités lourdes, technologie, rare et concentré vers le centre). Une cinquième, l'<strong>Influence</strong>, ne s'échange pas : elle paie les traités, les décrets et les agents. Personne n'est autosuffisant, c'est voulu. Chaque heure, à la minute zéro, le serveur tire trois <strong>bandes</strong> parmi huit, les mêmes pour toute la galaxie : un système dont la bande sort produit trois fois son rendement, les autres une fois. Pas d'heure morte, seulement des heures fastes. Une fois sur douze, le Tirage porte un événement : une Éruption qui quintuple une bande, une Tempête qui raccourcit les relais d'une région, un Écho qui fait émettre un Phare."
+        ],
+        "en": [
+          "Four resources are traded: <strong>Metal</strong> (relays, buildings, hulls), <strong>Energy</strong> (relays and fleets, plentiful at the core, scarce at the rim), <strong>Food</strong> (population and crews, plentiful at the rim, scarce at the core) and <strong>Crystal</strong> (Beacons, heavy units, technology, rare and clustered near the centre). A fifth, <strong>Influence</strong>, cannot be traded: it pays for treaties, decrees and agents. Nobody is self-sufficient, by design. Every hour, on the minute, the server draws three <strong>bands</strong> out of eight, the same for the whole galaxy: a system whose band comes up produces three times its yield, the others once. No dead hours, only good ones. One Draw in twelve carries an event: an Eruption that quintuples a band, a Storm that shortens a region's relays, an Echo that makes a Beacon emit."
+        ],
+        "id": {
+          "fr": "tirage",
+          "en": "draw"
+        }
+      },
+      {
+        "title": {
+          "fr": "Le Marché",
+          "en": "The Market"
+        },
+        "icons": [],
+        "fr": [
+          "Les échanges se décident pendant l'heure et <strong>se règlent tous au Tirage</strong>. Personne n'a d'avantage de vitesse. Chaque région a son Marché avec un carnet d'ordres par ressource, en Crédits, et un seul prix de règlement par ressource et par heure : « je vends 40 Vivres à au moins 3 » suffit. Entre régions, les prix diffèrent, et l'arbitrage récompense ceux qui aiment ça. Le troc direct existe aussi, entre deux Colonies, exécuté au Tirage. Les frais de 5 % sont détruits ; un Comptoir les réduit, la Guilde les divise par deux. Le Général peut tenir ton Marché à ta place : « garde toujours 200 Énergie d'avance, vends le surplus de Vivres au-dessus de 4 »."
+        ],
+        "en": [
+          "Trades are placed during the hour and <strong>all settle at the Draw</strong>. Nobody has a speed advantage. Each region has its Market with an order book per resource, in Credits, and a single settlement price per resource and per hour: “I sell 40 Food for at least 3” is enough. Prices differ between regions, and arbitrage rewards those who enjoy it. Direct barter between two Colonies exists too, executed at the Draw. The 5% fee is destroyed; a Trading Post lowers it, the Guild halves it. Your General can run the Market for you: “always keep 200 Energy ahead, sell surplus Food above 4”."
+        ],
+        "id": {
+          "fr": "marche",
+          "en": "market"
+        }
+      },
+      {
+        "title": {
+          "fr": "Construire",
+          "en": "Build"
+        },
+        "icons": [
+          {
+            "src": "/images/game/structure-extractor.png",
+            "alt": "Extracteur — Extractor",
+            "fr": "Extracteur",
+            "en": "Extractor"
+          },
+          {
+            "src": "/images/game/structure-shipyard.png",
+            "alt": "Chantier — Shipyard",
+            "fr": "Chantier",
+            "en": "Shipyard"
+          },
+          {
+            "src": "/images/game/structure-bastion.png",
+            "alt": "Bastion",
+            "fr": "Bastion",
+            "en": "Bastion"
+          },
+          {
+            "src": "/images/game/structure-tradepost.png",
+            "alt": "Comptoir — Trading Post",
+            "fr": "Comptoir",
+            "en": "Trading post"
+          },
+          {
+            "src": "/images/game/structure-amplifier.png",
+            "alt": "Amplificateur — Amplifier",
+            "fr": "Amplificateur",
+            "en": "Amplifier"
+          },
+          {
+            "src": "/images/game/structure-antenna.png",
+            "alt": "Antenne — Antenna",
+            "fr": "Antenne",
+            "en": "Antenna"
+          }
+        ],
+        "fr": [
+          "Chaque système offre un à trois emplacements et six bâtiments, chacun compréhensible en une ligne : l'<strong>Extracteur</strong> (rendement +50 %), le <strong>Chantier</strong> (construit des vaisseaux), le <strong>Bastion</strong> (défense doublée, protège les relais adjacents), le <strong>Comptoir</strong> (une région commerciale de plus, frais réduits), l'<strong>Amplificateur</strong> (portée +25 % au départ d'ici) et l'<strong>Antenne</strong> (révèle les secteurs voisins). La capitale a trois emplacements de plus et l'<strong>Académie</strong>, qui fait monter le Général en grade. Pas d'arbre technologique en Saison 0 : la profondeur vient de la carte, pas des menus."
+        ],
+        "en": [
+          "Each system offers one to three slots and six buildings, each explained in one line: the <strong>Extractor</strong> (yield +50%), the <strong>Shipyard</strong> (builds ships), the <strong>Bastion</strong> (double defence, shields adjacent relays), the <strong>Trading Post</strong> (one more market region, lower fees), the <strong>Amplifier</strong> (+25% range from here) and the <strong>Antenna</strong> (reveals neighbouring sectors). The capital has three extra slots and the <strong>Academy</strong>, which promotes your General. No tech tree in Season 0: depth comes from the map, not from menus."
+        ],
+        "id": {
+          "fr": "construire",
+          "en": "build"
+        }
+      },
+      {
+        "title": {
+          "fr": "Combattre",
+          "en": "Fight"
+        },
+        "icons": [
+          {
+            "src": "/images/game/unit-corvette.png",
+            "alt": "Corvette",
+            "fr": "Corvette",
+            "en": "Corvette"
+          },
+          {
+            "src": "/images/game/unit-frigate.png",
+            "alt": "Frégate — Frigate",
+            "fr": "Frégate",
+            "en": "Frigate"
+          },
+          {
+            "src": "/images/game/unit-cruiser.png",
+            "alt": "Croiseur — Cruiser",
+            "fr": "Croiseur",
+            "en": "Cruiser"
+          },
+          {
+            "src": "/images/game/unit-cargo.png",
+            "alt": "Cargo",
+            "fr": "Cargo",
+            "en": "Cargo"
+          },
+          {
+            "src": "/images/game/structure-wreck.png",
+            "alt": "Épave — Wreck",
+            "fr": "Épave",
+            "en": "Wreck"
+          }
+        ],
+        "fr": [
+          "Le combat est lisible, lent et réparable. Trois unités en pierre-feuille-ciseaux : la <strong>Corvette</strong> raide et coupe les relais, la <strong>Frégate</strong> escorte et défend, le <strong>Croiseur</strong> assiège et bloque. Une flotte va à pleine vitesse sur les relais, à demi-vitesse hors Réseau en brûlant de l'Énergie : attaquer un voisin non relié se voit venir. Cinq ordres, chacun avec son heure d'arrivée : se rendre à, raider un relais, bloquer un système, défendre, rentrer. Le combat se résout à l'arrivée, d'un coup, avec un aléa de ±15 %, et le rapport est public, raconté par les deux Généraux. Un raid coupe un relais pour six heures ; douze heures de blocus capturent un système, sauf une capitale, qui ne se prend jamais. Trois protections : 72 heures de bouclier à la création, une <strong>Garde de nuit</strong> de huit heures par jour où tes Bastions valent double, et aucun butin sur une Colonie trois fois plus petite que soi. Trois missions d'agents en Influence : espionner un secteur, saboter un relais, envoyer un émissaire."
+        ],
+        "en": [
+          "Combat is legible, slow and repairable. Three units in rock-paper-scissors: the <strong>Corvette</strong> raids and cuts relays, the <strong>Frigate</strong> escorts and defends, the <strong>Cruiser</strong> besieges and blockades. A fleet moves at full speed along relays and at half speed off the Network while burning Energy, so an attack on an unlinked neighbour is seen coming. Five orders, each with its arrival time: go to, raid a relay, blockade a system, defend, return. Combat resolves on arrival, in one pass, with a ±15% roll, and the report is public, told by both Generals. A raid cuts a relay for six hours; twelve hours of blockade capture a system, except a capital, which can never be taken. Three protections: a 72-hour shield at creation, a daily eight-hour <strong>Night Watch</strong> when your Bastions count double, and no loot from a Colony three times smaller than you. Three agent missions paid in Influence: spy on a sector, sabotage a relay, send an envoy."
+        ],
+        "id": {
+          "fr": "combattre",
+          "en": "fight"
+        }
+      },
+      {
+        "title": {
+          "fr": "Diplomatie",
+          "en": "Diplomacy"
+        },
+        "icons": [],
+        "fr": [
+          "Jusqu'à vingt Colonies forment une alliance, avec un nom, un blason, une charte et un score commun. Les traités se paient en Influence : non-agression sur sept jours, pacte commercial sans frais, transit sur le Réseau de l'autre, et la <strong>Fédération</strong>, qui fusionne les scores pour la victoire de saison. Les décrets sont publics : la diplomatie lit les intentions dans les décrets des autres. Rompre un traité coûte, se voit, et les Généraux s'en souviennent d'une saison à l'autre."
+        ],
+        "en": [
+          "Up to twenty Colonies form an alliance, with a name, a crest, a charter and a shared score. Treaties are paid in Influence: a seven-day non-aggression pact, a fee-free trade pact, transit over each other's Network, and the <strong>Federation</strong>, which merges scores for the season victory. Decrees are public: diplomacy reads intentions in other people's decrees. Breaking a treaty costs, is seen, and Generals remember it from one season to the next."
+        ],
+        "id": {
+          "fr": "diplomatie",
+          "en": "diplomacy"
+        }
+      }
+    ]
+  },
+  "factions": {
+    "id": "factions",
+    "title": {
+      "fr": "Factions",
+      "en": "Factions"
+    },
+    "intro": {
+      "fr": [
+        "Tu choisis une allégeance à la création. Elle donne une couleur, un vocabulaire, un point de départ et <strong>un</strong> avantage modeste. Elle ne cloisonne rien : on s'allie et on commerce à travers les factions."
+      ],
+      "en": [
+        "You pick an allegiance at creation. It gives you a colour, a vocabulary, a starting point and <strong>one</strong> modest edge. It walls nothing off: you ally and trade across factions."
+      ]
+    },
+    "sections": [
+      {
+        "title": {
+          "fr": "Le Concordat d'Aurane",
+          "en": "The Concordat"
+        },
+        "icons": [],
+        "fr": [
+          "Les héritiers de la dernière administration galactique : la loi, les archives, l'ordre. Portée des relais +10 %."
+        ],
+        "en": [
+          "Heirs of the last galactic administration: law, archives, order. Relay range +10%."
+        ],
+        "id": {
+          "fr": "concordat",
+          "en": "concordat"
+        }
+      },
+      {
+        "title": {
+          "fr": "La Guilde des Marchands",
+          "en": "The Merchants' Guild"
+        },
+        "icons": [],
+        "fr": [
+          "Marchands, contrebandiers et pilotes de la bordure, libres et endettés. Frais de marché divisés par deux, une région commerciale de plus."
+        ],
+        "en": [
+          "Traders, smugglers and rim pilots, free and in debt. Market fees halved, one more trading region."
+        ],
+        "id": {
+          "fr": "guilde",
+          "en": "guild"
+        }
+      },
+      {
+        "title": {
+          "fr": "Les Oracles",
+          "en": "The Oracles"
+        },
+        "icons": [],
+        "fr": [
+          "Savants-mystiques qui écoutent le Silence pour prédire le Réveil. Ils connaissent une des trois bandes du prochain Tirage une heure à l'avance."
+        ],
+        "en": [
+          "Scholar-mystics who listen to the Silence to predict the Awakening. They know one of the next Draw's three bands an hour ahead."
+        ],
+        "id": {
+          "fr": "oracles",
+          "en": "oracles"
+        }
+      },
+      {
+        "title": {
+          "fr": "Les Corsaires",
+          "en": "The Corsairs"
+        },
+        "icons": [],
+        "fr": [
+          "Milices frontalières, ferrailleurs, condottieri. Vaisseaux 15 % moins chers et 10 % plus rapides."
+        ],
+        "en": [
+          "Frontier militias, scrappers, condottieri. Ships 15% cheaper and 10% faster."
+        ],
+        "id": {
+          "fr": "corsaires",
+          "en": "corsairs"
+        }
+      },
+      {
+        "title": {
+          "fr": "Les Sept Phares",
+          "en": "The Seven Beacons"
+        },
+        "icons": [],
+        "fr": [
+          "Sept systèmes fixes vers le cœur de l'Aurane, chacun avec un nom et une légende ; Ancre, dit-on, fut le premier à se taire. Rallumer un Phare exige de le relier à sa capitale et d'y consacrer une masse de Cristal. Un Phare rallumé émet : les relais dans son rayon gagnent en portée, et il pèse lourd au score. Tenir les Sept en même temps pendant vingt-quatre heures, c'est la Renaissance : le Signal revient, la saison s'achève."
+        ],
+        "en": [
+          "Seven fixed systems near the heart of the Aurane, each with a name and a legend; Anchor, they say, was the first to fall silent. Relighting a Beacon means linking it to your capital and pouring in a mass of Crystal. A lit Beacon emits: relays within its radius reach farther, and it weighs heavily in the score. Hold all Seven at once for twenty-four hours and it is the Renaissance: the Signal returns, the season ends."
+        ],
+        "id": {
+          "fr": "phares",
+          "en": "beacons"
+        }
+      }
+    ]
+  },
+  "about": {
+    "id": "about",
+    "title": {
+      "fr": "Le Général",
+      "en": "The General"
+    },
+    "intro": {
+      "fr": [
+        "Chaque Colonie abrite un <strong>Général</strong> : un esprit des Anciens retrouvé dans les ruines du Réseau, incomplet, obsédé par le Signal, doté d'une personnalité et d'un humour parfois déconcertant. Tu lui écris ta doctrine en langage naturel — « défends le pont vers Ancre à tout prix, vends le surplus de Vivres, ne déclare jamais la guerre sans moi » — et il l'exécute quand tu dors.",
+        "À ton retour, il te briefe en quelques lignes, dans sa voix : ce qui s'est passé, ce qu'il a fait, ce qu'il recommande. Il ne meurt pas avec le Silence : il se souvient de ses maîtres, de leurs victoires et de leurs trahisons, et il en parle. À la fin de chaque saison, il rédige ses mémoires. Quatre tempéraments pour commencer : la Maréchale Idris Vane, Kestrel, Oriel-Neuf, l'Abbé Solen. Le tempérament change le ton, jamais la puissance."
+      ],
+      "en": [
+        "Every Colony shelters a <strong>General</strong>: a mind of the Ancients recovered from the ruins of the Network, incomplete, obsessed with the Signal, with a personality and an occasionally unsettling sense of humour. You write your doctrine in plain language — \"hold the bridge to Anchor at all costs, sell surplus Food, never declare war without me\" — and the General carries it out while you sleep.",
+        "When you come back, it briefs you in a few lines, in its own voice: what happened, what it did, what it recommends. It does not die with the Silence: it remembers its masters, their victories and betrayals, and talks about them. At the end of each season it writes its memoirs. Four temperaments to start with: Marshal Idris Vane, Kestrel, Oriel-Nine, Abbot Solen. Temperament changes the tone, never the power."
+      ]
+    },
+    "sections": []
+  },
+  "contact": {
+    "id": "contact",
+    "title": {
+      "fr": "Saison 0",
+      "en": "Season 0"
+    },
+    "intro": {
+      "fr": [
+        "Une saison dure huit semaines, du Réveil au Silence. Score au nombre de systèmes reliés au Tirage, aux Phares rallumés et tenus, et aux titres tournants : le Grand Réseau, l'Amirauté, la Bourse. Victoire anticipée, <strong>la Renaissance</strong>, si une alliance tient les Sept Phares rallumés pendant vingt-quatre heures. Le Palmarès de chaque saison reste public pour toujours.",
+        "La Saison 0, « Réveil zéro », sera une <strong>bêta fermée sur invitation</strong>, avec une liste d'attente publique. On joue sans compte : une faction, un Général, une capitale en dix secondes. Tu as un code ? <a href=\"https://play.playaurane.com\">play.playaurane.com</a>."
+      ],
+      "en": [
+        "A season lasts eight weeks, from Awakening to Silence. You score for systems linked at the Draw, for Beacons relit and held, and for rotating titles: the Great Network, the Admiralty, the Exchange. An early victory, <strong>the Renaissance</strong>, goes to the alliance that keeps all Seven Beacons lit for twenty-four hours. Every season's Hall of Fame stays public forever.",
+        "Season 0, \"Awakening Zero\", will be a <strong>closed, invitation-only beta</strong> with a public waiting list. No account needed to play: a faction, a General, a capital in ten seconds. Got a code? <a href=\"https://play.playaurane.com\">play.playaurane.com</a>."
+      ]
+    },
+    "sections": []
+  }
+}
