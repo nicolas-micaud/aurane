@@ -5,6 +5,8 @@ import type { CounselKind, CounselOption } from './counsel.js';
  * has not spoken yet, and what the LLM layer receives as the option's label. One source for both.
  */
 const LINES: Record<CounselKind, { fr: string; en: string }> = {
+  touch_star: { fr: '{system}, ta capitale. Touche-la : tout part d\'ici. Les étoiles autour sont à portée de relais.', en: '{system}, your capital. Touch it: everything starts here. The stars around are within relay range.' },
+  enter_system: { fr: 'Entre dans {system} : le plateau, c\'est là qu\'on construit. Trois orbites, trois métiers : Industrie, Défense, Signal.', en: 'Enter {system}: the plateau is where we build. Three orbits, three trades: Industry, Defence, Signal.' },
   link_first: { fr: 'Relie {to} depuis {from} : {metal} Métal, {energy} Énergie. Un système relié, c\'est ton premier revenu.', en: 'Link {to} from {from}: {metal} Metal, {energy} Energy. A connected system is your first income.' },
   link_more: { fr: 'Le Métal est là : relie {to} depuis {from} ({metal} Métal). Chaque système relié compte au Tirage.', en: 'The Metal is there: link {to} from {from} ({metal} Metal). Every connected system counts at the Draw.' },
   warehouse: { fr: '{lost} ressources perdues au dernier Tirage, entrepôts pleins. Un Entrepôt à {system} et on garde tout.', en: '{lost} resources lost at the last Draw, warehouses full. A Warehouse at {system} and we keep it all.' },
@@ -20,6 +22,7 @@ const LINES: Record<CounselKind, { fr: string; en: string }> = {
 };
 
 const TITLES: Record<CounselKind, { fr: string; en: string }> = {
+  touch_star: { fr: 'Touche ton étoile', en: 'Touch your star' }, enter_system: { fr: 'Entre dans ton système', en: 'Enter your system' },
   link_first: { fr: 'Relie ta voisine', en: 'Link your neighbour' }, link_more: { fr: 'Un relais de plus', en: 'One more relay' },
   warehouse: { fr: 'Un Entrepôt', en: 'A Warehouse' }, antenna: { fr: 'Une Antenne', en: 'An Antenna' },
   turret: { fr: 'Une tourelle', en: 'A turret' }, defend: { fr: 'Défendre', en: 'Defend' },

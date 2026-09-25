@@ -11,6 +11,7 @@ import { t } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
 import { Cost, hms } from './bits.js';
+import { pendingDemo, sceneFlashReq, teach, teachClass } from './teach.js';
 
 type DockTab = 'plateau' | 'fleets' | 'logistics' | 'battle';
 type PoiView = SystemDetailView['pois'][number];
@@ -105,6 +106,22 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
   }, [sel, picked, sv?.id]);
   // A system with a single body goes straight to its plateau.
   useEffect(() => { if (sv && focus === null && sv.pois.filter((p) => p.kind !== 'jump').length === 1) focusPoi.value = sv.mainPoi; }, [sv?.id]);
+  // A demonstration (the General's "Show me" / "Do it"): land on the main body's plateau with the orbit's free slot
+  // selected, or on the Fleets tab, once this system's view is here.
+  const demo = useSig(pendingDemo);
+  useEffect(() => {
+    if (!demo || !sv || sv.id !== demo.system || demo.system !== systemId) return;
+    pendingDemo.value = null;
+    dockTab.value = demo.dock;
+    if (demo.dock === 'plateau') {
+      focusPoi.value = sv.mainPoi;
+      const poi = sv.pois.find((p) => p.id === sv.mainPoi);
+      const angle = demo.orbit && poi ? freeSlotAngle(poi, demo.orbit) : null;
+      sceneSel.value = demo.orbit && angle !== null ? { kind: 'slot', orbit: demo.orbit, angle } : null;
+    } else { focusPoi.value = null; sceneSel.value = null; }
+  }, [demo, sv?.id]);
+  const flashReq = useSig(sceneFlashReq);
+  useEffect(() => { if (flashReq > 0) scene.current?.flashNext(); }, [flashReq]);
 
   const s = v.systems.find((x) => x.id === systemId);
   const fp = sv && focus ? sv.pois.find((p) => p.id === focus) ?? null : null;
@@ -129,6 +146,16 @@ export function SystemMode({ v, systemId, onLeave }: { v: PlayerView; systemId: 
       {!sv && <div class="dock"><p class="muted">{t('connecting')}</p></div>}
     </div>
   );
+}
+
+/** The first free slot on an orbit, at the angle the scene draws it (same spacing as SystemScene.drawSlots). */
+function freeSlotAngle(poi: PoiView, o: 1 | 2 | 3): number | null {
+  const cap = poi.orbitSlots[o - 1]!;
+  for (let i = 0; i < cap; i++) {
+    const angle = Math.round((360 / cap) * i + 30 * (o - 1)) % 360;
+    if (!poi.structures.some((s) => s.orbit === o && Math.abs(((s.angle - angle + 540) % 360) - 180) < 1)) return angle;
+  }
+  return null;
 }
 
 function ctxOf(v: PlayerView) {
@@ -253,6 +280,7 @@ function CargoShuttleButton({ v, sv, poi }: { v: PlayerView; sv: SystemDetailVie
 
 function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; sel: SceneSelection; poi: PoiView }) {
   const mine = sv.mine;
+  const tv = useSig(teach);
   const queue = (sv.buildQueue ?? []).filter((j) => j.poi === poi.id);
   const queuedOn = (o: 1 | 2 | 3): number => queue.filter((j) => j.orbit === o).length;
   const freeOn = (o: 1 | 2 | 3): number => poi.orbitSlots[o - 1]! - poi.structures.filter((s) => s.orbit === o).length - queuedOn(o);
@@ -289,7 +317,7 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
                   || (b === 'relay' && (poi.structures.some((s) => s.kind === 'relay') || queue.some((j) => j.building === 'relay')));
                 const afford = sv.stock ? RES.every((r) => (BUILDING_COST[b][r] ?? 0) <= sv.stock![r]) : false;
                 return (
-                  <button key={b} class={`card-btn ${has ? 'has' : ''}`} disabled={has || free <= 0 || !afford} onClick={() => void act({ type: 'build', system: sv.id, building: b, orbit: o, poi: poi.id })}>
+                  <button key={b} class={`card-btn ${has ? 'has' : ''} ${teachClass(tv, `build:${b}`)}`} disabled={has || free <= 0 || !afford} onClick={() => void act({ type: 'build', system: sv.id, building: b, orbit: o, poi: poi.id })}>
                     <b>{t(b)}</b><small>{t(`${b}Desc` as 'extractorDesc')}</small>{!has && <Cost cost={BUILDING_COST[b]} />}{has && <small class="ok">✓</small>}
                   </button>
                 );
@@ -308,7 +336,7 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
               const cost = Object.fromEntries(Object.entries(UNIT_COST[u]).map(([k, x]) => [k, (x ?? 0) * n])) as Partial<Record<Resource, number>>;
               const afford = sv.stock ? RES.every((r) => (cost[r] ?? 0) <= sv.stock![r]) : false;
               return (
-                <button key={u} class="card-btn" disabled={!afford} onClick={() => void act({ type: 'train', system: sv.id, unit: u, count: n })}>
+                <button key={u} class={`card-btn ${teachClass(tv, `train:${u}`)}`} disabled={!afford} onClick={() => void act({ type: 'train', system: sv.id, unit: u, count: n })}>
                   <b>{t(u)} ×{n}</b><small>{t(`${u}Desc` as 'corvetteDesc')}</small><Cost cost={cost} />
                 </button>
               );
@@ -326,12 +354,13 @@ function PlateauTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; 
 function RaidButtons({ v, sv, target }: { v: PlayerView; sv: SystemDetailView; target: string }) {
   const idle = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.order === 'idle' && f.combat > 0);
   const here = idle.find((f) => f.at === sv.id) ?? idle[0];
+  const tv = useSig(teach);
   if (!here) return <p class="muted">—</p>;
   return (
     <div class="actions">
-      <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'raid', target })}>{t('raid')}</button>
-      <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'blockade', target: sv.id })}>{t('blockade')}</button>
-      <button onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'ambush', target: sv.id })}>{t('ambush')}</button>
+      <button class={teachClass(tv, `fleet:raid:${here.id}`)} onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'raid', target })}>{t('raid')}</button>
+      <button class={teachClass(tv, `fleet:blockade:${here.id}`)} onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'blockade', target: sv.id })}>{t('blockade')}</button>
+      <button class={teachClass(tv, `fleet:ambush:${here.id}`)} onClick={() => void act({ type: 'fleet_order', fleet: here.id, order: 'ambush', target: sv.id })}>{t('ambush')}</button>
     </div>
   );
 }
@@ -344,6 +373,7 @@ function FleetsTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; s
   const where = (f: SystemDetailView['fleets'][number]): string => f.hop ? `${t('laneTravel')} ${sv.pois.find((p) => p.id === f.hop!.to)?.designation ?? ''}` : f.docked ? t('docked') : t('onPlateau');
   const elsewhere = v.fleets.filter((f) => f.owner === v.me.id && f.at !== null && f.at !== sv.id && f.order === 'idle' && f.combat > 0);
   const targetHere = poi ? `${sv.id}:${poi.designation}` : sv.id;
+  const tv = useSig(teach);
   return (
     <div>
       <h3>{t('fleetsHere')}</h3>
@@ -358,7 +388,7 @@ function FleetsTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; s
               {f.combat >= 2 && f.units && <button onClick={(e) => { e.stopPropagation(); const u = f.units!; void act({ type: 'split_fleet', fleet: f.id, units: { corvette: Math.floor(u.corvette / 2), frigate: Math.floor(u.frigate / 2), cruiser: Math.floor(u.cruiser / 2) } }); }}>{t('split')}</button>}
               {sv.id !== v.me.capital && !f.hop && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'return', target: v.me.capital }); }}>{f.pos ? t('retreat') : t('return')}</button>}
               {f.combat > 0 && sv.mine && !f.hop && poi && f.poi !== poi.id && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: targetHere }); }}>{t('sendHere')}</button>}
-              {f.combat > 0 && sv.mine && !f.hop && f.order !== 'defend' && (!poi || f.poi === poi.id) && <button onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: targetHere }); }}>{t('defend')}</button>}
+              {f.combat > 0 && sv.mine && !f.hop && f.order !== 'defend' && (!poi || f.poi === poi.id) && <button class={teachClass(tv, `fleet:defend:${f.id}`)} onClick={(e) => { e.stopPropagation(); void act({ type: 'fleet_order', fleet: f.id, order: 'defend', target: targetHere }); }}>{t('defend')}</button>}
             </span>
           </li>
         ))}
@@ -375,7 +405,7 @@ function FleetsTab({ v, sv, sel, poi }: { v: PlayerView; sv: SystemDetailView; s
         <>
           <h3>{t('defend')}</h3>
           <ul class="list">
-            {elsewhere.slice(0, 6).map((f) => <li key={f.id}><span>{unitLine(f.units, f.size)} <small>{t('at')} {v.systems.find((s) => s.id === f.at)?.name ?? f.at}</small></span><span class="actions inline"><button onClick={() => void act({ type: 'fleet_order', fleet: f.id, order: sv.mine ? 'defend' : 'move', target: targetHere })}>{sv.mine ? t('defend') : t('move')}</button></span></li>)}
+            {elsewhere.slice(0, 6).map((f) => <li key={f.id}><span>{unitLine(f.units, f.size)} <small>{t('at')} {v.systems.find((s) => s.id === f.at)?.name ?? f.at}</small></span><span class="actions inline"><button class={teachClass(tv, `fleet:${sv.mine ? 'defend' : 'move'}:${f.id}`)} onClick={() => void act({ type: 'fleet_order', fleet: f.id, order: sv.mine ? 'defend' : 'move', target: targetHere })}>{sv.mine ? t('defend') : t('move')}</button></span></li>)}
           </ul>
         </>
       )}

@@ -145,7 +145,27 @@ export class SystemScene {
   update(view: SystemDetailView, ctx: SceneContext): void {
     this.view = view; this.ctx = ctx;
     this.lastFrameAt = performance.now();
-    if (this.ready) this.render(view, ctx);
+    if (this.ready) { this.render(view, ctx); this.flashFresh(view); }
+  }
+
+  private flashArm: { until: number; ids: Set<string>; queued: number } | null = null;
+  /** Arm a flash for the next thing that appears on the plateau (a structure built, a job queued): the General is
+   *  about to act here and the player must see where. Expires on its own. */
+  flashNext(): void {
+    this.flashArm = { until: performance.now() + 8000, ids: new Set((this.view?.structures ?? []).map((s) => s.id)), queued: this.view?.buildQueue?.length ?? 0 };
+  }
+  private flashFresh(view: SystemDetailView): void {
+    const arm = this.flashArm;
+    if (!arm) return;
+    if (performance.now() > arm.until) { this.flashArm = null; return; }
+    const fresh = view.structures.find((s) => !arm.ids.has(s.id));
+    const queue = view.buildQueue ?? [];
+    const job = !fresh && queue.length > arm.queued ? queue[queue.length - 1]! : null;
+    if (!fresh && !job) return;
+    const p = fresh ? this.xy(fresh.orbit, fresh.angle) : this.xy(job!.orbit, 0);
+    for (let i = 0; i < 3; i++) this.spawn({ x: p.x, y: p.y, vx: 0, vy: 0, ttl: 700 + i * 300, size: this.unit * (0.8 + i * 0.45), color: 0x7dd3fc, kind: 'flash' });
+    if (fresh) { this.selection = { kind: 'structure', id: fresh.id }; this.cb.onSelect(this.selection); }
+    this.flashArm = null;
   }
 
   private topInset: number | null = null;

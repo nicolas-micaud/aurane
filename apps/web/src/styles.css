@@ -174,12 +174,21 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
   .toast { bottom: calc(52px + var(--safe-b)); max-width: 80vw; }
 }
 
-/* Talking to the General with the keyboard open: the composer sits at the top of the panel, the map stays above. */
-.generalpanel .say { margin: 4px 0 8px; }
+/* Talking to the General: the thread reads top to bottom, the composer sits right under the last bubble and stays
+   in view while the panel scrolls (also with the phone keyboard open: the viewport shrinks, the panel with it). */
+.generalpanel .say { position: sticky; bottom: 0; margin: 0 0 10px; padding: 6px 0; background: var(--panel); z-index: 1; }
 @media (max-width: 899px) {
   .panel.open:has(.generalpanel) { max-height: 52%; }
   .generalpanel .talk { max-height: 34vh; overflow: auto; }
 }
+
+/* The General shows: the button it points at blinks, the path is said in a bar above the panel or the dock. */
+.teach { animation: teach 1s ease-in-out infinite; outline: 2px solid var(--accent); outline-offset: 2px; position: relative; z-index: 1; }
+@keyframes teach { 50% { box-shadow: 0 0 0 7px rgba(125,211,252,.28); outline-color: #fff; } }
+.hint.teachbar { z-index: 5; top: 100px; max-width: min(92vw, 600px); border-color: var(--accent); background: rgba(14,23,48,.96); box-shadow: 0 8px 30px rgba(0,0,0,.45); }
+.hint.teachbar span { flex: 1; line-height: 1.35; } .hint.teachbar button { flex: none; padding: 2px 8px; }
+.hint.teachbar.done { border-color: var(--ok); }
+@media (max-width: 899px) { .hint.teachbar { top: auto; bottom: calc(58% + 10px); left: 8px; right: 8px; transform: none; max-width: none; } }
 @media (max-height: 560px) {
   .hud .chips, .hud .status, .coach, .legend { display: none; }
   .panel.open, .panel.open:has(.generalpanel) { max-height: 70%; }
@@ -209,4 +218,4 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .counsel .acts { display: flex; gap: 6px; flex-wrap: wrap; } .counsel .acts button { font-size: 13px; padding: 5px 10px; }
 .counsel .acts button.primary { padding: 5px 12px; }
 .counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
-@media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel .card:nth-of-type(n+3) { display: none; } }
+@media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel:not(.first) .card:nth-of-type(n+3) { display: none; } .counsel .card:nth-of-type(n+4) { display: none; } }

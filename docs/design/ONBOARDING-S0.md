@@ -65,6 +65,12 @@ jour 2 (aligné sur la pression corsaire : on apprend à tenir avant d'être fra
   alliances ; 6 rallumer un Phare.
 - Client : les onglets Logistique (1), Marché (2), Flottes (3), Diplomatie (5) apparaissent avec leur palier ; un refus
   affiche la phrase du palier ; le panneau du Général montre le palier courant et « Je connais le jeu : tout ouvrir ».
+- Le Général montre, puis fait (0009, 25.09 soir) : chaque carte du Conseil sait quel bouton elle presserait
+  (`apps/web/src/ui/teach.ts`). « Montre-moi » ouvre l'écran, sélectionne l'orbite et l'emplacement, fait clignoter
+  le bouton et dit le chemin ; « Fais-le » suit le chemin, agit, fait clignoter ce qui apparaît et laisse « Fait ✓ La
+  prochaine fois, toi : … ». Cartes de la première minute : Touche ton étoile (palier 0), Relie ta voisine, Ta
+  doctrine, puis Entre dans ton système (palier 1, tant que rien n'est construit) ; trois cartes visibles sur téléphone
+  aux paliers 0 et 1.
 - Reste : la première parole par personnage à chaque palier (`packages/general`, données FR/EN) et l'intention de
   chat « tout ouvrir » → `onboarding_unlock` (session locale, couche LLM) ; le masquage fin des boutons de
   construction par palier ; la validation sur un testeur qui ne connaît pas le jeu (M6).
