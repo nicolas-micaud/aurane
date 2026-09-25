@@ -1,6 +1,7 @@
 # Onboarding progressif de la Saison 0 — spécification
 
-Date : 25 septembre 2026. Revue de design S0, risque 6. Spécification de produit ; l'interface n'est pas livrée ici.
+Date : 25 septembre 2026. Revue de design S0, risque 6. Validée par Nick le même jour ; mécanique serveur livrée
+(`packages/sim/src/onboarding.ts`, règle de saison `onboarding`, instantané v7) avec un habillage client minimal.
 Principe : **le Général est le guide**. Le joueur ne lit pas un tutoriel, il reçoit des ordres à valider et des
 explications de son Général, dans sa voix, au moment où la mécanique devient utile. Ce qui n'est pas encore
 débloqué n'est pas caché par un mur : il est **absent des écrans** jusqu'à son déblocage, puis présenté par une
@@ -51,6 +52,22 @@ jour 2 (aligné sur la pression corsaire : on apprend à tenir avant d'être fra
   « je connais le jeu ») passe au palier 6 : l'entrée sans friction reste la règle pour qui sait déjà.
 - Les paliers ne changent **aucune** règle de simulation : un joueur au palier 1 est attaquable dès la fin de son
   bouclier comme tout le monde ; la Garde de nuit par défaut (0 h–8 h UTC) le protège en attendant le palier 3.
+
+## État de l'implémentation (25.09.2026)
+
+- Simulation : `Colony.onboarding = { tier, unlockedAt[] }`, `advanceOnboarding` à chaque Tirage et autour de chaque
+  commande, refus `locked:<palier>`, commande `onboarding_unlock` (« tout ouvrir »), PNJ au palier 6, colonies
+  antérieures à la v7 au palier 6, règle de saison `onboarding` (vrai en S0, faux en `LEGACY_RULES`). Journal
+  `onboarding.<palier>` et événement `onboarding.unlocked`. Tests : `packages/sim/test/onboarding.test.ts`.
+- Paliers des commandes : 0 relier, doctrine ; 1 construire (Extracteur, Entrepôt, Antenne, Amplificateur, Relais) ;
+  2 Marché, troc, Comptoir, Décrets, routes et convois ; 3 entraîner, Chantier, tourelles, Bastion, raffinerie,
+  synthétiseur, ordres Défendre / Rentrer / Déplacer, Garde ; 4 Raider, Bloquer, Embuscade ; 5 traités, agents,
+  alliances ; 6 rallumer un Phare.
+- Client : les onglets Logistique (1), Marché (2), Flottes (3), Diplomatie (5) apparaissent avec leur palier ; un refus
+  affiche la phrase du palier ; le panneau du Général montre le palier courant et « Je connais le jeu : tout ouvrir ».
+- Reste : la première parole par personnage à chaque palier (`packages/general`, données FR/EN) et l'intention de
+  chat « tout ouvrir » → `onboarding_unlock` (session locale, couche LLM) ; le masquage fin des boutons de
+  construction par palier ; la validation sur un testeur qui ne connaît pas le jeu (M6).
 
 ## Ce que ça change pour la bêta
 

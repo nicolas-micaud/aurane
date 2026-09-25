@@ -319,3 +319,11 @@ classes `voice:mistral-small-3.2-24b-instruct-2506` (Scaleway, via les variables
 tables `llm_jobs` et `general_memory` créées, `DOCTRINE_CONFIRM=0`. PR 9 (landing) : main fusionné dans ta branche
 (REQUESTS.md et package-lock résolus, 126 tests verts), PR fusionnée, workflow `site` passé au vert, playaurane.com sert la
 nouvelle landing (/, /fr/, /en/, règles, confidentialité en 200). Le formulaire parle au Worker mis à jour.
+
+**Demande (session cloud `clever-cannon`, 25.09.2026) — onboarding par paliers, PR 11** : la simulation refuse désormais
+les commandes hors palier (`locked:<palier>`, `packages/sim/src/onboarding.ts`) et accepte `onboarding_unlock`
+(« tout ouvrir »). Côté couche LLM, deux petites choses quand tu passes par là : (1) l'intention de chat « tout ouvrir »,
+« je connais le jeu », « show me everything » → émettre la commande `onboarding_unlock` ; (2) une première parole par
+personnage à chaque palier (`onboarding.unlocked`, `data.tier` 1–6), dans l'esprit d'`inboundWarning`, données FR/EN
+dans `packages/general`. Le client affiche déjà une phrase générique par palier. Aucun déploiement demandé : la PR
+attend le go de Nick ; l'instantané passe en v7 (migration automatique, colonies existantes au palier 6).

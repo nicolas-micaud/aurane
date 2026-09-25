@@ -244,3 +244,9 @@ Aucune règle de simulation ne change avec le palier.
 6. **Empreinte d'origine par IP** : deux joueurs d'un même foyer ne pourront pas s'échanger de ressources en
    Saison 0 ; alternative : ne poser l'empreinte qu'à partir de la troisième Colonie d'une même IP.
 7. **Onboarding** : la spécification attend ton feu vert avant l'interface (jalon M6).
+
+**Suite du 25.09.2026** : Nick a validé toutes les recommandations (« corrige tout, tes recos »). Les valeurs ci-dessus
+sont les défauts de la Saison 0, la portée du Concordat lit « +5 % » sur la landing et dans le client, et les paliers
+d'onboarding sont implémentés côté simulation (`packages/sim/src/onboarding.ts`, règle de saison `onboarding`) avec
+un premier habillage client (onglets par palier, refus traduits, « tout ouvrir »). Les phrases de personnage par
+palier restent à écrire dans `packages/general` (couche LLM, session locale).
