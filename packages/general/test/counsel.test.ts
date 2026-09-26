@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PERSONAS } from '@aurane/protocol';
 import { createWorld, spawnColony } from '@aurane/sim';
 import { analyze } from '../src/analysis/index.js';
-import { counselAck, fallbackCards, firstCards, pickOptions, writeCounsel, type CounselOption } from '../src/counsel.js';
+import { counselAck, fallbackCards, firstCards, liveCounselCards, pickOptions, sameGoal, writeCounsel, type CounselOption } from '../src/counsel.js';
 import { writeEpisode } from '../src/episode.js';
 import { LlmUnavailable, type ChatResult, type LlmClient } from '../src/llm/index.js';
 import { choicesOf, emptyMemory, episodesOf, recordChoice, recordEpisode, renderMemory } from '../src/persona/memory.js';
@@ -113,5 +113,42 @@ describe('the simulation\'s Counsel, bridged', () => {
     expect(r.cards[2]!.line).not.toContain("heure.. ");
     const long = fallbackCards({ persona: 'vane', lang: 'fr', tier: 1, minutesToDraw: 20, options: [{ id: 'l', label: { fr: 'x'.repeat(130), en: 'y'.repeat(130) }, cost: {}, delayMin: 0, gain: { fr: 'GAIN', en: 'GAIN' }, risk: 'low', command: null }] });
     expect(long[0]!.line).not.toContain('GAIN'); // a long label stands alone on a phone
+  });
+});
+
+describe('a cached Counsel against the world as it stands', () => {
+  const opt = (id: string, command: CounselOption['command']): CounselOption => ({ id, label: { fr: `Ligne ${id}`, en: `Line ${id}` }, cost: {}, delayMin: 0, gain: { fr: 'g', en: 'g' }, risk: 'low', command, show: { screen: 'galaxy' } });
+  const relay = { type: 'build_relay' as const, a: 'S1', b: 'S2' };
+  const cards = [
+    { id: 'link:S2', title: 'Link Belis', line: 'Voice line', command: relay, show: null },
+    { id: 'enter', title: 'Enter', line: 'Voice line', command: null, show: null },
+    { id: 'antenna', title: 'Antenna', line: 'Voice line 40', command: { type: 'build' as const, system: 'S1', building: 'antenna' as const }, show: null },
+  ];
+  const ctx = { persona: 'oriel' as const, lang: 'en' as const, tier: 1 };
+
+  it('drops a card whose option is gone (done through any path, or no longer on the table) and keeps the voice of the others', () => {
+    const live = liveCounselCards(cards, [opt('enter', null), opt('antenna', cards[2]!.command), opt('link:S7', { type: 'build_relay', a: 'S2', b: 'S7' })], ctx);
+    expect(live.map((c) => c.id)).toEqual(['enter', 'antenna']);
+    expect(live[1]!.line).toBe('Voice line 40');
+  });
+
+  it('keeps the id and title of a card whose command changed, with the live command and the fixed line', () => {
+    const live = liveCounselCards(cards, [opt('link:S2', null)], ctx);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({ id: 'link:S2', title: 'Link Belis', line: 'Line link:S2', command: null });
+  });
+
+  it('lets the first-minute cards stand only at tier 0 with nothing else to propose', () => {
+    const first = firstCards('oriel', 'en', 'S1');
+    expect(liveCounselCards(first, [], { ...ctx, tier: 0 })).toHaveLength(3);
+    expect(liveCounselCards(first, [], ctx)).toHaveLength(0);
+    expect(liveCounselCards(first, [opt('touch', null)], { ...ctx, tier: 0 })).toHaveLength(0);
+  });
+
+  it('knows two commands reach the same goal whichever path the player took', () => {
+    expect(sameGoal(relay, { type: 'build_relay', a: 'S2', b: 'S1' })).toBe(true);
+    expect(sameGoal(relay, { type: 'build_relay', a: 'S1', b: 'S3' })).toBe(false);
+    expect(sameGoal({ type: 'build', system: 'S1', building: 'antenna' }, { type: 'build', system: 'S1', building: 'antenna', orbit: 3 } as never)).toBe(true);
+    expect(sameGoal({ type: 'train', system: 'S1', unit: 'corvette', count: 2 }, { type: 'train', system: 'S1', unit: 'corvette', count: 1 })).toBe(true);
   });
 });

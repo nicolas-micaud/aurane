@@ -408,6 +408,8 @@ export class Engine {
   command(colonyId: string, cmd: Command): ApplyResult {
     const res = apply(this.world, colonyId, cmd);
     this.dirtyColonies.add(colonyId);
+    // Done by hand: a card of the Counsel with the same goal leaves it, remembered as taken.
+    if (res.ok && cmd.type !== 'counsel_answer') void this.general.noteCommand(colonyId, cmd).catch((err: Error) => console.warn(JSON.stringify({ msg: 'counsel note', error: err.message })));
     // Anyone sharing a sector with the actor may see the change; keep it simple and cheap.
     for (const id of this.listeners.keys()) if (id !== colonyId) this.dirtyColonies.add(id);
     return res;

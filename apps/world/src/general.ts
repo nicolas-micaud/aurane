@@ -1,10 +1,10 @@
 // The Generals' service: everything between the HTTP boundary and the model. It owns the job queue,
 // the quotas, the memory, the pending doctrines and the caches; the engine only exposes the world. No
 // method here is called from the simulation step: the Draw never waits for a model.
-import type { Policy } from '@aurane/protocol';
+import type { Command, Policy } from '@aurane/protocol';
 import { apply, isAlly, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, isEmptyMemory, memoryRepairs, mergeMemory, normalizeMemory, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
+  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, isEmptyMemory, memoryRepairs, mergeMemory, normalizeMemory, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, liveCounselCards, sameGoal, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
   TASK_CLASS, type LlmClass, type LlmTask,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
   type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type MirrorOutbox, type MirrorStats, type Turn,
@@ -505,7 +505,11 @@ export class GeneralService {
     const next = this.drawIndexNow() + 1;
     const src = this.counselSource(this.deps.world(), c);
     const hit = this.counsels.get(`${c.id}:${lang}`);
-    if (hit && hit.drawIndex === next && hit.tier === src.tier) return { ...hit, minutesToDraw: this.minutesToDraw() };
+    if (hit && hit.drawIndex === next && hit.tier === src.tier) {
+      // Written ahead, served until the Draw, but never past its goal: re-checked against the simulation each time.
+      hit.cards = liveCounselCards(hit.cards, src.options, { persona: c.persona, lang, tier: src.tier });
+      return { ...hit, minutesToDraw: this.minutesToDraw() };
+    }
     const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time, tier: src.tier }; };
     if (!this.stack.forTask('counsel') || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
     if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
@@ -515,21 +519,51 @@ export class GeneralService {
     return out.result;
   }
 
-  /** "Do it" / "Not now": the choice enters the memory; a taken card runs its command through the world. */
+  /** "Do it" / "Not now": the choice enters the memory; a taken card runs its command through the world. A card whose
+   *  goal is already reached (the player did it by hand) or no longer legal answers `stale` and leaves the Counsel;
+   *  a command the world refuses answers its reason: in both cases nothing is remembered and the General says nothing. */
   async decideCounsel(colonyId: string, cardId: string, take: boolean): Promise<{ ok: true; reply: string; result: unknown } | { ok: false; reason: string }> {
     const c = this.colony(colonyId);
     if (!c) return { ok: false, reason: 'no such colony' };
     const lang = this.langOf(c.id);
     const view = this.counsels.get(`${c.id}:${lang}`) ?? this.counsels.get(`${c.id}:${lang === 'fr' ? 'en' : 'fr'}`);
     const card = view?.cards.find((x) => x.id === cardId);
-    if (!card) return { ok: false, reason: 'no such card' };
-    await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordChoice(cur ?? emptyMemory(), take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    if (!view || !card) return { ok: false, reason: 'no such card' };
+    const src = this.counselSource(this.deps.world(), c);
+    const live = liveCounselCards([card], src.options, { persona: c.persona, lang, tier: src.tier })[0];
+    if (!live) { view.cards = view.cards.filter((x) => x.id !== card.id); return { ok: false, reason: 'stale' }; }
     let result: unknown = null;
-    if (take && card.command) { result = apply(this.deps.world(), c.id, card.command); this.deps.dirty(c.id); }
-    if (view) view.cards = view.cards.filter((x) => x.id !== card.id);
+    if (take && live.command) {
+      const r = apply(this.deps.world(), c.id, live.command);
+      this.deps.dirty(c.id);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      result = r;
+    }
+    await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordChoice(cur ?? emptyMemory(), take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    view.cards = view.cards.filter((x) => x.id !== card.id);
     const reply = counselAck(c.persona, lang, take, `${c.id}:${card.id}`);
     this.pushLine(c.id, reply);
     return { ok: true, reply, result };
+  }
+
+  /**
+   * A command the player sent by hand (any screen) that reaches the goal of a card on the Counsel: the card leaves the
+   * Counsel and the choice layer records it as taken, since the player followed the advice even without "Do it".
+   * Only cards the Counsel was serving count; the world having moved on otherwise is not a choice.
+   */
+  async noteCommand(colonyId: string, cmd: Command): Promise<void> {
+    const c = this.colony(colonyId);
+    if (!c) return;
+    const done = new Set<string>();
+    for (const lang of ['fr', 'en'] as const) {
+      const view = this.counsels.get(`${c.id}:${lang}`);
+      if (!view) continue;
+      for (const card of view.cards) if (card.command && sameGoal(card.command, cmd)) done.add(card.id);
+      view.cards = view.cards.filter((x) => !done.has(x.id));
+    }
+    if (!done.size) return;
+    const key = await this.keyOf(c.id);
+    await this.memoryStore.update(key, (cur) => { let r = cur ?? emptyMemory(); for (const id of done) r = recordChoice(r, 'counsel.taken', id, Date.now()); return r; });
   }
 
   // --- episodes (memory, level 1) -------------------------------------------------
