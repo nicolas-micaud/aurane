@@ -35,7 +35,9 @@ le client revient à l'écran d'entrée.
 
 ## Comptes
 
-Pas d'e-mail ni de mot de passe en bêta fermée : le jeton d'appareil est le compte. Pour jouer depuis
+Un invité joue d'abord avec le seul jeton d'appareil ; il protège sa Colonie en ajoutant une passkey (RP ID
+playaurane.com) ou un e-mail de secours (code à six chiffres envoyé par Resend depuis noreply@playaurane.com), ce qui
+crée son compte (décision 0010). Sans mot de passe, jamais. Pour jouer depuis
 un second appareil, « Lier un autre appareil » dans le panneau du Général donne un lien valable 24 h
 qui ouvre la même Colonie ; la page d'accueil accepte aussi ce lien collé. Un joueur qui perd tous ses
 appareils demande un nouveau lien à l'admin (à ajouter si le besoin apparaît : `/api/admin/link`).
