@@ -21,14 +21,39 @@ const LINES: Record<CounselKind, { fr: string; en: string }> = {
   read_recap: { fr: 'Le Tirage {draw} est passé : lis ce qu\'il a produit, c\'est ta feuille de route pour l\'heure.', en: 'Draw {draw} is done: read what it produced, it is your road map for the hour.' },
 };
 
+/** Card titles. Every card that acts on something names it ("Relier Israzen", "Antenne à Vennyxdra-84"): two cards
+ *  of the same kind in a row never read the same (issue #35), and a done card says which goal was reached. */
 const TITLES: Record<CounselKind, { fr: string; en: string }> = {
-  touch_star: { fr: 'Touche ton étoile', en: 'Touch your star' }, enter_system: { fr: 'Entre dans ton système', en: 'Enter your system' },
-  link_first: { fr: 'Relie ta voisine', en: 'Link your neighbour' }, link_more: { fr: 'Un relais de plus', en: 'One more relay' },
+  touch_star: { fr: 'Toucher {system}', en: 'Touch {system}' }, enter_system: { fr: 'Entrer dans {system}', en: 'Enter {system}' },
+  link_first: { fr: 'Relier {to}', en: 'Link {to}' }, link_more: { fr: 'Relier {to}', en: 'Link {to}' },
+  warehouse: { fr: 'Entrepôt à {system}', en: 'Warehouse at {system}' }, antenna: { fr: 'Antenne à {system}', en: 'Antenna at {system}' },
+  turret: { fr: 'Tourelle à {system}', en: 'Turret at {system}' }, defend: { fr: 'Défendre {system}', en: 'Defend {system}' },
+  buy_energy: { fr: 'Acheter de l\'Énergie', en: 'Buy Energy' }, sell_surplus: { fr: '{resource} au Marché', en: '{resource} to the Market' },
+  train: { fr: 'Corvettes à {system}', en: 'Corvettes at {system}' }, treaty: { fr: 'Pacte avec {colony}', en: 'Pact with {colony}' },
+  doctrine: { fr: 'Ta doctrine', en: 'Your doctrine' }, read_recap: { fr: 'Compte rendu du Tirage {draw}', en: 'Draw {draw} recap' },
+};
+
+/** What a reached card says in the « ✓ Fait ce Tirage » line: the goal in the past, target named ("Relié Arnophe",
+ *  "Linked Arnophe"), so the line reads as done, not as advice (issue #35). */
+const DONE_TITLES: Record<CounselKind, { fr: string; en: string }> = {
+  touch_star: { fr: 'Vu {system}', en: 'Looked at {system}' }, enter_system: { fr: 'Entré dans {system}', en: 'Entered {system}' },
+  link_first: { fr: 'Relié {to}', en: 'Linked {to}' }, link_more: { fr: 'Relié {to}', en: 'Linked {to}' },
+  warehouse: { fr: 'Entrepôt construit à {system}', en: 'Built a Warehouse at {system}' }, antenna: { fr: 'Antenne construite à {system}', en: 'Built an Antenna at {system}' },
+  turret: { fr: 'Tourelle construite à {system}', en: 'Built a turret at {system}' }, defend: { fr: 'Flotte envoyée à {system}', en: 'Sent the fleet to {system}' },
+  buy_energy: { fr: 'Énergie achetée', en: 'Bought Energy' }, sell_surplus: { fr: 'Vendu au Marché : {resource}', en: 'Sold {resource} at the Market' },
+  train: { fr: 'Corvettes lancées à {system}', en: 'Trained corvettes at {system}' }, treaty: { fr: 'Pacte proposé à {colony}', en: 'Offered a pact to {colony}' },
+  doctrine: { fr: 'Doctrine donnée', en: 'Gave your doctrine' }, read_recap: { fr: 'Compte rendu du Tirage {draw} lu', en: 'Read the Draw {draw} recap' },
+};
+
+/** Untargeted titles, for a card whose target is unknown (an option without its params). */
+const GENERIC_TITLES: Record<CounselKind, { fr: string; en: string }> = {
+  touch_star: { fr: 'Toucher ton étoile', en: 'Touch your star' }, enter_system: { fr: 'Entrer dans ton système', en: 'Enter your system' },
+  link_first: { fr: 'Relier une voisine', en: 'Link a neighbour' }, link_more: { fr: 'Un relais de plus', en: 'One more relay' },
   warehouse: { fr: 'Un Entrepôt', en: 'A Warehouse' }, antenna: { fr: 'Une Antenne', en: 'An Antenna' },
   turret: { fr: 'Une tourelle', en: 'A turret' }, defend: { fr: 'Défendre', en: 'Defend' },
-  buy_energy: { fr: 'De l\'Énergie', en: 'Energy' }, sell_surplus: { fr: 'Vendre le surplus', en: 'Sell the surplus' },
+  buy_energy: TITLES.buy_energy, sell_surplus: { fr: 'Vendre le surplus', en: 'Sell the surplus' },
   train: { fr: 'Des corvettes', en: 'Corvettes' }, treaty: { fr: 'Un pacte', en: 'A pact' },
-  doctrine: { fr: 'Ta doctrine', en: 'Your doctrine' }, read_recap: { fr: 'Le compte rendu', en: 'The recap' },
+  doctrine: TITLES.doctrine, read_recap: { fr: 'Le compte rendu', en: 'The recap' },
 };
 
 const RESOURCE_NAMES: Record<string, { fr: string; en: string }> = {
@@ -40,4 +65,16 @@ export function fillCounsel(tpl: string, params: Record<string, string | number>
 }
 
 export const counselLine = (o: Pick<CounselOption, 'kind' | 'params'>, lang: 'fr' | 'en'): string => fillCounsel(LINES[o.kind][lang], o.params, lang);
-export const counselTitle = (o: Pick<CounselOption, 'kind'>, lang: 'fr' | 'en'): string => TITLES[o.kind][lang];
+const hasAll = (tpl: string, params: Record<string, string | number>): boolean => [...tpl.matchAll(/\{(\w+)\}/g)].every((m) => params[m[1]!] !== undefined && params[m[1]!] !== '');
+
+/** The card's title with its target ("Relier Israzen"); the untargeted one when a placeholder has no value. */
+export function counselTitle(o: Pick<CounselOption, 'kind'> & { params?: Record<string, string | number> }, lang: 'fr' | 'en'): string {
+  const tpl = TITLES[o.kind][lang], params = o.params ?? {};
+  return hasAll(tpl, params) ? fillCounsel(tpl, params, lang) : GENERIC_TITLES[o.kind][lang];
+}
+
+/** The card once its goal is reached, in the past ("Relié Arnophe" / "Linked Arnophe"); null when a target is missing. */
+export function counselDoneTitle(o: Pick<CounselOption, 'kind'> & { params?: Record<string, string | number> }, lang: 'fr' | 'en'): string | null {
+  const tpl = DONE_TITLES[o.kind][lang], params = o.params ?? {};
+  return hasAll(tpl, params) ? fillCounsel(tpl, params, lang) : null;
+}

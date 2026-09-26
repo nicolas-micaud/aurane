@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PERSONAS } from '@aurane/protocol';
 import { createWorld, spawnColony } from '@aurane/sim';
 import { analyze } from '../src/analysis/index.js';
-import { counselAck, fallbackCards, firstCards, liveCounselCards, pickOptions, sameGoal, writeCounsel, type CounselOption } from '../src/counsel.js';
+import { cardTitle, counselAck, fallbackCards, firstCards, liveCounselCards, pickOptions, sameGoal, writeCounsel, type CounselOption } from '../src/counsel.js';
+import { fromSimCounsel } from '../src/counsel-sim.js';
 import { writeEpisode } from '../src/episode.js';
 import { LlmUnavailable, type ChatResult, type LlmClient } from '../src/llm/index.js';
 import { choicesOf, emptyMemory, episodesOf, recordChoice, recordEpisode, renderMemory } from '../src/persona/memory.js';
@@ -82,7 +83,7 @@ describe('memory: choices and episodes', () => {
 
 describe('the simulation\'s Counsel, bridged', () => {
   it('turns sim options into costed options with the client\'s fixed lines filled, a show target and the raw show kept', async () => {
-    const { fromSimCounsel, showOf, fillLine } = await import('../src/counsel-sim.js');
+    const { showOf, fillLine } = await import('../src/counsel-sim.js');
     const opts = fromSimCounsel([
       { id: 'turret:S9', kind: 'turret', urgency: 2, command: { type: 'build', system: 'S9', building: 'turret_light' }, show: { kind: 'plateau', system: 'S9', orbit: 2 }, cost: { metal: 40, energy: 20 }, params: { system: 'Kessa', ships: 5, eta: 30 } },
       { id: 'link:S2', kind: 'link_first', urgency: 2, command: null, show: { kind: 'link', from: 'S1', to: 'S2' }, cost: { metal: 41, energy: 20 }, params: { from: 'Isno', to: 'Orun', metal: 41, energy: 20 } },
@@ -101,18 +102,48 @@ describe('the simulation\'s Counsel, bridged', () => {
     expect(opts[3]!.gain.en).toBe('one more step for the Colony');
     const first = fromSimCounsel([{ id: 'touch', kind: 'touch_star', urgency: 2, command: null, show: { kind: 'star', system: 'S1' }, cost: {}, params: { system: 'Isno' } }]);
     expect(first[0]!.label.fr).toContain('Isno, ta capitale');
-    expect(first[0]!.title?.fr).toBe('Touche ton étoile');
+    expect(first[0]!.title?.fr).toBe('Toucher Isno');
     expect(showOf({ kind: 'star', system: 'S1' })).toEqual({ screen: 'galaxy', system: 'S1' });
     expect(fillLine('{a} and {b}', { a: 1 })).toBe('1 and {b}');
     const r = await writeCounsel({ persona: 'vane', lang: 'fr', tier: 1, options: opts, minutesToDraw: 20 }, null);
     expect(r.cards.map((c) => c.id)).toEqual(['turret:S9', 'link:S2', 'recap:3']);
     expect(r.cards[0]!.raw).toEqual({ kind: 'plateau', system: 'S9', orbit: 2 });
     expect(r.cards[0]!.line).toContain('30 min');
-    expect(r.cards[1]!.title).toBe('Relie ta voisine'); // the simulation's short title, not the first words of the line
+    expect(r.cards[1]!.title).toBe('Relier Orun'); // the simulation's short title, naming its target, not the first words of the line
     expect(r.cards[2]!.line).not.toMatch(/\.\./); // no double period after a label that already ends with one
     expect(r.cards[2]!.line).not.toContain("heure.. ");
     const long = fallbackCards({ persona: 'vane', lang: 'fr', tier: 1, minutesToDraw: 20, options: [{ id: 'l', label: { fr: 'x'.repeat(130), en: 'y'.repeat(130) }, cost: {}, delayMin: 0, gain: { fr: 'GAIN', en: 'GAIN' }, risk: 'low', command: null }] });
     expect(long[0]!.line).not.toContain('GAIN'); // a long label stands alone on a phone
+  });
+});
+
+describe('card titles name their target (issue #35)', () => {
+  const relay = (b: string) => ({ type: 'build_relay' as const, a: 'S1', b });
+  const option = (id: string, command: CounselOption['command'], title?: { fr: string; en: string }): CounselOption => ({ id, label: { fr: `Ligne ${id}`, en: `Line ${id}` }, ...(title ? { title } : {}), cost: {}, delayMin: 0, gain: { fr: 'g', en: 'g' }, risk: 'low', command });
+
+  it('keeps the simulation\'s title on a card with a command and the model\'s voice in the line', async () => {
+    const options = fromSimCounsel([
+      { id: 'link:S3', kind: 'link_more', urgency: 1, command: relay('S3'), show: { kind: 'link', from: 'S1', to: 'S3' }, cost: { metal: 12 }, params: { from: 'Vennyxdra-84', to: 'Israzen', metal: 12, energy: 6 } },
+      { id: 'doctrine', kind: 'doctrine', urgency: 0, command: null, show: { kind: 'tab', tab: 'general' }, cost: {}, params: {} },
+    ]);
+    const llm = scripted([JSON.stringify({ cards: [{ id: 'link:S3', title: 'Link your neighbour', line: 'Israzen next: the Network grows by one.' }, { id: 'doctrine', title: 'Tell me your line', line: 'One sentence and I run with it.' }] })]);
+    const r = await writeCounsel({ persona: 'oriel', lang: 'en', tier: 1, options, minutesToDraw: 20 }, llm);
+    expect(r.source).toBe('llm');
+    expect(r.cards[0]).toMatchObject({ title: 'Link Israzen', line: 'Israzen next: the Network grows by one.' });
+    expect(r.cards[1]!.title).toBe('Tell me your line'); // no command: the model titles it
+  });
+
+  it('never gives two relay cards the same title', () => {
+    const a = fromSimCounsel([{ id: 'link:S2', kind: 'link_first', urgency: 2, command: relay('S2'), show: { kind: 'link', from: 'S1', to: 'S2' }, cost: {}, params: { from: 'V', to: 'Arnophe', metal: 12, energy: 6 } }])[0]!;
+    const b = fromSimCounsel([{ id: 'link:S3', kind: 'link_more', urgency: 1, command: relay('S3'), show: { kind: 'link', from: 'S1', to: 'S3' }, cost: {}, params: { from: 'V', to: 'Israzen', metal: 12 } }])[0]!;
+    expect([a.title?.fr, b.title?.fr]).toEqual(['Relier Arnophe', 'Relier Israzen']);
+    expect(cardTitle(a, 'Relie ta voisine', 'fr')).toBe('Relier Arnophe');
+    expect(cardTitle(option('x', null, { fr: 'Relier Arnophe', en: 'Link Arnophe' }), 'Plus tard', 'fr')).toBe('Plus tard');
+  });
+
+  it('takes the target\'s title when a cached card gets a command', () => {
+    const live = liveCounselCards([{ id: 'link:S3', title: 'Link your neighbour', line: 'v', command: null, show: null }], [option('link:S3', relay('S3'), { fr: 'Relier Israzen', en: 'Link Israzen' })], { persona: 'vane', lang: 'en', tier: 1 });
+    expect(live[0]!.title).toBe('Link Israzen');
   });
 });
 
