@@ -2,6 +2,8 @@
 //
 //   LLM_VOICE_MODEL=mistral-small-3.2-24b-instruct-2506      pinned model of the class (canonical id)
 //   LLM_VOICE_PROVIDERS=scaleway,infomaniak,vllm             ordered list of provider names
+//   LLM_ROUTINE_MODEL=…  LLM_ROUTINE_PROVIDERS=…              optional: counsel, briefing, reaction, episode on their own
+//                                                             pinned model (else they ride the voice pool)
 //   LLM_NARRATIVE_MODEL=…  LLM_NARRATIVE_PROVIDERS=…          same for long-form prose
 //   LLM_PROVIDER_<NAME>_BASE_URL / _API_KEY / _MODEL (exact name at the provider) / _MODEL_ID (canonical,
 //     defaults to _MODEL) / _CONCURRENCY / _TIMEOUT_MS / _JSON_MODE (off|object|schema) / _EXTRA_BODY (JSON) /
@@ -14,15 +16,19 @@
 import type { LlmMetrics } from './metrics.js';
 import { ProviderPool } from './pool.js';
 import { OpenAICompatibleClient, type ProviderConfig, type ProviderHooks } from './provider.js';
-import type { LlmClass } from './types.js';
+import { TASK_CLASS, type LlmClass, type LlmTask } from './types.js';
 
 export interface LlmStack {
   voice: ProviderPool | null;
+  /** Routine tasks' own pool when LLM_ROUTINE_PROVIDERS is set; null means they ride the voice pool. */
+  routine: ProviderPool | null;
   narrative: ProviderPool | null;
   /** Configuration problems worth a log line (a provider refused, legacy variables in use…). */
   warnings: string[];
-  /** The pool a task's class maps to. */
+  /** The pool a class maps to (routine → voice when no routine class is configured). Chosen once, by configuration: never a runtime fallback. */
   forClass(cls: LlmClass): ProviderPool | null;
+  /** The pool serving a task. */
+  forTask(task: LlmTask): ProviderPool | null;
 }
 
 const envKey = (name: string): string => name.toUpperCase().replace(/-/g, '_');
@@ -68,6 +74,8 @@ function legacyConfig(role: 'PRIMARY' | 'FALLBACK', env: NodeJS.ProcessEnv): Pro
   const apiKey = env[`LLM_${role}_API_KEY`]; if (apiKey) cfg.apiKey = apiKey;
   const timeout = num(env[`LLM_${role}_TIMEOUT_MS`]); if (timeout) cfg.timeoutMs = timeout;
   const extra = parseExtra(env[`LLM_${role}_EXTRA_BODY`]); if (extra) cfg.extraBody = extra;
+  const pin = num(env[`LLM_${role}_PRICE_IN`]); if (pin !== undefined) cfg.priceIn = pin;
+  const pout = num(env[`LLM_${role}_PRICE_OUT`]); if (pout !== undefined) cfg.priceOut = pout;
   return cfg;
 }
 
@@ -93,6 +101,7 @@ function buildPool(cls: LlmClass, env: NodeJS.ProcessEnv, warnings: string[], me
 export function stackFromEnv(env: NodeJS.ProcessEnv = process.env, metrics?: LlmMetrics, hooks: ProviderHooks = {}): LlmStack {
   const warnings: string[] = [];
   let voice = buildPool('voice', env, warnings, metrics, hooks);
+  const routine = buildPool('routine', env, warnings, metrics, hooks);
   let narrative = buildPool('narrative', env, warnings, metrics, hooks);
   if (!voice && !env.LLM_VOICE_PROVIDERS) {
     const primary = legacyConfig('PRIMARY', env), fallback = legacyConfig('FALLBACK', env);
@@ -111,7 +120,17 @@ export function stackFromEnv(env: NodeJS.ProcessEnv = process.env, metrics?: Llm
       voice = new ProviderPool('voice', fallback.model, [new OpenAICompatibleClient(fallback, hooks)], metrics);
     }
   }
-  return { voice, narrative, warnings, forClass(cls) { return cls === 'voice' ? this.voice : this.narrative; } };
+  // A provider without prices is invisible to the monthly budget ceiling: say so at startup.
+  const seen = new Set<string>();
+  for (const pool of [voice, routine, narrative]) for (const p of pool?.providers ?? []) {
+    if (seen.has(p.name)) continue; seen.add(p.name);
+    if (p.cfg.priceIn === undefined || p.cfg.priceOut === undefined) warnings.push(`provider ${p.name} has no _PRICE_IN/_PRICE_OUT: its spend is not counted against LLM_BUDGET_EUR_MONTH`);
+  }
+  return {
+    voice, routine, narrative, warnings,
+    forClass(cls) { return cls === 'voice' ? this.voice : cls === 'routine' ? (this.routine ?? this.voice) : this.narrative; },
+    forTask(task) { return this.forClass(TASK_CLASS[task]); },
+  };
 }
 
 /** @deprecated The voice pool of the stack; kept for callers that still expect one client. */

@@ -22,7 +22,7 @@ function scripted(answers: (() => string | Promise<string>)[]): LlmClient & { ca
 
 let engine: Engine; let base: string; let token: string; let colonyId: string; let server: ReturnType<typeof createHttpServer>;
 const voice = scripted([]);
-const stack: LlmStack = { voice: voice as unknown as LlmStack['voice'], narrative: null, warnings: [], forClass(c) { return c === 'voice' ? this.voice : this.narrative; } };
+const stack: LlmStack = { voice: voice as unknown as LlmStack['voice'], routine: null, narrative: null, warnings: [], forClass(c) { return c === 'narrative' ? this.narrative : this.voice; }, forTask(t) { return t === 'gazette' || t === 'memoir' ? this.narrative : this.voice; } };
 const metrics = new LlmMetrics();
 
 beforeAll(async () => {
