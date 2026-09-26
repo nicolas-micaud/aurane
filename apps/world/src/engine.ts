@@ -44,18 +44,23 @@ export class Engine {
 
   async init(): Promise<void> {
     let snap = await this.store.loadSnapshot();
+    let carriedId = 1;
     // A new seed or radius in the configuration means a new season: the old world is archived, a fresh one starts.
     // The radius may have grown during the season (galaxy growth): the base radius is what the season was configured with.
     if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.baseRadius ?? snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
       const label = `${snap.state.seed}-${Math.floor(snap.state.time)}`;
       console.log(`[world] season changed (seed ${this.cfg.seasonSeed}, radius ${this.cfg.galaxyRadius}): archiving the previous world as ${label}`);
       await this.store.archiveSnapshot(label);
+      // Ids are a per-world counter: a fresh world would hand the first human of every season the same id (C3d), and
+      // that id keys the session tokens, the account links and the General's memory. The counter carries on instead.
+      carriedId = Math.max(1, Number((snap.state as { nextId?: number }).nextId) || 1);
       snap = null;
     }
     if (snap) {
       this.world = restoreWorld(snap);
     } else {
       this.world = createWorld(this.cfg.seasonSeed, { radius: this.cfg.galaxyRadius, seasonDays: this.cfg.seasonDays });
+      this.world.nextId = Math.max(this.world.nextId, carriedId);
       for (let i = 0; i < this.cfg.npcCount; i++) {
         const faction = FACTIONS[i % FACTIONS.length] as Faction;
         const persona = PERSONAS[(i * 7 + Math.floor(i / 4)) % PERSONAS.length] as Persona;
