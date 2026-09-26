@@ -89,7 +89,7 @@ describe('the dedicated memory instance', () => {
     const remote = new Map<string, string>();
     const calls: string[] = [];
     const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url = String(input); const id = decodeURIComponent(url.split('/memory/')[1]!); const method = init?.method ?? 'GET';
+      const url = new URL(String(input)).pathname; const id = decodeURIComponent(url.split('/memory/')[1]!); const method = init?.method ?? 'GET';
       calls.push(`${method} ${id}`);
       if (!(init?.headers as Record<string, string>).authorization?.startsWith('Bearer ')) return new Response('', { status: 401 });
       if (method === 'PUT') { remote.set(id, String(init!.body)); return new Response('{}', { status: 200 }); }
@@ -104,11 +104,11 @@ describe('the dedicated memory instance', () => {
     expect(remote.has('C1')).toBe(true);
     const cold = new MirroredMemoryStore(new InMemoryMemoryStore(), http);
     expect((await cold.load('C1'))!.notes[0]!.text).toBe('link:S2'); // restored from the instance, then cached locally
-    expect(await store.erase('C1')).toEqual({ primary: true, mirror: true });
+    expect(await store.erase('C1')).toEqual({ primary: true, mirror: true, pending: false });
     expect(remote.has('C1')).toBe(false);
     expect((await local.load('C1'))!.notes.length).toBe(0);
     const dead = new MirroredMemoryStore(new InMemoryMemoryStore(), new HttpMemoryStore('https://down.example', 'tok', (async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch));
     await dead.save('C2', emptyMemory()); // never throws: the world does not wait for the long memory
-    expect(await dead.erase('C2')).toEqual({ primary: true, mirror: false });
+    expect(await dead.erase('C2')).toEqual({ primary: true, mirror: false, pending: true }); // queued, retried, and said so
   });
 });

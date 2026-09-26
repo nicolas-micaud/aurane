@@ -147,8 +147,9 @@ coût à partir de ces métriques (ou d'hypothèses).
 - **Épisodes** : au changement de jour, `scheduleEpisodes(day)` enfile une tâche `episode` par colonie vue dans la
   journée ; `writeEpisode` résume en une à trois phrases (chiffres du gabarit seulement), `recordEpisode` garde
   quatorze jours ; `renderMemory` relit les trois derniers au retour.
-- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`.
-  Postgres seul (table `general_memory`) tant qu'un besoin de recherche sémantique n'apparaît pas.
+- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`
+  (efface Postgres et l'instance ; `{ ok, mirror, pending }` : `pending` = l'instance n'a pas répondu, l'effacement
+  reste dans l'outbox et part dès qu'elle répond — on le dit au joueur, on ne le rassure pas à tort).
 
 ## Budget : 100 EUR par mois, modèles et mémoire compris (décision 0009, Nick 25.09)
 
@@ -176,16 +177,48 @@ Nick a tranché pour une instance de mémoire propre à Aurane dès maintenant (
 mémoire ninabot) pour les couches *choix*, *épisodes* et *saisons* ; Postgres reste la copie de travail, le
 monde n'attend jamais la mémoire. Côté couche LLM :
 
-- `HttpMemoryStore` parle à l'instance sur un contrat volontairement petit : `PUT /memory/{colony}` (le
-  `MemoryRecord` en JSON), `GET /memory/{colony}`, `DELETE /memory/{colony}`, jeton Bearer
-  (`AURANE_MEMORY_URL`, `AURANE_MEMORY_TOKEN`, valeurs dans Vaultwarden collection `aurane`).
-- `MirroredMemoryStore` : Postgres d'abord, miroir en arrière-plan (un échec du miroir est journalisé et compté
-  dans les métriques, jamais bloquant) ; lecture à froid depuis l'instance quand Postgres ne connaît pas la
-  Colonie (retour d'une saison à l'autre) ; `DELETE /api/memory` efface les deux et dit si l'instance a confirmé.
-- **Reste à provisionner** (infra, avec le go de Nick dans son canal) : le service lui-même. Proposition :
-  `aurane-memory` sur la VM `aurane-app1` (les données de joueurs ne quittent pas l'hôte du monde, Exoscale
-  ch-gva-2), même image de base que sokkan-memory (notes + embeddings pour la recherche sémantique), jeton en
-  Vaultwarden, aucune exposition publique (loopback + réseau Compose).
+- `HttpMemoryStore` parle à l'instance (`deploy/memory`, service `memory` du Compose, SQLite, volume `memdata`) sur
+  un contrat volontairement petit : `PUT /memory/{clé}` (le `MemoryRecord` en JSON), `GET /memory/{clé}`,
+  `DELETE /memory/{clé}?rev=`, `GET /admin/index` ; jeton Bearer (`AURANE_MEMORY_URL`, `AURANE_MEMORY_TOKEN`,
+  Vaultwarden collection `aurane`).
+- `MirroredMemoryStore` : Postgres d'abord, miroir en arrière-plan par une **outbox durable** ; lecture à froid
+  depuis l'instance quand Postgres ne connaît pas la clé (retour d'une saison à l'autre, base restaurée).
+- **Clé de mémoire** : `account:<id>` dès que la Colonie a un compte (passkey ou e-mail vérifié : la mémoire
+  d'invité y est fusionnée, `adoptSessions`) — c'est ce qui la fait traverser les saisons ; sinon
+  `season:<SEASON_SEED>:<colonie>` (la Colonie homonyme de la saison suivante ne la lit jamais). Les lignes d'avant
+  (clé = id nu) sont migrées au démarrage si la Colonie est dans le monde, comptées `orphans` sinon.
+  **Une graine de saison ne se réutilise jamais.**
+
+### Fiabilité de la mémoire (audit 26.09.2026)
+
+- **Outbox** (`memory_outbox` en Postgres, une ligne par clé, la dernière opération gagne : effacement > fusion >
+  écriture) : chaque écriture y entre dans la même séquence que Postgres ; vidée toutes les 5 s et à chaque écriture,
+  backoff exponentiel (5 s → 10 min) tant que l'instance ne confirme pas. Elle survit à un redémarrage du monde.
+- **Révisions** : chaque écriture porte `rev` (horloge ms monotone) ; l'instance refuse (409) une révision plus
+  ancienne que la sienne ou pas plus récente qu'un effacement : un PUT en retard n'écrase jamais un état plus récent
+  et ne ressuscite pas une mémoire effacée (l'effacement laisse une pierre tombale sans données).
+- **Fusion** : si l'instance ne répondait pas au moment où Postgres découvrait une clé, l'opération est `merge`
+  (GET, fusion, PUT) et non un écrasement : un retour de saison pendant une panne ne perd pas le passé.
+- **Réconciliation** au démarrage puis toutes les heures (`/admin/index` contre `general_memory`) : pousse ce qui
+  manque ou est en retard sur l'instance, ramène ce que l'instance a de plus récent (Postgres restauré), fait tenir
+  un effacement des deux côtés. Échec → nouvel essai une minute plus tard.
+- **Écritures atomiques** : `MemoryStore.update(clé, fn)` (verrou consultatif de transaction en Postgres, file par
+  clé dans le processus) ; talk, choix du Conseil et épisodes ne s'écrasent plus pendant qu'un modèle répond.
+- **Bornes et schéma** : `normalizeMemory` à chaque lecture (JSON corrompu, formes fausses → enregistrement sûr,
+  compté dans `aurane_memory_repairs_total`) ; bornes par couche (choix 60, épisodes 14, autres notes 40, formules
+  10, saisons 20, 600 caractères) : les choix ne chassent plus les épisodes ; `v` = `MEMORY_SCHEMA` (1).
+- **Instance** : WAL, `synchronous=FULL`, `busy_timeout` 5 s, `quick_check` au démarrage (`/healthz` en 503 si la
+  base est corrompue, sans boucle de redémarrage), schéma versionné (`PRAGMA user_version`).
+- **Sauvegarde** (`deploy/backup/pg-backup.sh`, 04:20) : `pg_dump` → `s3://aurane-backups/pg/`, et `POST
+  /admin/backup` de l'instance (`VACUUM INTO`, copie vérifiée, jamais le fichier vivant) →
+  `s3://aurane-backups/memory/*.db.gz` ; rétention 14 jours ; chaque succès est écrit dans `ops_backups`, un échec
+  fait échouer l'unité. Tests de restauration hebdomadaires (`aurane-restore-test.timer` : `pg-restore-test.sh`,
+  `memory-restore-test.sh`) ; restauration d'urgence de l'instance : `memory-restore.sh <objet> --yes` puis
+  réconciliation.
+- **Alerte** : `GET /api/admin/memory/health` (`x-admin-token`, 503 dès qu'un problème est listé : outbox non vidée
+  depuis `AURANE_MEMORY_ALERT_OUTBOX_S` (900 s), 3 échecs de suite, réconciliation en échec, sauvegarde `pg` ou
+  `memory` de plus de `AURANE_MEMORY_ALERT_BACKUP_H` (26 h)) pour un moniteur Uptime Kuma ; métriques
+  `aurane_memory_*` et `aurane_backup_age_seconds{kind}` dans le scrape Prometheus.
 
 ## Ce qui change pour le client (`apps/web`, session cloud)
 
@@ -209,7 +242,13 @@ monde n'attend jamais la mémoire. Côté couche LLM :
 
 ## Limites connues
 
-- La file et la mémoire vivent hors instantané : un `docker compose down -v` les perd (le monde aussi).
+- La file et la mémoire vivent hors instantané : un `docker compose down -v` les perd (le monde aussi) ; la
+  mémoire longue se restaure alors depuis `s3://aurane-backups/memory/` (`memory-restore.sh`).
+- Le retour d'un compte à la saison suivante (`colonyOfAccount` renvoie 404 « no colony this season ») n'a pas
+  encore de parcours de création de Colonie liée au compte : la mémoire `account:` attend ce parcours, elle est
+  retrouvée dès que la nouvelle Colonie est liée au compte (test `apps/world/test/memory.test.ts`).
+- Les mémoires d'invités des saisons passées (`season:…`) et les lignes `orphans` ne sont plus lues ; elles ne sont
+  pas purgées automatiquement (à décider : durée de conservation des données d'invités).
 - La projection d'Énergie compte le stock total de la Colonie ; le moteur paie l'entretien depuis les
   entrepôts des deux stations puis la capitale : l'ordre d'extinction est exact, le nombre de Tirages est
   une borne optimiste quand les avant-postes sont vides.

@@ -4,12 +4,12 @@
 import type { Policy } from '@aurane/protocol';
 import { apply, isAlly, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
+  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, isEmptyMemory, memoryRepairs, mergeMemory, normalizeMemory, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
-  type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
+  type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type MirrorOutbox, type MirrorStats, type Turn,
 } from '@aurane/general';
 import type { Config } from './config.js';
-import type { BudgetStore } from './llmstore.js';
+import type { BackupStatus, BudgetStore } from './llmstore.js';
 
 export interface GeneralDeps {
   world: () => World;
@@ -17,6 +17,13 @@ export interface GeneralDeps {
   dirty: (colonyId: string) => void;
   jobStore?: JobStore | undefined;
   memoryStore?: MemoryStore | undefined;
+  /** Durable outbox of the mirror (Postgres in production); in memory when absent. */
+  mirrorOutbox?: MirrorOutbox | undefined;
+  /** The memory key of a colony: `account:<id>` once it belongs to an account (the memory follows the player from one
+   *  season to the next), else `season:<seed>:<colony>` (a guest's memory never leaks to next season's namesake). */
+  memoryKey?: ((colonyId: string) => Promise<string>) | undefined;
+  /** Last successful backups (deploy/backup), for the metrics and the health check. */
+  backupStatus?: (() => Promise<BackupStatus[]>) | undefined;
   budgetStore?: BudgetStore | undefined;
   /** Doctrines awaiting the player's yes, kept across a restart (Postgres or a file); memory only when absent. */
   pendingStore?: PendingDoctrineStore | undefined;
@@ -55,6 +62,11 @@ export class GeneralService {
   private readonly mirror: MirroredMemoryStore | null = null;
   private readonly budgetStore: BudgetStore | null;
   private readonly pendingStore: PendingDoctrineStore | null;
+  private readonly primaryMemory: MemoryStore;
+  private readonly memoryKeys = new Map<string, string>();
+  private backups: BackupStatus[] = [];
+  private backupsReadAt = 0;
+  legacyMemory = { migrated: 0, orphans: 0 };
   private lastBudgetSave = 0;
   private talks = new Map<string, Turn[]>();
   private langs = new Map<string, 'fr' | 'en'>();
@@ -80,8 +92,9 @@ export class GeneralService {
     for (const w of this.stack.warnings) console.warn(JSON.stringify({ msg: 'llm config', warning: w }));
     this.quota = new PlayerQuota(cfg.quotas);
     const primary = deps.memoryStore ?? new InMemoryMemoryStore();
+    this.primaryMemory = primary;
     if (cfg.memoryUrl && cfg.memoryToken) {
-      this.mirror = new MirroredMemoryStore(primary, new HttpMemoryStore(cfg.memoryUrl, cfg.memoryToken), (err) => console.warn(JSON.stringify({ msg: 'memory instance', error: err.message })));
+      this.mirror = new MirroredMemoryStore(primary, new HttpMemoryStore(cfg.memoryUrl, cfg.memoryToken), (err) => console.warn(JSON.stringify({ msg: 'memory instance', error: err.message })), { outbox: deps.mirrorOutbox });
       this.memoryStore = this.mirror;
     } else this.memoryStore = primary;
     this.budgetStore = deps.budgetStore ?? null;
@@ -101,7 +114,8 @@ export class GeneralService {
     this.scheduler.handle<EpisodeJob, string>('episode', (job) => this.runEpisode(job.payload));
   }
 
-  /** Restore the month's spend so the cap survives a restart, and the doctrines still waiting for a yes. */
+  /** Restore the month's spend so the cap survives a restart, the doctrines still waiting for a yes, and move memories
+   *  still keyed by a bare colony id. */
   async init(): Promise<void> {
     if (this.budgetStore) {
       const month = LlmMetrics.monthKey();
@@ -115,6 +129,7 @@ export class GeneralService {
         }
       } catch (err) { console.warn(JSON.stringify({ msg: 'pending doctrines load', error: (err as Error).message })); }
     }
+    try { await this.migrateLegacyMemory(); } catch (err) { console.warn(JSON.stringify({ msg: 'memory legacy keys', error: (err as Error).message })); }
   }
 
   /** The month's cap is reached: no model for anyone, in-character lines everywhere (decision 0009: never a silence). */
@@ -124,8 +139,61 @@ export class GeneralService {
     return true;
   }
 
-  start(): void { this.scheduler.start(); }
-  async stop(): Promise<void> { await this.scheduler.stop(); await this.pendingWrites; }
+  start(): void { this.scheduler.start(); this.mirror?.start({ flushMs: this.cfg.memoryFlushMs, reconcileMs: this.cfg.memoryReconcileMs }); }
+  async stop(): Promise<void> { await this.scheduler.stop(); await this.pendingWrites; await this.mirror?.stop(); }
+
+  // --- memory keys ------------------------------------------------------------------
+
+  private async keyOf(colonyId: string): Promise<string> {
+    const k = this.memoryKeys.get(colonyId);
+    if (k) return k;
+    const key = this.deps.memoryKey ? await this.deps.memoryKey(colonyId) : colonyId;
+    this.memoryKeys.set(colonyId, key);
+    return key;
+  }
+  private seasonKey(colonyId: string): string { return `season:${this.cfg.seasonSeed}:${colonyId}`; }
+
+  /** Erase one key everywhere; `null` = no instance configured, `pending` = the instance will hear it from the outbox. */
+  private async eraseKey(key: string): Promise<{ mirror: boolean | null; pending: boolean }> {
+    if (this.mirror) { const r = await this.mirror.erase(key); return { mirror: r.mirror, pending: r.pending }; }
+    await this.primaryMemory.save(key, emptyMemory());
+    return { mirror: null, pending: false };
+  }
+
+  /** Move a memory from one key to another (merged with what is there), then erase the old key on both sides. */
+  private async moveMemory(from: string, to: string): Promise<boolean> {
+    if (from === to) return false;
+    const old = await this.memoryStore.load(from);
+    if (!old || isEmptyMemory(old)) return false;
+    await this.memoryStore.update(to, (cur) => mergeMemory(cur, old));
+    await this.eraseKey(from);
+    return true;
+  }
+
+  /** Push what the outbox holds now (tests, admin); the timer does it on its own every `memoryFlushMs`. */
+  async flushMemory(): Promise<number> { return this.mirror ? this.mirror.flush() : 0; }
+
+  /** A colony now belongs to an account (first passkey or verified e-mail): its guest memory joins the account's. */
+  async adoptMemory(colonyId: string): Promise<void> {
+    this.memoryKeys.delete(colonyId);
+    const to = await this.keyOf(colonyId);
+    await this.moveMemory(this.seasonKey(colonyId), to);
+  }
+
+  /** Rows written before memory keys existed carry the bare colony id: moved to the colony's key when the colony is in
+   *  this world; left alone otherwise (a past season's id: never read again, counted). */
+  async migrateLegacyMemory(): Promise<{ migrated: number; orphans: number }> {
+    if (!this.primaryMemory.index) return this.legacyMemory;
+    const w = this.deps.world();
+    for (const e of await this.primaryMemory.index()) {
+      if (e.key.includes(':') || e.empty) continue;
+      const c = w.colonies[e.key];
+      if (c && !c.npc && await this.moveMemory(e.key, await this.keyOf(c.id))) this.legacyMemory.migrated++;
+      else this.legacyMemory.orphans++;
+    }
+    if (this.legacyMemory.migrated || this.legacyMemory.orphans) console.log(JSON.stringify({ msg: 'memory legacy keys', ...this.legacyMemory }));
+    return this.legacyMemory;
+  }
 
   // --- context ---------------------------------------------------------------
 
@@ -145,7 +213,7 @@ export class GeneralService {
   }
 
   private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string; facts: ReturnType<typeof factsFrom> }> {
-    const record = withJournalChoices((await this.memoryStore.load(c.id)) ?? emptyMemory(), c);
+    const record = withJournalChoices((await this.memoryStore.load(await this.keyOf(c.id))) ?? emptyMemory(), c);
     const facts = factsFrom(this.deps.world(), c);
     return { record, text: renderMemory(facts, record, lang), facts };
   }
@@ -200,7 +268,8 @@ export class GeneralService {
     if (!c) throw new Error('colony gone');
     const mem = await this.memoryOf(c, p.lang);
     const res = await converse({ text: p.text, lang: p.lang, persona: c.persona, history: this.history(c.id), ctx: this.context(c, p.lang), analysis: this.analysisOf(c), memory: mem.text, seed: p.seed }, this.stack.voice);
-    if (res.usedPhrases.length) await this.memoryStore.save(c.id, rememberPhrases(mem.record, res.usedPhrases));
+    // Re-read at write time: a choice or an episode written while the model was answering must not be lost.
+    if (res.usedPhrases.length) await this.memoryStore.update(await this.keyOf(c.id), (cur) => rememberPhrases(withJournalChoices(cur ?? emptyMemory(), c), res.usedPhrases));
     return res;
   }
 
@@ -443,8 +512,7 @@ export class GeneralService {
     const view = this.counsels.get(`${c.id}:${lang}`) ?? this.counsels.get(`${c.id}:${lang === 'fr' ? 'en' : 'fr'}`);
     const card = view?.cards.find((x) => x.id === cardId);
     if (!card) return { ok: false, reason: 'no such card' };
-    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
-    await this.memoryStore.save(c.id, recordChoice(mem, take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordChoice(cur ?? emptyMemory(), take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
     let result: unknown = null;
     if (take && card.command) { result = apply(this.deps.world(), c.id, card.command); this.deps.dirty(c.id); }
     if (view) view.cards = view.cards.filter((x) => x.id !== card.id);
@@ -462,12 +530,12 @@ export class GeneralService {
     const since = (p.day - 1) * 86400, until = p.day * 86400;
     const events = w.events.filter((e) => e.at >= since && e.at < until && (e.actors.includes(c.id) || e.kind === 'draw'));
     const names: Record<string, string> = {}; for (const o of Object.values(w.colonies)) names[o.id] = o.name;
-    const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
+    const mem = (await this.memoryStore.load(await this.keyOf(c.id))) ?? emptyMemory();
     const choices = choicesOf(mem);
     const label = (id: string): string => describeChoice(id, p.lang, (x) => w.galaxy.systems[x]?.name ?? names[x] ?? x);
     const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).map(label).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).map(label).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).map(label).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).map(label).join(', ')}.`) : ''].filter(Boolean).join('\n');
     const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.voice);
-    await this.memoryStore.save(c.id, recordEpisode(mem, p.day, r.text, Date.now()));
+    await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordEpisode(cur ?? emptyMemory(), p.day, r.text, Date.now()));
     return r.text;
   }
 
@@ -491,25 +559,93 @@ export class GeneralService {
     return { facts: factsFrom(this.deps.world(), c), record: mem.record, rendered: mem.text, stores: this.mirror ? ['postgres', 'instance'] : ['postgres'] };
   }
 
-  /** Erase everywhere: the world's copy and the long-memory instance; `mirror` says whether the instance confirmed. */
-  async eraseMemory(colonyId: string): Promise<{ ok: boolean; mirror: boolean | null }> {
+  /**
+   * Erase everywhere: every key this colony's memory may live under (its account or season key, a legacy bare id), in
+   * Postgres and on the instance. `mirror`: the instance confirmed (null without an instance); `pending`: it did not
+   * answer and the erasure stays queued in the outbox until it does (the player is told, not reassured).
+   */
+  async eraseMemory(colonyId: string): Promise<{ ok: boolean; mirror: boolean | null; pending: boolean }> {
     const c = this.colony(colonyId);
-    if (!c) return { ok: false, mirror: null };
-    let mirror: boolean | null = null;
-    if (this.mirror) mirror = (await this.mirror.erase(c.id)).mirror;
-    else await this.memoryStore.save(c.id, emptyMemory());
+    if (!c) return { ok: false, mirror: null, pending: false };
+    let mirror: boolean | null = this.mirror ? true : null;
+    let pending = false;
+    for (const key of new Set([await this.keyOf(c.id), this.seasonKey(c.id), c.id])) {
+      const r = await this.eraseKey(key);
+      if (r.mirror === false) mirror = false;
+      pending ||= r.pending;
+    }
     this.talks.delete(c.id);
     for (const lang of ['fr', 'en'] as const) { this.briefings.delete(`${c.id}:${lang}`); this.counsels.delete(`${c.id}:${lang}`); }
-    return { ok: true, mirror };
+    return { ok: true, mirror, pending };
   }
 
   // --- observability -----------------------------------------------------------
 
-  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null }; memory: { stores: string[]; mirrorFailures: number } }> {
-    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: { stores: this.mirror ? ['postgres', 'instance'] : ['postgres'], mirrorFailures: this.mirror?.mirrorFailures ?? 0 } };
+  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null }; memory: Awaited<ReturnType<GeneralService['memoryHealth']>> }> {
+    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: await this.memoryHealth() };
   }
 
-  prometheus(): string { return this.metrics.prometheus(); }
+  private async readBackups(): Promise<BackupStatus[]> {
+    if (!this.deps.backupStatus || Date.now() - this.backupsReadAt < 60000) return this.backups;
+    this.backupsReadAt = Date.now();
+    try { this.backups = await this.deps.backupStatus(); } catch (err) { console.warn(JSON.stringify({ msg: 'backup status', error: (err as Error).message })); }
+    return this.backups;
+  }
+
+  /**
+   * The memory's health, for the admin snapshot, the Prometheus scrape and an Uptime Kuma check
+   * (`GET /api/admin/memory/health`, 503 when a problem is listed): mirror failing, outbox not draining, reconciliation
+   * failing, a backup older than `MEMORY_ALERT_BACKUP_H` hours.
+   */
+  async memoryHealth(): Promise<{ ok: boolean; problems: string[]; stores: string[]; mirrorFailures: number; mirror: MirrorStats | null; repairs: number; legacy: { migrated: number; orphans: number }; backups: (BackupStatus & { ageS: number })[] }> {
+    const now = Date.now();
+    await this.mirror?.refreshStats().catch(() => undefined);
+    const backups = (await this.readBackups()).map((b) => ({ ...b, ageS: Math.round((now - b.at) / 1000) }));
+    const problems: string[] = [];
+    const s = this.mirror?.stats ?? null;
+    if (s) {
+      if (s.outboxDepth > 0 && s.outboxOldestAgeS >= this.cfg.memoryAlertOutboxS) problems.push(`outbox: ${s.outboxDepth} write(s) waiting, oldest ${s.outboxOldestAgeS} s`);
+      if (s.consecutiveFailures >= 3) problems.push(`mirror: ${s.consecutiveFailures} consecutive failures (${s.lastError ?? '?'})`);
+      if (s.reconcile.error) problems.push(`reconcile: ${s.reconcile.error}`);
+    }
+    if (this.deps.backupStatus) {
+      for (const kind of this.mirror ? ['pg', 'memory'] : ['pg']) {
+        const b = backups.find((x) => x.kind === kind);
+        if (!b) problems.push(`backup ${kind}: never recorded`);
+        else if (b.ageS > this.cfg.memoryAlertBackupH * 3600) problems.push(`backup ${kind}: last success ${Math.round(b.ageS / 3600)} h ago`);
+      }
+    }
+    return { ok: problems.length === 0, problems, stores: this.mirror ? ['postgres', 'instance'] : ['postgres'], mirrorFailures: s?.consecutiveFailures ?? 0, mirror: s, repairs: memoryRepairs.count, legacy: this.legacyMemory, backups };
+  }
+
+  async prometheus(): Promise<string> {
+    const h = await this.memoryHealth();
+    const L: string[] = [];
+    const s = h.mirror;
+    L.push('# TYPE aurane_memory_healthy gauge', `aurane_memory_healthy ${h.ok ? 1 : 0}`);
+    L.push('# TYPE aurane_memory_repairs_total counter', `aurane_memory_repairs_total ${h.repairs}`);
+    if (s) {
+      L.push('# TYPE aurane_memory_mirror_ok_total counter', `aurane_memory_mirror_ok_total ${s.ok}`);
+      L.push('# TYPE aurane_memory_mirror_failures_total counter', `aurane_memory_mirror_failures_total ${s.failures}`);
+      L.push('# TYPE aurane_memory_mirror_consecutive_failures gauge', `aurane_memory_mirror_consecutive_failures ${s.consecutiveFailures}`);
+      if (s.lastOkAt) L.push('# TYPE aurane_memory_mirror_last_success_timestamp_seconds gauge', `aurane_memory_mirror_last_success_timestamp_seconds ${Math.round(s.lastOkAt / 1000)}`);
+      L.push('# TYPE aurane_memory_outbox_depth gauge', `aurane_memory_outbox_depth ${s.outboxDepth}`);
+      L.push('# TYPE aurane_memory_outbox_oldest_seconds gauge', `aurane_memory_outbox_oldest_seconds ${s.outboxOldestAgeS}`);
+      if (s.reconcile.at) {
+        L.push('# TYPE aurane_memory_reconcile_last_timestamp_seconds gauge', `aurane_memory_reconcile_last_timestamp_seconds ${Math.round(s.reconcile.at / 1000)}`);
+        L.push('# TYPE aurane_memory_reconcile_drift gauge');
+        for (const k of ['pushed', 'pulled', 'erased'] as const) L.push(`aurane_memory_reconcile_drift{kind="${k}"} ${s.reconcile[k]}`);
+        L.push('# TYPE aurane_memory_reconcile_error gauge', `aurane_memory_reconcile_error ${s.reconcile.error ? 1 : 0}`);
+      }
+    }
+    if (h.backups.length) {
+      L.push('# TYPE aurane_backup_last_success_timestamp_seconds gauge');
+      for (const b of h.backups) L.push(`aurane_backup_last_success_timestamp_seconds{kind="${b.kind}"} ${Math.round(b.at / 1000)}`);
+      L.push('# TYPE aurane_backup_age_seconds gauge');
+      for (const b of h.backups) L.push(`aurane_backup_age_seconds{kind="${b.kind}"} ${b.ageS}`);
+    }
+    return this.metrics.prometheus() + L.join('\n') + '\n';
+  }
 }
 
 // --- synchronous fallbacks (no model, no await on the queue) --------------------
@@ -522,7 +658,8 @@ function withJournalChoices(record: MemoryRecord, c: Colony): MemoryRecord {
   if (!fromJournal.length) return record;
   const seen = new Set(record.notes.map((n) => `${n.kind}|${n.text}|${n.at}`));
   const extra = fromJournal.map((j) => ({ at: Math.round(j.at * 1000), kind: j.kind, text: j.note! })).filter((n) => !seen.has(`${n.kind}|${n.text}|${n.at}`));
-  return { ...record, notes: [...record.notes, ...extra].sort((a, b) => a.at - b.at).slice(-80) };
+  // Bounded per layer (normalizeMemory): a long journal of choices no longer pushes the episodes out.
+  return normalizeMemory({ ...record, notes: [...record.notes, ...extra].sort((a, b) => a.at - b.at) }) ?? record;
 }
 
 function converseSync(text: string, lang: 'fr' | 'en', c: Colony, ctx: DoctrineContext): ConverseResult {

@@ -164,9 +164,11 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         }
         if (req.method === 'GET' && url.pathname === '/api/admin/invites') return json(res, 200, { invites: await engine.invites() });
         if (req.method === 'GET' && url.pathname === '/api/admin/llm/metrics') {
-          if (url.searchParams.get('format') === 'prometheus') { const body = engine.general.prometheus(); res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); return res.end(body); }
+          if (url.searchParams.get('format') === 'prometheus') { const body = await engine.general.prometheus(); res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); return res.end(body); }
           return json(res, 200, await engine.general.snapshot());
         }
+        // For Uptime Kuma (HTTP monitor with the x-admin-token header): 503 as soon as a problem is listed.
+        if (req.method === 'GET' && url.pathname === '/api/admin/memory/health') { const h = await engine.general.memoryHealth(); return json(res, h.ok ? 200 : 503, h); }
         return json(res, 404, { error: 'not found' });
       }
       const token = bearer(req);

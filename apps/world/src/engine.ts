@@ -44,23 +44,28 @@ export class Engine {
   private cosmeticsTimer: NodeJS.Timeout | null = null;
 
   constructor(readonly cfg: Config, private readonly store: Store, generalDeps: Partial<GeneralDeps> = {}) {
-    this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, ...generalDeps });
+    this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, memoryKey: (id) => this.memoryKeyOf(id), ...generalDeps });
   }
 
   async init(): Promise<void> {
     let snap = await this.store.loadSnapshot();
+    let carriedId = 1;
     // A new seed or radius in the configuration means a new season: the old world is archived, a fresh one starts.
     // The radius may have grown during the season (galaxy growth): the base radius is what the season was configured with.
     if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.baseRadius ?? snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
       const label = `${snap.state.seed}-${Math.floor(snap.state.time)}`;
       console.log(`[world] season changed (seed ${this.cfg.seasonSeed}, radius ${this.cfg.galaxyRadius}): archiving the previous world as ${label}`);
       await this.store.archiveSnapshot(label);
+      // Ids are a per-world counter: a fresh world would hand the first human of every season the same id (C3d), and
+      // that id keys the session tokens, the account links and the General's memory. The counter carries on instead.
+      carriedId = Math.max(1, Number((snap.state as { nextId?: number }).nextId) || 1);
       snap = null;
     }
     if (snap) {
       this.world = restoreWorld(snap);
     } else {
       this.world = createWorld(this.cfg.seasonSeed, { radius: this.cfg.galaxyRadius, seasonDays: this.cfg.seasonDays });
+      this.world.nextId = Math.max(this.world.nextId, carriedId);
       for (let i = 0; i < this.cfg.npcCount; i++) {
         const faction = FACTIONS[i % FACTIONS.length] as Faction;
         const persona = PERSONAS[(i * 7 + Math.floor(i / 4)) % PERSONAS.length] as Persona;
@@ -241,9 +246,16 @@ export class Engine {
     return { token, colony };
   }
 
-  /** Once an account exists, every live session of its colony belongs to it. */
+  /** Once an account exists, every live session of its colony belongs to it, and so does the General's memory. */
   async adoptSessions(colonyId: string, accountId: string): Promise<void> {
     for (const p of await this.store.listPlayers(colonyId)) if (!p.accountId && !p.revokedAt) await this.store.updatePlayer(p.id, { accountId });
+    await this.general.adoptMemory(colonyId).catch((err: Error) => console.warn(JSON.stringify({ msg: 'memory adopt', colonyId, error: err.message })));
+  }
+
+  /** The General's memory follows the account across seasons; a guest's stays with its colony and its season. */
+  async memoryKeyOf(colonyId: string): Promise<string> {
+    const account = await this.store.accountOfColony(colonyId);
+    return account ? `account:${account}` : `season:${this.cfg.seasonSeed}:${colonyId}`;
   }
 
   /** The colony an account plays this season, if it is still in the world. */

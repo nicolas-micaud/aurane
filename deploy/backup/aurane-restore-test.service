@@ -1,0 +1,7 @@
+[Unit]
+Description=Aurane — restore tests of the latest backups (Postgres, long memory)
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/srv/aurane/backup/pg-restore-test.sh
+ExecStart=/srv/aurane/backup/memory-restore-test.sh
