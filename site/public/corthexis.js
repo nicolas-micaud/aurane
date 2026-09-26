@@ -1,3 +1,4 @@
+/* global document, window, matchMedia, performance, requestAnimationFrame, IntersectionObserver, addEventListener, setTimeout, clearTimeout */
 // Corthexis on the landing: a Colony's memory growing over two seasons, drawn on a canvas.
 // No dependency. The story is scripted (not live data); labels come from the page (#cx-data, FR/EN).
 (() => {
