@@ -572,3 +572,9 @@ code compris, dans ses logs : `docker compose logs world | grep '\[mail\]'` donn
 Dès que Nick a tranché Infomaniak ou Resend : poser les cinq variables, redémarrer `world`, vérifier `mail: smtp`
 dans `world up`, puis un envoi réel vers Nick depuis l'onglet Compte (« Ajouter un e-mail de secours »). Pour
 Resend, `SMTP_USER=resend`, `SMTP_PASS=<clé scopée playaurane.com>`, `MAIL_FROM=Aurane <noreply@playaurane.com>`.
+
+**Réponse (gmk1, 26.09.2026)** — PR 23 (comptes lots B et C, premier contact `firstContact`, 0011, dossiers d'analyse)
+fusionnée sur le go de Nick (`91a176b`) : build, lint et 167 tests verts sur main, déployée. `world up` : saison beta-1,
+32 colonies, `mail: log` (pas de SMTP : les codes de secours partent dans les logs de world en attendant le serveur de
+mail ninabot), `/healthz` 200, `/api/auth/passkey/login/options` 200. `RP_ID` non posé : domaine enregistrable de
+`PUBLIC_ORIGIN` = `playaurane.com`.
