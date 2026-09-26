@@ -243,3 +243,8 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .doctrine-card .acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .doctrine-card .acts button { min-height: 40px; padding: 8px 14px; font-size: 14px; }
 @media (max-width: 899px) { .doctrine-card .acts button { flex: 1 1 0; } }
+
+/* A returning account (new season): the founding form opens with the General's word, no invitation. */
+.landing .returning { border: 1px solid rgba(125,211,252,.35); background: rgba(125,211,252,.08); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; text-align: left; }
+.landing .returning b { color: var(--accent); display: block; font-size: 13px; letter-spacing: .04em; }
+.landing .returning p { margin: 4px 0 0; font-style: italic; }
