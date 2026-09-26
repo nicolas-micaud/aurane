@@ -12,6 +12,13 @@ export interface PlayerRecord { id: string; colonyId: string; tokenHash: string;
 export interface AccountRecord { id: string; createdAt: number; lang: 'fr' | 'en'; email: string | null; emailVerifiedAt: number | null }
 /** A passkey: the public key the authenticator handed us, its signature counter, a label for the list. */
 export interface CredentialRecord { id: string; accountId: string; publicKey: string; counter: number; transports: string[]; label: string; createdAt: number; lastUsedAt: number | null }
+/** Decision 0011: what an account bought, held by the ACCOUNT (never the season's Colony) and never read by the
+ *  simulation. `externalRef` is the provider's reference (Stripe Checkout Session id), unique: webhooks are replayed. */
+export interface EntitlementRecord {
+  id: string; accountId: string; sku: string; source: 'stripe';
+  externalRef: string; /** The provider's payment reference (Stripe PaymentIntent), to revoke on a refund. */ paymentRef: string | null;
+  amountCents: number; currency: string; createdAt: number; expiresAt: number | null; revokedAt: number | null;
+}
 export interface InviteRecord { code: string; note: string; createdAt: number; usedBy: string | null; usedAt: number | null }
 
 export interface Store {
@@ -47,8 +54,18 @@ export interface Store {
   listInvites(): Promise<InviteRecord[]>;
   /** Make a used invitation usable again (its colony belonged to a season that is over). */
   releaseInvite(code: string): Promise<void>;
+  /** Records a purchase; false (and nothing written) when this external reference was already granted. */
+  grantEntitlement(e: EntitlementRecord): Promise<boolean>;
+  listEntitlements(accountId: string): Promise<EntitlementRecord[]>;
+  /** Marks revoked the entitlement(s) bought with this external or payment reference; the number of rows touched. */
+  revokeEntitlement(ref: string, at: number): Promise<number>;
+  /** Accounts holding this SKU right now (not revoked, not expired). */
+  accountsWithSku(sku: string, now: number): Promise<string[]>;
   close(): Promise<void>;
 }
+
+const activeAt = (e: EntitlementRecord, now: number): boolean => e.revokedAt === null && (e.expiresAt === null || e.expiresAt > now);
+
 
 export class FileStore implements Store {
   private players = new Map<string, PlayerRecord>();
@@ -56,6 +73,7 @@ export class FileStore implements Store {
   private accounts = new Map<string, AccountRecord>();
   private credentials = new Map<string, CredentialRecord>();
   private links: { accountId: string; colonyId: string; createdAt: number }[] = [];
+  private entitlements: EntitlementRecord[] = [];
   private loaded = false;
   constructor(private readonly dir: string) {}
 
@@ -77,6 +95,12 @@ export class FileStore implements Store {
       for (const c of raw.credentials) this.credentials.set(c.id, c);
       this.links = raw.links;
     } catch { /* first run */ }
+    try { this.entitlements = JSON.parse(await readFile(join(this.dir, 'entitlements.json'), 'utf8')) as EntitlementRecord[]; } catch { /* first run */ }
+  }
+  private async flushEntitlements(): Promise<void> {
+    const tmp = join(this.dir, 'entitlements.json.tmp');
+    await writeFile(tmp, JSON.stringify(this.entitlements));
+    await rename(tmp, join(this.dir, 'entitlements.json'));
   }
   private async flushAccounts(): Promise<void> {
     await writeFile(join(this.dir, 'accounts.json'), JSON.stringify({ accounts: [...this.accounts.values()], credentials: [...this.credentials.values()], links: this.links }));
@@ -182,6 +206,29 @@ export class FileStore implements Store {
     await this.flushInvites();
   }
 
+  async grantEntitlement(e: EntitlementRecord): Promise<boolean> {
+    await this.ensure();
+    if (this.entitlements.some((x) => x.externalRef === e.externalRef)) return false;
+    this.entitlements.push({ ...e });
+    await this.flushEntitlements();
+    return true;
+  }
+  async listEntitlements(accountId: string): Promise<EntitlementRecord[]> {
+    await this.ensure();
+    return this.entitlements.filter((e) => e.accountId === accountId).sort((a, b) => a.createdAt - b.createdAt).map((e) => ({ ...e }));
+  }
+  async revokeEntitlement(ref: string, at: number): Promise<number> {
+    await this.ensure();
+    let n = 0;
+    for (const e of this.entitlements) if ((e.externalRef === ref || e.paymentRef === ref) && e.revokedAt === null) { e.revokedAt = at; n++; }
+    if (n) await this.flushEntitlements();
+    return n;
+  }
+  async accountsWithSku(sku: string, now: number): Promise<string[]> {
+    await this.ensure();
+    return [...new Set(this.entitlements.filter((e) => e.sku === sku && activeAt(e, now)).map((e) => e.accountId))];
+  }
+
   async close(): Promise<void> { /* nothing to release */ }
 }
 
@@ -207,6 +254,9 @@ export class PgStore implements Store {
       create index if not exists credentials_account_idx on credentials (account_id);
       create table if not exists account_colonies (account_id text not null references accounts(id), colony_id text not null, created_at bigint not null, primary key (account_id, colony_id));
       create index if not exists account_colonies_colony_idx on account_colonies (colony_id);
+      create table if not exists entitlements (id text primary key, account_id text not null references accounts(id), sku text not null, source text not null, external_ref text not null unique, payment_ref text, amount_cents integer not null, currency text not null, created_at bigint not null, expires_at bigint, revoked_at bigint);
+      create index if not exists entitlements_account_idx on entitlements (account_id);
+      create index if not exists entitlements_payment_idx on entitlements (payment_ref) where payment_ref is not null;
     `);
   }
 
@@ -334,6 +384,26 @@ export class PgStore implements Store {
   }
   async releaseInvite(code: string): Promise<void> {
     await this.pool.query('update invites set used_by = null, used_at = null where code = $1', [code]);
+  }
+
+  private static entitlement(row: { id: string; account_id: string; sku: string; source: string; external_ref: string; payment_ref: string | null; amount_cents: number; currency: string; created_at: string; expires_at: string | null; revoked_at: string | null }): EntitlementRecord {
+    return { id: row.id, accountId: row.account_id, sku: row.sku, source: 'stripe', externalRef: row.external_ref, paymentRef: row.payment_ref, amountCents: Number(row.amount_cents), currency: row.currency, createdAt: Number(row.created_at), expiresAt: row.expires_at !== null ? Number(row.expires_at) : null, revokedAt: row.revoked_at !== null ? Number(row.revoked_at) : null };
+  }
+  async grantEntitlement(e: EntitlementRecord): Promise<boolean> {
+    const r = await this.pool.query('insert into entitlements (id, account_id, sku, source, external_ref, payment_ref, amount_cents, currency, created_at, expires_at, revoked_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict (external_ref) do nothing', [e.id, e.accountId, e.sku, e.source, e.externalRef, e.paymentRef, e.amountCents, e.currency, e.createdAt, e.expiresAt, e.revokedAt]);
+    return (r.rowCount ?? 0) > 0;
+  }
+  async listEntitlements(accountId: string): Promise<EntitlementRecord[]> {
+    const r = await this.pool.query<Parameters<typeof PgStore.entitlement>[0]>('select * from entitlements where account_id = $1 order by created_at', [accountId]);
+    return r.rows.map((row) => PgStore.entitlement(row));
+  }
+  async revokeEntitlement(ref: string, at: number): Promise<number> {
+    const r = await this.pool.query('update entitlements set revoked_at = $2 where (external_ref = $1 or payment_ref = $1) and revoked_at is null', [ref, at]);
+    return r.rowCount ?? 0;
+  }
+  async accountsWithSku(sku: string, now: number): Promise<string[]> {
+    const r = await this.pool.query<{ account_id: string }>('select distinct account_id from entitlements where sku = $1 and revoked_at is null and (expires_at is null or expires_at > $2)', [sku, now]);
+    return r.rows.map((x) => x.account_id);
   }
 
   async close(): Promise<void> { await this.pool.end(); }

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { limitsFromEnv, type QuotaLimits } from '@aurane/general';
 import { rpIdFor } from './auth.js';
+import { stripeConfigFromEnv, type StripeConfig } from './payments/stripe.js';
 
 export interface Config {
   port: number;
@@ -57,6 +58,9 @@ export interface Config {
   /** The dedicated long-memory instance of Aurane (PUT/GET/DELETE /memory/{colony}, Bearer); absent = Postgres only. */
   memoryUrl: string | null;
   memoryToken: string | null;
+  /** Stripe Managed Payments (decision 0011): null unless STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and
+   *  STRIPE_PRICE_SUPPORT_FOUNDER are all set; null = payments disabled. */
+  stripe: StripeConfig | null;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -95,5 +99,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     budgetAlertRatio: num(env.LLM_BUDGET_ALERT_RATIO, 0.8),
     memoryUrl: env.AURANE_MEMORY_URL || null,
     memoryToken: env.AURANE_MEMORY_TOKEN || null,
+    stripe: stripeConfigFromEnv(env),
   };
 }

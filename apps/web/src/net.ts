@@ -20,10 +20,40 @@ export async function createGuest(name: string, faction: Faction, persona: Perso
   setToken(token);
 }
 
-export interface PublicConfig { requireInvite: boolean; seasonDays: number; seasonSeed: string }
+/** Payments (decision 0011): enabled only when the server has Stripe configured; the SKUs on sale, price in CHF. */
+export interface PaymentsConfig { enabled: boolean; skus: { id: string; priceChf: number }[] }
+export interface PublicConfig { requireInvite: boolean; seasonDays: number; seasonSeed: string; payments?: PaymentsConfig }
 export async function fetchPublicConfig(): Promise<PublicConfig> {
   try { const r = await fetch('/api/public/config'); if (r.ok) return await r.json() as PublicConfig; } catch { /* offline */ }
   return { requireInvite: false, seasonDays: 56, seasonSeed: '' };
+}
+
+/** Back from Stripe's hosted page: `?paid=<sku>` (success) or `?paid=cancel`. Read once, then removed from the URL. */
+function readPaidReturn(): { sku: string } | 'cancel' | null {
+  try {
+    const q = new URLSearchParams(location.search);
+    const paid = q.get('paid');
+    if (!paid) return null;
+    q.delete('paid');
+    const rest = q.toString();
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+    return paid === 'cancel' ? 'cancel' : /^[a-z0-9_]{1,40}$/.test(paid) ? { sku: paid } : null;
+  } catch { return null; }
+}
+export const paidReturn = signal<{ sku: string } | 'cancel' | null>(readPaidReturn());
+
+export interface Entitlement { sku: string; createdAt: number; expiresAt: number | null; active: boolean }
+export async function fetchEntitlements(): Promise<{ payments: boolean; account: boolean; entitlements: Entitlement[] } | null> {
+  try { const res = await fetch('/api/account/entitlements', { headers: authHeaders() }); return res.ok ? await res.json() as { payments: boolean; account: boolean; entitlements: Entitlement[] } : null; } catch { return null; }
+}
+/** Opens Stripe's hosted checkout for this SKU; resolves only on failure (on success the page navigates away). */
+export async function startCheckout(sku: string, l: 'fr' | 'en'): Promise<{ ok: false; reason: string }> {
+  try {
+    const res = await fetch('/api/pay/checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ sku, lang: l }) });
+    const body = await res.json().catch(() => ({})) as { url?: string; error?: string };
+    if (res.ok && body.url) { location.assign(body.url); return await new Promise<never>(() => { /* navigating */ }); }
+    return { ok: false, reason: body.error ?? `http ${res.status}` };
+  } catch { return { ok: false, reason: 'network' }; }
 }
 
 /** Opens an existing colony on this device from a link code (see requestLink). */

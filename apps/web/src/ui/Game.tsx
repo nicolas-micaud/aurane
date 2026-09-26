@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, addPasskey, answerCounsel, confirmDoctrine, discardDoctrine, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchPendingDoctrine, fetchSessions, fetchTalk, logout, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { act, addPasskey, answerCounsel, confirmDoctrine, discardDoctrine, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchEntitlements, fetchPendingDoctrine, fetchPublicConfig, fetchSessions, fetchTalk, logout, paidReturn, startCheckout, type PaymentsConfig, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -19,12 +19,13 @@ type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplS
 const TPL_KEY: Record<string, TplKey> = { forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' };
 const selected = signal<string | null>(null);
 const linkFrom = signal<string | null>(null);
-const tab = signal<Tab>('colony');
+// Back from Stripe's checkout: straight to the Account tab, where the thanks and the title wait.
+const tab = signal<Tab>(paidReturn.value ? 'account' : 'colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
 /** The system whose plateau is open full-screen, or null for the galaxy. */
 export const systemMode = signal<string | null>(null);
 /** Bumped when something asks the panel to unfold (the Counsel's "Show me" on a phone), or to fold so the map shows. */
-const openPanel = signal(0);
+const openPanel = signal(paidReturn.value ? 1 : 0);
 const foldPanel = signal(0);
 
 export function Game() {
@@ -848,6 +849,61 @@ function EmailSection({ email, onChange, say }: { email: string | null; onChange
   );
 }
 
+/** « Soutenir Aurane » (decision 0011): a one-off purchase, a cosmetic founder title held by the account, zero effect on
+ *  the game. Hidden when the server has no payment provider, unless the title is already owned. */
+function SupportSection({ accountId, say }: { accountId: string | null; say: (text: string, kind?: 'ok' | 'err') => void }) {
+  const l = useSig(lang);
+  const ret = useSig(paidReturn);
+  const [cfg, setCfg] = useState<PaymentsConfig | null>(null);
+  const [ent, setEnt] = useState<Awaited<ReturnType<typeof fetchEntitlements>>>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void fetchPublicConfig().then((c) => setCfg(c.payments ?? { enabled: false, skus: [] })); }, []);
+  // The webhook may land a few seconds after Stripe sends the player back: poll until the title exists (30 s at most).
+  useEffect(() => {
+    let stop = false; let tries = 0;
+    const load = async (): Promise<void> => {
+      const e = await fetchEntitlements();
+      if (stop) return;
+      setEnt(e);
+      const has = e?.entitlements.some((x) => x.sku === 'support_founder' && x.active) ?? false;
+      if (!has && ret && ret !== 'cancel' && tries++ < 15) setTimeout(() => void load(), 2000);
+    };
+    void load();
+    return () => { stop = true; };
+  }, [ret, accountId]);
+  const owned = ent?.entitlements.some((x) => x.sku === 'support_founder' && x.active) ?? false;
+  const offer = cfg?.enabled ? cfg.skus.find((x) => x.id === 'support_founder') : undefined;
+  const back = ret !== null && ret !== 'cancel';
+  if (!owned && !offer && !back) return null;
+  const price = offer ? String(offer.priceChf) : '5';
+  const buy = async () => {
+    setBusy(true);
+    const r = await startCheckout('support_founder', l);
+    setBusy(false);
+    say(t('supportFailed').replace('{r}', tError(r.reason)), 'err');
+  };
+  return (
+    <>
+      <h3>{t('supportTitle')}</h3>
+      {owned ? (
+        <>
+          <p><span class="tag ok founder">✦ {t('founderTitle')}</span></p>
+          <p class="muted small">{back ? t('supportThanks') : t('supportOwned')}</p>
+        </>
+      ) : back ? (
+        <p class="muted small">{t('supportPending')}</p>
+      ) : (
+        <>
+          {ret === 'cancel' && <p class="muted small">{t('supportCancelled')}</p>}
+          <p class="muted small">{t('supportText').replace('{p}', price)}</p>
+          <p class="muted small">{t('supportLegal')}</p>
+          {ent && !ent.account ? <p class="muted small">{t('supportNeedsAccount')}</p> : <button class="primary" disabled={busy || !ent} onClick={() => void buy()}>{t('supportButton').replace('{p}', price)}</button>}
+        </>
+      )}
+    </>
+  );
+}
+
 function AccountPanel({ v }: { v: PlayerView }) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -897,6 +953,7 @@ function AccountPanel({ v }: { v: PlayerView }) {
       {passkeysSupported() ? <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button> : <p class="muted small">{t('passkeyUnsupported')}</p>}
       <h3>{t('rescueEmail')}</h3>
       <EmailSection email={account?.account?.email ?? null} onChange={load} say={say} />
+      <SupportSection accountId={account?.account?.id ?? null} say={say} />
       <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
       <ul class="list">
         {(sessions ?? []).map((s) => (
