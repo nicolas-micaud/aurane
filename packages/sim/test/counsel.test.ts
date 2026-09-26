@@ -43,4 +43,22 @@ describe('the Draw Counsel', () => {
     expect(apply(w, me.id, { type: 'counsel_answer', id: 'doctrine', taken: false }).ok).toBe(true);
     expect(me.journal.slice(-2).map((j) => `${j.kind}:${j.note}`)).toEqual(['counsel.taken:link:X', 'counsel.skipped:doctrine']);
   });
+
+  it('drops a look-only card once the player has been there, and keeps a card with a command until it is done', () => {
+    const w = createWorld('counsel4', { radius: 4 });
+    const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
+    expect(counsel(w, me)[0]!.id).toBe('touch');
+    // A skip does not end the lesson; going there does.
+    apply(w, me.id, { type: 'counsel_answer', id: 'touch', taken: false });
+    expect(counsel(w, me).some((c) => c.id === 'touch')).toBe(true);
+    apply(w, me.id, { type: 'counsel_answer', id: 'touch', taken: true });
+    expect(counsel(w, me).some((c) => c.id === 'touch')).toBe(false);
+    const link = counsel(w, me).find((c) => c.kind === 'link_first')!;
+    expect(apply(w, me.id, link.command!).ok).toBe(true);
+    expect(counsel(w, me)[0]!.id).toBe('enter');
+    apply(w, me.id, { type: 'counsel_answer', id: 'enter', taken: true });
+    const after = counsel(w, me);
+    expect(after.some((c) => c.id === 'enter')).toBe(false);
+    expect(after.some((c) => c.id === link.id)).toBe(false); // the relay built: its card is gone, the next one may come
+  });
 });

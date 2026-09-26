@@ -180,6 +180,14 @@ coût à partir de ces métriques (ou d'hypothèses).
   par `apply` du monde (mêmes validations qu'une commande du joueur) ; les deux écrivent la couche *choix*
   (`counsel.taken` / `counsel.skipped`) ; le Général accuse réception dans la conversation, sans modèle. Le Général
   ne décide jamais : une carte sans « Fais-le » ne change rien.
+- **Une carte ne survit pas à son but** (26.09.2026) : le cache est revérifié contre les options de la simulation à
+  chaque `GET /api/counsel` (`liveCounselCards`, déterministe) : une carte dont l'option a disparu (faite par un autre
+  chemin, plus légale ou plus utile) sort ; une option dont la commande a changé garde id et titre, avec la commande
+  et la ligne fixe du moment. Une commande envoyée à la main qui atteint le but d'une carte servie (`sameGoal` : le
+  même relais quel que soit le bout, le même bâtiment au même système) la retire et s'écrit `counsel.taken` dans la
+  couche *choix* : le joueur a suivi le conseil, sans passer par « Fais-le ». `take` sur une carte périmée répond
+  `409 stale`, une commande refusée par le monde répond sa raison ; rien n'est retenu dans ces deux cas. Les cartes
+  « regarder » (étoile, plateau, récap) sortent quand le client les répond `counsel_answer` taken (le joueur y est allé).
 - **Épisodes** : au changement de jour, `scheduleEpisodes(day)` enfile une tâche `episode` par colonie vue dans la
   journée ; `writeEpisode` résume en une à trois phrases (chiffres du gabarit seulement), `recordEpisode` garde
   quatorze jours ; `renderMemory` relit les trois derniers au retour.

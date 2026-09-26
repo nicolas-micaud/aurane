@@ -176,3 +176,51 @@ describe('the Generals behind the queue', () => {
     expect(same.tier).toBe(after.tier); // cached until the next Draw or the next tier
   });
 });
+
+describe('the Counsel never outlives its goal', () => {
+  type Card = { id: string; command: { type: string; a?: string; b?: string } | null };
+  let tok: string;
+  const h = (): Record<string, string> => ({ authorization: `Bearer ${tok}`, 'content-type': 'application/json' });
+  const counselNow = async (): Promise<Card[]> => ((await (await fetch(`${base}/api/counsel?lang=en`, { headers: h() })).json()) as { cards: Card[] }).cards;
+  const cmd = async (body: unknown): Promise<{ ok: boolean }> => (await (await fetch(`${base}/api/cmd`, { method: 'POST', headers: h(), body: JSON.stringify(body) })).json()) as { ok: boolean };
+
+  beforeAll(async () => {
+    const made = await (await fetch(`${base}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Grok', faction: 'guild', persona: 'oriel' }) })).json() as { token: string };
+    tok = made.token;
+    (voice as unknown as { chat: LlmClient['chat'] }).chat = scripted([]).chat; // the model answers nothing usable: fallback cards
+  });
+
+  it('drops a card the player did by hand, remembers it as taken, and refuses "Do it" on it afterwards', async () => {
+    expect((await cmd({ type: 'onboarding_unlock' })).ok).toBe(true);
+    const before = await counselNow();
+    const link = before.find((c) => c.command?.type === 'build_relay');
+    expect(link).toBeDefined();
+    // By hand, from the other end of the relay: same goal.
+    expect((await cmd({ type: 'build_relay', a: link!.command!.b, b: link!.command!.a })).ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 30));
+    const after = await counselNow();
+    expect(after.some((c) => c.id === link!.id)).toBe(false);
+    const mem = await (await fetch(`${base}/api/memory`, { headers: h() })).json() as { record: { notes: { kind: string; text: string }[] } };
+    expect(mem.record.notes.some((n) => n.kind === 'counsel.taken' && n.text === link!.id)).toBe(true);
+    const late = await fetch(`${base}/api/counsel/take`, { method: 'POST', headers: h(), body: JSON.stringify({ id: link!.id }) });
+    expect(late.status).toBe(404);
+  });
+
+  it('drops a cached card whose option left the table, and answers "stale" to a late "Do it", remembering nothing', async () => {
+    const cards = await counselNow();
+    const card = cards.find((c) => c.command)!;
+    expect(card).toBeDefined();
+    // The world moves on without the player touching the card: its option is gone from the simulation.
+    const src = engine.general.counselSource;
+    engine.general.counselSource = (w, c) => { const r = src(w, c); return { ...r, options: r.options.filter((o) => o.id !== card.id) }; };
+    try {
+      const r = await fetch(`${base}/api/counsel/take`, { method: 'POST', headers: h(), body: JSON.stringify({ id: card.id }) });
+      expect(r.status).toBe(409);
+      expect(((await r.json()) as { reason: string }).reason).toBe('stale');
+      expect((await counselNow()).some((c) => c.id === card.id)).toBe(false);
+      const mem = await (await fetch(`${base}/api/memory`, { headers: h() })).json() as { record: { notes: { kind: string; text: string }[] } };
+      expect(mem.record.notes.some((n) => n.text === card.id)).toBe(false);
+    } finally { engine.general.counselSource = src; }
+  });
+});
+

@@ -152,6 +152,36 @@ export async function writeCounsel(input: CounselInput, client: LlmClient | null
   }
 }
 
+/** Two commands reach the same goal: the same relay whichever end it starts from, the same building or unit at the
+ *  same system, else the same command. How the player got there does not matter, only what now stands. */
+export function sameGoal(a: Command, b: Command): boolean {
+  if (a.type === 'build_relay' && b.type === 'build_relay') return [a.a, a.b].sort().join('|') === [b.a, b.b].sort().join('|');
+  if (a.type === 'build' && b.type === 'build') return a.system === b.system && a.building === b.building;
+  if (a.type === 'train' && b.type === 'train') return a.system === b.system && a.unit === b.unit;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * The cards of a cached Counsel that still stand against the simulation's current options (deterministic, no model):
+ * a card leaves as soon as its option is gone (done by the player through any path, or no longer legal or useful);
+ * a card whose option now carries another command (the warehouse can pay now, or no longer) keeps its id and title
+ * but takes the live command and the fixed line, so its figures are never stale. The first-minute cards stand only
+ * while the colony is still at tier 0 with nothing else to propose.
+ */
+export function liveCounselCards(cards: readonly CounselCard[], options: readonly CounselOption[], ctx: { persona: Persona; lang: Lang; tier: number }): CounselCard[] {
+  if (cards.length && cards.every((c) => c.id.startsWith('first-'))) return ctx.tier <= 0 && !options.length ? [...cards] : [];
+  const byId = new Map(options.map((o) => [o.id, o]));
+  const out: CounselCard[] = [];
+  for (const c of cards) {
+    const o = byId.get(c.id);
+    if (!o) continue;
+    if (JSON.stringify(o.command) === JSON.stringify(c.command)) { out.push(c); continue; }
+    const fixed = fallbackCards({ persona: ctx.persona, lang: ctx.lang, tier: ctx.tier, options: [o], minutesToDraw: 0 })[0]!;
+    out.push({ ...fixed, title: c.title, line: o.label[ctx.lang].slice(0, 240) });
+  }
+  return out;
+}
+
 /** The line the General says when a card is taken or set aside (no model). */
 export function counselAck(persona: Persona, lang: Lang, taken: boolean, seed: string | number): string {
   const s = sheetOf(persona);

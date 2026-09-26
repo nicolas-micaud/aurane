@@ -159,16 +159,23 @@ export async function talk(text: string, lang: 'fr' | 'en'): Promise<TalkAnswer 
 }
 /** A card of the Draw Counsel in the General's voice (LLM layer, decision 0009). */
 export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: { screen: 'galaxy' | 'system' | 'colony' | 'market' | 'general' | 'journal'; system?: string; poi?: string; slot?: string } | null; /** The simulation's own target when the card came from its Counsel. */ raw?: unknown }
-export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
+export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number; /** Onboarding tier it was written for: a new tier rewrites it. */ tier?: number }
 
 export async function fetchCounsel(lang: 'fr' | 'en'): Promise<CounselView | null> {
   try { const res = await fetch(`/api/counsel?lang=${lang}`, { headers: authHeaders() }); return res.ok ? (await res.json() as CounselView) : null; } catch { return null; }
 }
 
 /** "Do it" / "Not now" on a voice card: the world runs the command and the General remembers the choice. */
-export async function answerCounsel(id: string, take: boolean): Promise<{ ok: boolean; reply: string | null }> {
+export async function answerCounsel(id: string, take: boolean): Promise<{ ok: boolean; reply: string | null; gone?: boolean }> {
   try {
     const res = await fetch(`/api/counsel/${take ? 'take' : 'skip'}`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id }) });
+    // 404: the card already left the Counsel (done by hand); 409 stale: its goal is reached or no longer on the table.
+    if (res.status === 404 || res.status === 409) {
+      const body = await res.json().catch(() => ({})) as { reason?: string };
+      if (res.status === 404 || body.reason === 'stale') return { ok: false, reply: null, gone: true };
+      toast.value = { text: tError(body.reason ?? ''), kind: 'err' }; setTimeout(() => { toast.value = null; }, 2500);
+      return { ok: false, reply: null };
+    }
     if (!res.ok) return { ok: false, reply: null };
     const body = await res.json() as { ok?: boolean; reply?: string; result?: { ok?: boolean; reason?: string } };
     if (body.result && body.result.ok === false) { toast.value = { text: tError(body.result.reason ?? ''), kind: 'err' }; setTimeout(() => { toast.value = null; }, 2500); return { ok: false, reply: null }; }

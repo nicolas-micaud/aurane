@@ -289,7 +289,7 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid card' });
         const r = await engine.general.decideCounsel(colony.id, parsed.data.id, url.pathname.endsWith('/take'));
-        return json(res, r.ok ? 200 : 404, r);
+        return json(res, r.ok ? 200 : r.reason === 'no such card' || r.reason === 'no such colony' ? 404 : 409, r);
       }
       // What my General knows about me: readable, exportable, erasable (LPD/RGPD).
       if (req.method === 'GET' && url.pathname === '/api/memory') return json(res, 200, await engine.general.exportMemory(colony.id));

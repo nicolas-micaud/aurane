@@ -73,13 +73,16 @@ fieldset { border: none; padding: 0; margin: 0; } legend { color: var(--muted); 
 .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px; }
 .list { list-style: none; margin: 0; padding: 0; } .list li { padding: 6px 0; border-bottom: 1px solid rgba(42,55,96,.5); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .list li small { color: var(--muted); } .list.log li { font-size: 13px; }
-.actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; } .actions.inline { margin: 0 0 0 auto; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.capjump { float: right; font-size: 12px; padding: 3px 8px; margin: 2px 0 0 8px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .actions.inline { margin: 0 0 0 auto; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin: 6px 0; } .row > * { flex: 1; min-width: 100px; }
 .seg { display: flex; } .seg button { flex: 1; border-radius: 0; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; }
 textarea { resize: vertical; }
 
-@media (max-width: 480px) { .chip em { display: none; } .chip { padding: 3px 7px; } }
+@media (max-width: 480px) { .chip em { display: none; } .chip { padding: 3px 7px; }
+  /* A fifth tab (Account, Market…) opened from ⋯ must not push Colony off the strip at 390 px. */
+  .tabs { gap: 0; padding: 6px 4px; } .tabs button { padding: 5px 7px; } }
 @media (min-width: 900px) {
   .panel { left: auto; top: 0; bottom: 0; width: 400px; max-height: none; border-radius: 0; border-left: 1px solid var(--line); border-top: none; }
   .panel:not(.open) { max-height: none; width: 400px; }
@@ -217,6 +220,9 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .counsel .card p { margin: 0 0 6px; font-size: 14px; line-height: 1.35; }
 .counsel .acts { display: flex; gap: 6px; flex-wrap: wrap; } .counsel .acts button { font-size: 13px; padding: 5px 10px; }
 .counsel .acts button.primary { padding: 5px 12px; }
+.counsel .card.done { border-left-color: var(--ok); opacity: .85; animation: counsel-done 2.4s ease forwards; }
+.counsel .card.done p { margin: 0; } .counsel .card.done b { color: var(--ok); }
+@keyframes counsel-done { 0%, 70% { opacity: .95; } 100% { opacity: 0; } }
 .counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
 @media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel:not(.first) .card:nth-of-type(n+3) { display: none; } .counsel .card:nth-of-type(n+4) { display: none; } }
 
