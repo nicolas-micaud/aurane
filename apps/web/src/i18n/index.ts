@@ -74,6 +74,12 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
+    pendingTitle: 'Voici ce que je ferai en ton absence', pendingApply: 'Appliquer', pendingNotThat: 'Pas comme ça', pendingNothing: 'Rien ne change par rapport à aujourd\'hui.',
+    pendingVane: 'Rien ne bouge tant que tu n\'as pas dit oui. Ta doctrine actuelle tient jusque-là.',
+    pendingKestrel: 'Dis oui et je m\'y mets ce soir. D\'ici là, on garde le plan d\'avant.',
+    pendingOriel: 'Voilà le contrat. Signe et je l\'exécute à la lettre ; sinon l\'ancien reste en vigueur.',
+    pendingSolen: 'Relis-le avec moi, mon ami : c\'est toi qui décides. L\'ancienne doctrine veille en attendant.',
+    pendingApplied: 'Doctrine appliquée : je m\'y tiens.', pendingDiscarded: 'Je garde la doctrine actuelle. Dis-le-moi autrement.', pendingGone: 'Cette doctrine n\'est plus d\'actualité : relis la dernière.',
     counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', counselDone: 'Fait. Regarde.', cannotPay: 'l\'entrepôt ne peut pas encore payer',
     hereIsWhere: 'C\'est ici : {path}.', tapBlink: 'Touche le bouton qui clignote.', howTo: 'Fait ✓ La prochaine fois, toi : {path}.',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
@@ -169,6 +175,12 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
+    pendingTitle: 'Here is what I will do while you are away', pendingApply: 'Apply', pendingNotThat: 'Not like that', pendingNothing: 'Nothing changes from today.',
+    pendingVane: 'Nothing moves until you say yes. Your current doctrine holds until then.',
+    pendingKestrel: 'Say yes and I start tonight. Until then, we keep the old plan.',
+    pendingOriel: 'Here is the contract. Sign it and I execute it to the letter; otherwise the old one stands.',
+    pendingSolen: 'Read it with me, friend: the choice is yours. The old doctrine keeps watch meanwhile.',
+    pendingApplied: 'Doctrine applied: I will hold to it.', pendingDiscarded: 'I keep the current doctrine. Tell me another way.', pendingGone: 'That doctrine is no longer current: read the latest one.',
     counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', counselDone: 'Done. Look.', cannotPay: 'the warehouse cannot pay yet',
     hereIsWhere: 'Here: {path}.', tapBlink: 'Tap the blinking button.', howTo: 'Done ✓ Next time, you: {path}.',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.

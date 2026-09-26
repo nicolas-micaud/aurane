@@ -1,0 +1,34 @@
+// The doctrine card's rules, without a browser: the server keeps one pending doctrine per Colony.
+import { describe, expect, it } from 'vitest';
+import { cardAfterDoctrine, cardAfterTalk, cardFromPending, pendingLineKey, type PendingCard } from '../src/ui/doctrine.js';
+
+const held: PendingCard = { id: 'd1', readable: ['Expansion : 90 %'], question: null };
+
+describe('doctrine card', () => {
+  it('shows the pending doctrine a talk answer carries, with its question', () => {
+    expect(cardAfterTalk(null, { pending: { id: 'd2', readable: [' Agression : 0 % ', ''] }, question: 'Et la capitale ?' })).toEqual({ id: 'd2', readable: ['Agression : 0 %'], question: 'Et la capitale ?' });
+  });
+
+  it('replaces the card with the next doctrine, keeps it through small talk', () => {
+    expect(cardAfterTalk(held, { pending: { id: 'd3', readable: ['x'] }, question: null })?.id).toBe('d3');
+    expect(cardAfterTalk(held, { pending: null, question: null })).toBe(held);
+    expect(cardAfterTalk(held, { question: 'Tu veux dire quoi ?' })).toBe(held); // a question alone is in the reply bubble
+    expect(cardAfterTalk(null, { pending: null })).toBeNull();
+  });
+
+  it('reads the readable lines beside pending on a doctrine answer', () => {
+    expect(cardAfterDoctrine(null, { pending: { id: 'd4' }, readable: ['Défendre : capitale'], question: null })).toEqual({ id: 'd4', readable: ['Défendre : capitale'], question: null });
+    expect(cardAfterDoctrine(held, { pending: null, readable: ['ignored'], question: 'Laquelle ?' })).toBe(held);
+  });
+
+  it('restores the card from GET /api/doctrine/pending, or none', () => {
+    expect(cardFromPending({ id: 'd5', readable: ['a', 3, 'b'], summary: 's', reply: 'r' })).toEqual({ id: 'd5', readable: ['a', 'b'], question: null });
+    expect(cardFromPending(null)).toBeNull();
+    expect(cardFromPending({ readable: [] })).toBeNull();
+    expect(cardFromPending('nope')).toBeNull();
+  });
+
+  it('gives each General its own line', () => {
+    expect(['vane', 'kestrel', 'oriel', 'solen', 'unknown'].map(pendingLineKey)).toEqual(['pendingVane', 'pendingKestrel', 'pendingOriel', 'pendingSolen', 'pendingVane']);
+  });
+});
