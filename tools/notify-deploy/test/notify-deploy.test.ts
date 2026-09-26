@@ -52,6 +52,27 @@ describe('notify-deploy.sh', () => {
     expect(headers['webhook-signature']).toBe(`v1,${expected}`);
   });
 
+  it('mints one invite code with ADMIN_TOKEN and sends it, never the token', async () => {
+    let minted: { token?: string; body: string } | null = null;
+    const hook = await receiver(202);
+    const game = createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => { minted = { token: req.headers['x-admin-token'] as string, body }; res.statusCode = 201; res.end('{"codes":["AUR-ABCD2345"]}'); });
+    });
+    await new Promise<void>((r) => game.listen(0, '127.0.0.1', () => r()));
+    const a = game.address();
+    const r = await run({ GROK_DEPLOY_WEBHOOK_URL: hook.url, ADMIN_TOKEN: 'secret-admin', NOTIFY_URL: `http://127.0.0.1:${typeof a === 'object' && a ? a.port : 0}`, NOTIFY_REPO: process.cwd() });
+    const { body } = await hook.got;
+    hook.close(); game.close();
+    expect(r.code).toBe(0);
+    expect(minted).not.toBeNull();
+    expect(minted!.token).toBe('secret-admin');
+    expect(JSON.parse(minted!.body)).toMatchObject({ count: 1 });
+    expect(JSON.parse(body).invite_code).toBe('AUR-ABCD2345');
+    expect(body).not.toContain('secret-admin');
+  });
+
   it('never fails the deploy when the webhook errors', async () => {
     const rx = await receiver(500);
     const r = await run({ GROK_DEPLOY_WEBHOOK_URL: rx.url });

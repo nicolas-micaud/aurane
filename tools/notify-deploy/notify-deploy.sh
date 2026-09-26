@@ -5,6 +5,10 @@
 #   GROK_DEPLOY_WEBHOOK_SECRET  optional whsec_… secret: the request is then signed the Standard Webhooks way
 #                               (webhook-id, webhook-timestamp, webhook-signature: v1,base64(HMAC-SHA256(id.ts.body)))
 #   NOTIFY_ENV (prod), NOTIFY_URL (https://play.playaurane.com), NOTIFY_REPO (repo to read the commit from, default .)
+#   ADMIN_TOKEN                 optional: one fresh invite code (POST /api/admin/invites, count 1, note « grok deploy
+#                               <version> ») is minted and sent as `invite_code`, so the outside tester can open a new
+#                               colony and test the build by itself (Nick, 26.09.2026). The token never leaves this host.
+#                               No token, or the mint fails = no invite_code, the notification is still sent.
 # Never fails the deploy: any error is a warning on stderr and exit 0. Only curl, git, openssl and base64.
 set -uo pipefail
 warn() { echo "[notify-deploy] $*" >&2; }
@@ -16,9 +20,17 @@ VERSION=$(git -C "$REPO" describe --tags --exact-match 2>/dev/null || git -C "$R
 SUBJECT=$(git -C "$REPO" log -1 --format=%s 2>/dev/null || echo "")
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 json_str() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/ }; s=${s//$'\t'/ }; printf '"%s"' "$s"; }
-BODY=$(printf '{"project":"aurane","env":%s,"version":%s,"commit":%s,"message":%s,"deployed_at":%s,"url":%s}' \
+GAME=${NOTIFY_URL:-https://play.playaurane.com}
+INVITE=""
+if [ -n "${ADMIN_TOKEN:-}" ]; then
+  INVITE=$(curl -s --max-time 5 -X POST -H "x-admin-token: $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+    --data "{\"count\":1,\"note\":\"grok deploy $VERSION\"}" "$GAME/api/admin/invites" 2>/dev/null | grep -o 'AUR-[A-Z0-9]\{8\}' | head -1)
+  [ -n "$INVITE" ] || warn "could not mint an invite code, sending without it"
+fi
+EXTRA=""; [ -n "$INVITE" ] && EXTRA=$(printf ',"invite_code":%s' "$(json_str "$INVITE")")
+BODY=$(printf '{"project":"aurane","env":%s,"version":%s,"commit":%s,"message":%s,"deployed_at":%s,"url":%s%s}' \
   "$(json_str "${NOTIFY_ENV:-prod}")" "$(json_str "$VERSION")" "$(json_str "$COMMIT")" "$(json_str "$SUBJECT")" \
-  "$(json_str "$NOW")" "$(json_str "${NOTIFY_URL:-https://play.playaurane.com}")")
+  "$(json_str "$NOW")" "$(json_str "$GAME")" "$EXTRA")
 HDR=(-H 'Content-Type: application/json' -H 'User-Agent: aurane-deploy/1')
 SECRET=${GROK_DEPLOY_WEBHOOK_SECRET:-}
 if [ -n "$SECRET" ]; then
@@ -30,5 +42,5 @@ if [ -n "$SECRET" ]; then
   else warn "GROK_DEPLOY_WEBHOOK_SECRET is not base64 after whsec_, sending unsigned"; fi
 fi
 CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "${HDR[@]}" --data "$BODY" "$URL" 2>/dev/null) || CODE=000
-case "$CODE" in 2??) echo "[notify-deploy] sent ($CODE) version $VERSION" ;; *) warn "webhook answered $CODE, deploy not affected" ;; esac
+case "$CODE" in 2??) echo "[notify-deploy] sent ($CODE) version $VERSION${INVITE:+ with an invite code}" ;; *) warn "webhook answered $CODE, deploy not affected" ;; esac
 exit 0
