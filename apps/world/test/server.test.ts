@@ -212,4 +212,27 @@ describe('closed beta', () => {
     expect(me.me.id).toBe(colonyId);
     expect((await fetch(`${url}/api/redeem`, { method: 'POST', body: JSON.stringify({ code: `${link.code}x` }) })).status).toBe(403);
   });
+
+  it('lists the devices holding a colony, cuts one off, and logs the current one out (decision 0010, lot A)', async () => {
+    const minted = await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 1 }) })).json() as { codes: string[] };
+    const ua = { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' };
+    const { token } = await (await fetch(`${url}/api/guest`, { method: 'POST', headers: ua, body: JSON.stringify({ name: 'Sessions', faction: 'guild', persona: 'oriel', invite: minted.codes[0] }) })).json() as { token: string };
+    const link = await (await fetch(`${url}/api/link`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })).json() as { code: string };
+    const second = await (await fetch(`${url}/api/redeem`, { method: 'POST', headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36' }, body: JSON.stringify({ code: link.code }) })).json() as { token: string };
+    type S = { id: string; label: string; current: boolean; lastSeenAt: number | null };
+    const list = await (await fetch(`${url}/api/sessions`, { headers: { authorization: `Bearer ${token}` } })).json() as { sessions: S[] };
+    expect(list.sessions).toHaveLength(2);
+    expect(list.sessions.find((s) => s.current)?.label).toBe('iPhone · Safari');
+    const other = list.sessions.find((s) => !s.current)!;
+    expect(other.label).toBe('Mac · Chrome');
+    // Cut the Mac off from the phone: its token dies, the phone's list shrinks.
+    expect((await fetch(`${url}/api/sessions/${encodeURIComponent(other.id)}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+    expect((await fetch(`${url}/api/me`, { headers: { authorization: `Bearer ${second.token}` } })).status).toBe(401);
+    const after = await (await fetch(`${url}/api/sessions`, { headers: { authorization: `Bearer ${token}` } })).json() as { sessions: S[] };
+    expect(after.sessions).toHaveLength(1);
+    // A session id that is not this colony's is refused; logging out ends the current token.
+    expect((await fetch(`${url}/api/sessions/nope`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(404);
+    expect((await fetch(`${url}/api/session`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
+    expect((await fetch(`${url}/api/me`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(401);
+  });
 });

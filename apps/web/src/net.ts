@@ -169,3 +169,35 @@ export async function fetchBattle(id: string): Promise<BattleReport | null> {
 // Debug hook for visual checks: open the app with #debug, freeze the stream and set a System frame by hand.
 let frozen = false;
 if (typeof location !== 'undefined' && location.hash === '#debug') (globalThis as unknown as { __aurane: unknown }).__aurane = { systemView, view, freeze: (on: boolean) => { frozen = on; } };
+
+// --- sessions (decision 0010, lot A): the devices holding this colony, leave, cut one off ------------------
+
+export interface SessionInfo { id: string; label: string; createdAt: number; lastSeenAt: number | null; current: boolean }
+
+export async function fetchSessions(): Promise<SessionInfo[]> {
+  try { const res = await fetch('/api/sessions', { headers: authHeaders() }); return res.ok ? ((await res.json() as { sessions: SessionInfo[] }).sessions) : []; } catch { return []; }
+}
+
+export async function revokeSession(id: string): Promise<boolean> {
+  try { return (await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() })).ok; } catch { return false; }
+}
+
+/** Ends this device's session on the server, forgets the token and returns to the landing page. */
+export async function logout(): Promise<void> {
+  try { await fetch('/api/session', { method: 'DELETE', headers: authHeaders() }); } catch { /* the token is dropped anyway */ }
+  forget();
+  const sock = ws; ws = null;
+  try { sock?.close(1000, 'logout'); } catch { /* ignore */ }
+  view.value = null;
+  status.value = 'idle';
+}
+
+/** The General's memory of this player, as a file to keep or read; null when the endpoint is not there. */
+export async function exportMemory(): Promise<unknown | null> {
+  try { const res = await fetch('/api/memory', { headers: authHeaders() }); return res.ok ? await res.json() : null; } catch { return null; }
+}
+
+export async function eraseMemory(): Promise<boolean> {
+  try { return (await fetch('/api/memory', { method: 'DELETE', headers: authHeaders() })).ok; } catch { return false; }
+}
+

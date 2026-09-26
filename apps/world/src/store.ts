@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import pg from 'pg';
 import type { WorldSnapshot } from '@aurane/sim';
 
-export interface PlayerRecord { id: string; colonyId: string; tokenHash: string; name: string; createdAt: number }
+/** One row per device token: a session of the colony (decision 0010, lot A). `label` names the device, `revokedAt`
+ *  ends the session (logout here, or from another device). */
+export interface PlayerRecord { id: string; colonyId: string; tokenHash: string; name: string; createdAt: number; label?: string; lastSeenAt?: number; revokedAt?: number | null }
 export interface InviteRecord { code: string; note: string; createdAt: number; usedBy: string | null; usedAt: number | null }
 
 export interface Store {
@@ -15,6 +17,10 @@ export interface Store {
   archiveSnapshot(label: string): Promise<void>;
   createPlayer(p: PlayerRecord): Promise<void>;
   findPlayerByToken(tokenHash: string): Promise<PlayerRecord | null>;
+  /** Every session of a colony, revoked ones included (the client hides them). */
+  listPlayers(colonyId: string): Promise<PlayerRecord[]>;
+  /** Device label, last activity, revocation. */
+  updatePlayer(id: string, patch: Partial<Pick<PlayerRecord, 'label' | 'lastSeenAt' | 'revokedAt'>>): Promise<void>;
   createInvite(i: InviteRecord): Promise<void>;
   findInvite(code: string): Promise<InviteRecord | null>;
   /** Marks the invitation used; false when it was already used or unknown. */
@@ -73,6 +79,19 @@ export class FileStore implements Store {
     return this.players.get(tokenHash) ?? null;
   }
 
+  async listPlayers(colonyId: string): Promise<PlayerRecord[]> {
+    await this.ensure();
+    return [...this.players.values()].filter((p) => p.colonyId === colonyId);
+  }
+
+  async updatePlayer(id: string, patch: Partial<Pick<PlayerRecord, 'label' | 'lastSeenAt' | 'revokedAt'>>): Promise<void> {
+    await this.ensure();
+    const p = [...this.players.values()].find((x) => x.id === id);
+    if (!p) return;
+    Object.assign(p, patch);
+    await writeFile(join(this.dir, 'players.json'), JSON.stringify([...this.players.values()]));
+  }
+
   private async flushInvites(): Promise<void> { await writeFile(join(this.dir, 'invites.json'), JSON.stringify([...this.invites.values()])); }
   async createInvite(i: InviteRecord): Promise<void> { await this.ensure(); this.invites.set(i.code, i); await this.flushInvites(); }
   async findInvite(code: string): Promise<InviteRecord | null> { await this.ensure(); return this.invites.get(code) ?? null; }
@@ -107,6 +126,10 @@ export class PgStore implements Store {
       create table if not exists world_snapshots (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
       create table if not exists players (id text primary key, colony_id text not null, token_hash text not null unique, name text not null, created_at bigint not null);
       create table if not exists invites (code text primary key, note text not null default '', created_at bigint not null, used_by text, used_at bigint);
+      alter table players add column if not exists label text not null default '';
+      alter table players add column if not exists last_seen_at bigint;
+      alter table players add column if not exists revoked_at bigint;
+      create index if not exists players_colony_idx on players (colony_id);
     `);
   }
 
@@ -130,13 +153,31 @@ export class PgStore implements Store {
   }
 
   async createPlayer(p: PlayerRecord): Promise<void> {
-    await this.pool.query('insert into players (id, colony_id, token_hash, name, created_at) values ($1, $2, $3, $4, $5)', [p.id, p.colonyId, p.tokenHash, p.name, p.createdAt]);
+    await this.pool.query('insert into players (id, colony_id, token_hash, name, created_at, label, last_seen_at, revoked_at) values ($1, $2, $3, $4, $5, $6, $7, $8)', [p.id, p.colonyId, p.tokenHash, p.name, p.createdAt, p.label ?? '', p.lastSeenAt ?? null, p.revokedAt ?? null]);
+  }
+
+  private static player(row: { id: string; colony_id: string; token_hash: string; name: string; created_at: string; label: string | null; last_seen_at: string | null; revoked_at: string | null }): PlayerRecord {
+    return { id: row.id, colonyId: row.colony_id, tokenHash: row.token_hash, name: row.name, createdAt: Number(row.created_at), label: row.label ?? '', ...(row.last_seen_at !== null ? { lastSeenAt: Number(row.last_seen_at) } : {}), revokedAt: row.revoked_at !== null ? Number(row.revoked_at) : null };
   }
 
   async findPlayerByToken(tokenHash: string): Promise<PlayerRecord | null> {
-    const r = await this.pool.query<{ id: string; colony_id: string; token_hash: string; name: string; created_at: string }>('select * from players where token_hash = $1', [tokenHash]);
+    const r = await this.pool.query<Parameters<typeof PgStore.player>[0]>('select * from players where token_hash = $1', [tokenHash]);
     const row = r.rows[0];
-    return row ? { id: row.id, colonyId: row.colony_id, tokenHash: row.token_hash, name: row.name, createdAt: Number(row.created_at) } : null;
+    return row ? PgStore.player(row) : null;
+  }
+
+  async listPlayers(colonyId: string): Promise<PlayerRecord[]> {
+    const r = await this.pool.query<Parameters<typeof PgStore.player>[0]>('select * from players where colony_id = $1 order by created_at', [colonyId]);
+    return r.rows.map((row) => PgStore.player(row));
+  }
+
+  async updatePlayer(id: string, patch: Partial<Pick<PlayerRecord, 'label' | 'lastSeenAt' | 'revokedAt'>>): Promise<void> {
+    const sets: string[] = []; const vals: unknown[] = [id];
+    if (patch.label !== undefined) { vals.push(patch.label); sets.push(`label = $${vals.length}`); }
+    if (patch.lastSeenAt !== undefined) { vals.push(patch.lastSeenAt); sets.push(`last_seen_at = $${vals.length}`); }
+    if (patch.revokedAt !== undefined) { vals.push(patch.revokedAt); sets.push(`revoked_at = $${vals.length}`); }
+    if (!sets.length) return;
+    await this.pool.query(`update players set ${sets.join(', ')} where id = $1`, vals);
   }
 
   async createInvite(i: InviteRecord): Promise<void> {

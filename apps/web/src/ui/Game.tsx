@@ -3,8 +3,8 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, answerCounsel, fetchBriefing, fetchCounsel, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type Turn } from '../net.js';
-import { lang, t, tError } from '../i18n/index.js';
+import { act, answerCounsel, eraseMemory, exportMemory, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, revokeSession, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
 import { SystemMode } from './SystemView.js';
@@ -13,7 +13,7 @@ import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
 import { marketPrefill, pendingDemo, pointAt, sceneFlashReq, stopTeaching, teach, teachClass, teachKey } from './teach.js';
 
-type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
+type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log' | 'account';
 type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt';
 const TPL_KEY: Record<string, TplKey> = { forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' };
 const selected = signal<string | null>(null);
@@ -381,14 +381,14 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   // Progressive onboarding: a tab appears with its tier (docs/design/ONBOARDING-S0.md), the General says why.
   const tier = v.me.onboarding?.tier ?? 6;
   const TAB_TIER: Partial<Record<Tab, number>> = { logistics: 1, market: 2, fleets: 3, diplomacy: 5 };
-  const all: Tab[] = (['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log'] as Tab[]).filter((k) => (TAB_TIER[k] ?? 0) <= tier);
+  const all: Tab[] = (['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log', 'account'] as Tab[]).filter((k) => (TAB_TIER[k] ?? 0) <= tier);
   const primary: Tab[] = ['colony', 'system', 'general', 'log'];
   useEffect(() => { if (!all.includes(current)) tab.value = 'colony'; }, [tier]);
   const read = useSig(logRead);
   const unread = current === 'log' ? 0 : v.events.filter((e) => e.at > read && e.kind !== 'draw').length;
   useEffect(() => { if (current === 'log') markLogRead(v); }, [current, v.events.length]);
   const tabs: Tab[] = isNarrow() && !more ? [...primary, ...(primary.includes(current) ? [] : [current])] : all;
-  const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), logistics: t('tabLogistics'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog') };
+  const labels: Record<Tab, string> = { colony: t('tabColony'), system: t('tabSystem'), logistics: t('tabLogistics'), market: t('tabMarket'), fleets: t('tabFleets'), diplomacy: t('tabDiplomacy'), general: t('tabGeneral'), log: t('tabLog'), account: t('tabAccount') };
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
@@ -405,6 +405,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
         {current === 'diplomacy' && <DiplomacyPanel v={v} />}
         {current === 'general' && <GeneralPanel v={v} />}
         {current === 'log' && <LogPanel v={v} />}
+        {current === 'account' && <AccountPanel v={v} />}
       </div>
     </div>
   );
@@ -721,7 +722,59 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         <label>{t('aggression')}<input type="range" min={0} max={1} step={0.1} value={p.aggression} onChange={(e) => void act({ type: 'set_policy', policy: { ...p, aggression: Number((e.target as HTMLInputElement).value) } })} /></label>
       </div>
       <button onClick={() => void fetchBriefing(lang.value).then((b) => { if (b) briefing.value = b; })}>{t('briefing')}</button>
+    </div>
+  );
+}
+
+/** The Account tab (decision 0010, lot A): who I am, the devices holding this Colony, the General's memory, language,
+ *  installation, and the way out. Guests are told what leaving costs; the passkey comes with lot B. */
+function AccountPanel({ v }: { v: PlayerView }) {
+  const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const [erasing, setErasing] = useState(false);
+  const l = useSig(lang);
+  const load = () => { void fetchSessions().then(setSessions); };
+  useEffect(load, []);
+  const when = (ms: number | null): string => (ms ? new Date(ms).toLocaleString(l === 'fr' ? 'fr-CH' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : t('neverSeen'));
+  const cut = async (id: string) => { if (await revokeSession(id)) { toast.value = { text: t('cutOffDone'), kind: 'ok' }; setTimeout(() => { toast.value = null; }, 2500); load(); } };
+  const download = async () => {
+    const data = await exportMemory();
+    if (data === null) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `aurane-memory-${v.me.id}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  const erase = async () => { setErasing(false); if (await eraseMemory()) { toast.value = { text: t('erased'), kind: 'ok' }; setTimeout(() => { toast.value = null; }, 2500); } };
+  return (
+    <div class="account">
+      <h2>{v.me.name} <small class={`f-${v.me.faction}`}>{t(v.me.faction as 'guild')}</small></h2>
+      <p class="muted">{t(v.me.persona as 'vane')} · <span class="tag">{t('accountGuest')}</span></p>
+      <p class="muted small">{t('accountGuestHelp')}</p>
+      <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
+      <ul class="list">
+        {(sessions ?? []).map((s) => (
+          <li key={s.id}>
+            <span><b>{s.label || '—'}</b>{s.current ? <span class="tag"> {t('thisDevice')}</span> : null} <small>· {t('lastSeen')} {when(s.lastSeenAt ?? s.createdAt)}</small></span>
+            {!s.current && <button onClick={() => void cut(s.id)}>{t('cutOff')}</button>}
+          </li>
+        ))}
+      </ul>
       <DeviceLink />
+      <h3>{t('memoryTitle')}</h3>
+      <p class="muted small">{t('memoryHelp')}</p>
+      <div class="actions">
+        <button onClick={() => void download()}>{t('exportMemory')}</button>
+        {!erasing ? <button onClick={() => setErasing(true)}>{t('eraseMemory')}</button> : <><span class="bad small">{t('eraseMemoryConfirm')}</span> <button class="primary" onClick={() => void erase()}>{t('eraseMemory')}</button> <button onClick={() => setErasing(false)}>{t('cancel')}</button></>}
+      </div>
+      <h3>{t('language')}</h3>
+      <div class="lang"><button class={l === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button><button class={l === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
+      <div class="actions"><InstallButton compact /><a class="link" href={`/c/${encodeURIComponent(v.me.id)}`} target="_blank" rel="noopener">{t('colonyPage')} ›</a></div>
+      <h3>{t('logout')}</h3>
+      {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : (
+        <div class="selbox">
+          <p class="bad">{t('logoutWarn')}</p>
+          <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logoutAnyway')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
+        </div>
+      )}
     </div>
   );
 }
