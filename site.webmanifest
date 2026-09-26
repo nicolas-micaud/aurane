@@ -1,7 +1,7 @@
 {
  "name": "Aurane",
  "short_name": "Aurane",
- "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors : il se souvient de toi d'une saison à l'autre.",
+ "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, avec un Général qui pense avec toi, joue quand tu dors et se souvient de tout, tout le temps : la mémoire Corthexis.",
  "start_url": "/",
  "display": "browser",
  "background_color": "#05070f",
