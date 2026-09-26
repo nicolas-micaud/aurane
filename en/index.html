@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aurane — free space strategy game in your browser</title>
-<meta name="description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything, all the time: Corthexis memory.">
+<meta name="description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything through Corthexis, a memory that belongs to you.">
 <link rel="canonical" href="https://playaurane.com/en/">
 <link rel="alternate" hreflang="fr" href="https://playaurane.com/fr/">
 <link rel="alternate" hreflang="en" href="https://playaurane.com/en/">
@@ -16,14 +16,14 @@
 <meta property="og:locale:alternate" content="fr_FR">
 <meta property="og:url" content="https://playaurane.com/en/">
 <meta property="og:title" content="Aurane — free space strategy game in your browser">
-<meta property="og:description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything, all the time: Corthexis memory.">
+<meta property="og:description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything through Corthexis, a memory that belongs to you.">
 <meta property="og:image" content="https://playaurane.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Aurane — can't stop the signal">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Aurane — free space strategy game in your browser">
-<meta name="twitter:description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything, all the time: Corthexis memory.">
+<meta name="twitter:description" content="Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything through Corthexis, a memory that belongs to you.">
 <meta name="twitter:image" content="https://playaurane.com/og.png">
 
 <meta name="theme-color" content="#05070f">
@@ -126,6 +126,14 @@ footer a{color:var(--muted)}
 .icons li{flex:0 1 84px;text-align:center;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);line-height:1.3}
 .icons img{width:64px;height:64px;margin:0 auto 4px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}
 .banner{border-radius:14px;border:1px solid var(--line);margin:0 0 20px}
+/* corthexis */
+.cx .kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.28em;font-size:.78rem;margin:0 0 .4em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.cx h2{text-shadow:0 0 28px rgba(125,211,252,.35)}
+.cx-viz{margin:22px 0 0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#0b1633 0%,#05070f 70%);box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 0 60px rgba(125,211,252,.06)}
+.cx-viz canvas{display:block;width:100%;aspect-ratio:16/9}
+@media (max-width:640px){.cx-viz canvas{aspect-ratio:4/5}}
+.cx-viz figcaption{font-size:.8rem;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line)}
+.cx-cards .card{border-top:2px solid rgba(125,211,252,.6)}
 </style>
 </head>
 <body>
@@ -133,7 +141,7 @@ footer a{color:var(--muted)}
 <div class="bg" aria-hidden="true"></div>
 <header class="wrap top">
 <a class="brand" href="/en/" data-setlang="en"><img src="/aurane.svg" alt="" width="34" height="34">AURANE</a>
-<nav aria-label="Navigation"><a href="#jeu" class="sec">The game</a><a href="#general" class="sec">The General</a><a href="#factions" class="sec">Factions</a><a href="/en/rules/">Rules</a><a href="#waitlist">Waitlist</a>
+<nav aria-label="Navigation"><a href="#jeu" class="sec">The game</a><a href="#general" class="sec">The General</a><a href="#corthexis" class="sec">Corthexis</a><a href="#factions" class="sec">Factions</a><a href="/en/rules/">Rules</a><a href="#waitlist">Waitlist</a>
 <span class="lang" aria-label="Language"><a href="/fr/" hreflang="fr" lang="fr" data-setlang="fr">FR</a><span lang="en">EN</span></span></nav>
 </header>
 <main id="main" class="wrap">
@@ -141,7 +149,7 @@ footer a{color:var(--muted)}
 <img class="logo" src="/aurane.svg" alt="" width="84" height="84">
 <h1 id="h1">AURANE</h1>
 <p class="tagline">can't stop the signal</p>
-<p class="hook">A real partner, not an autopilot. Your General thinks with you, plays while you sleep, and remembers everything, all the time.</p>
+<p class="hook">Your General thinks with you, plays while you sleep and forgets nothing: not your choices, not your allies, not those who betrayed you. A partner, not an autopilot.</p>
 <p><a class="cta" href="#waitlist">Join the waitlist<small>Rejoindre la liste d'attente</small></a></p>
 <p class="alt"><a href="https://play.playaurane.com">I have an invitation code →</a></p>
 <p class="season-line">Season 0: closed, invitation-only beta, then open to everyone, no account needed.</p>
@@ -151,13 +159,23 @@ footer a{color:var(--muted)}
 <h2 id="h-jeu">The game</h2>
 <div class="prose"><p>Aurane is a free, persistent, massively multiplayer web strategy game: five minutes on your phone, five hours on a big screen. You are a <strong>Colony</strong> stretching a network of relays across a shared galaxy. One verb: <strong>link</strong>. Two linked stars make a relay, and only what is linked to your capital truly exists.</p><p>Time belongs to orders, not reflexes: every decision resolves within a known delay, whether you are there or not. Every hour the galaxy beats to the <strong>Draw</strong>: resources drawn, trades settled, news published. A six-week veteran cannot crush you with stats, only with a better network, better allies and a sharper mind. No pay-to-win: nothing you buy touches the simulation.</p></div>
 <h3 style="margin-top:22px">The game in three points</h3>
-<div class="cards"><article class="card" id="link"><img src="/images/game/structure-relay.png" alt="" width="64" height="64" loading="lazy"><h3>Link</h3><p>One verb: <strong>link</strong>. Two linked stars make a relay, and only what is linked to your capital truly exists.</p></article><article class="card" id="draw"><img src="/images/game/structure-station.png" alt="" width="64" height="64" loading="lazy"><h3>The Draw</h3><p>Every hour the galaxy beats to the <strong>Draw</strong>: resources drawn, trades settled, news published.</p></article><article class="card" id="general"><img src="/images/game/structure-antenna.png" alt="" width="64" height="64" loading="lazy"><h3>The General</h3><p>It is not there to play in your place. It shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep and briefs you when you come back, in its own voice: what happened, what it did, what it recommends. And it remembers everything, all the time: your choices, your refusals, your battles, your allies and those who betrayed you, from one season to the next. That memory is called <strong>Corthexis</strong>; it is yours to read, export and erase.</p></article></div>
+<div class="cards"><article class="card" id="link"><img src="/images/game/structure-relay.png" alt="" width="64" height="64" loading="lazy"><h3>Link</h3><p>One verb: <strong>link</strong>. Two linked stars make a relay, and only what is linked to your capital truly exists.</p></article><article class="card" id="draw"><img src="/images/game/structure-station.png" alt="" width="64" height="64" loading="lazy"><h3>The Draw</h3><p>Every hour the galaxy beats to the <strong>Draw</strong>: resources drawn, trades settled, news published.</p></article><article class="card" id="general"><img src="/images/game/structure-antenna.png" alt="" width="64" height="64" loading="lazy"><h3>The General</h3><p>It does not play in your place. It shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep, and turns down the one that would sink your Colony, telling you why. When you come back it briefs you in its own voice: what happened, what it did, what it advises. And it remembers. Your last decision and what followed. Your allies, your battles, those who broke a treaty. From one season to the next, after the Silence has wiped everything else. That memory is called <strong>Corthexis</strong>. It is yours: you read it, you take it with you, you erase it whenever you wish.</p></article></div>
 <p><a class="more" href="/en/rules/">Read the full rules →</a></p>
 </section>
 <section id="general" aria-labelledby="h-general">
 <h2 id="h-general">The General</h2>
-<div class="prose"><p>Every Colony shelters a <strong>General</strong>: a mind of the Ancients recovered from the ruins of the Network, incomplete, obsessed with the Signal, with a personality and an occasionally unsettling sense of humour. You write your doctrine in plain language — "hold the bridge to Anchor at all costs, sell surplus Food, never declare war without me" — and the General carries it out while you sleep.</p><p>It is not there to play in your place. It shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep and briefs you when you come back, in its own voice: what happened, what it did, what it recommends. And it remembers everything, all the time: your choices, your refusals, your battles, your allies and those who betrayed you, from one season to the next. That memory is called <strong>Corthexis</strong>; it is yours to read, export and erase. It does not die with the Silence: it remembers its masters and talks about them. At the end of each season it writes its memoirs. Four temperaments to start with: Marshal Idris Vane, Kestrel, Oriel-Nine, Abbot Solen. Temperament changes the tone, never the power.</p></div>
+<div class="prose"><p>Every Colony shelters a <strong>General</strong>: a mind of the Ancients recovered from the ruins of the Network, incomplete, obsessed with the Signal, with a personality and an occasionally unsettling sense of humour. You write your doctrine in plain language — "hold the bridge to Anchor at all costs, sell surplus Food, never declare war without me" — and the General carries it out while you sleep.</p><p>It does not play in your place. It shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep, and turns down the one that would sink your Colony, telling you why. When you come back it briefs you in its own voice: what happened, what it did, what it advises. And it remembers. Your last decision and what followed. Your allies, your battles, those who broke a treaty. From one season to the next, after the Silence has wiped everything else. That memory is called <strong>Corthexis</strong>. It is yours: you read it, you take it with you, you erase it whenever you wish. This is what no web game had yet: a character who truly knows you, and who stays. Four temperaments to start with: Marshal Idris Vane, Kestrel, Oriel-Nine, Abbot Solen. Temperament changes the tone, never the power.</p></div>
 </section>
+<section id="corthexis" class="cx" aria-labelledby="h-cx">
+<p class="kicker">Your General's memory</p>
+<h2 id="h-cx">Corthexis</h2>
+<p class="lead">A language model forgets everything when the conversation ends. Your General does not. Every decision, every treaty, every battle becomes a dated note, linked to what came next. Before speaking to you, it reads that graph again. That is Corthexis.</p>
+<figure class="cx-viz"><canvas id="cx-canvas" role="img" aria-label="Visualisation: a Colony's memory across two seasons. Nodes are notes, links are what followed."></canvas><figcaption>Visualisation: a Colony's memory across two seasons. Nodes are notes, links are what followed.</figcaption></figure>
+<script type="application/json" id="cx-data">{"general":"The General","hud":"CORTHEXIS · Colony memory","notes":"notes","links":"synapses","seasons":"seasons","types":{"decision":"decision","ally":"ally","betrayal":"betrayal","battle":"battle","episode":"episode","refusal":"refusal"},"nodes":{"d1":"Link Irzen","e1":"The bridge holds 3 Draws","a1":"Pact with Halden","x1":"Defence of Arthaven","b1":"Maro breaks the treaty","r1":"Doctrine refused: sell everything","d2":"Buy Metal","e2":"Halden sends an escort","d3":"Hold Eoulsol","s1":"Maro reappears","d4":"Link Anchor"},"log":{"note":"+ note","link":"↳ synapse","recall":"recall · briefing","recallOut":"last decision + 1 name not to forget","silence":"SILENCE · the universe is wiped · memory kept","season":"SEASON 1 · the General remembers Maro","refuse":"doctrine refused before any model call"}}</script>
+<div class="cards cx-cards"><article class="card"><h3>Facts, not impressions</h3><p>The notes are written by the game engine: who attacked you, which move you chose, what it led to. The model reads them and does not rewrite them. Every number the General says is checked against the state of the world before it reaches your screen.</p></article><article class="card"><h3>Linked, therefore useful</h3><p>Each note points at what followed: your choice to link Irzen, the three Draws the bridge held. When you come back, the briefing starts there. A doctrine that would sink the Colony is turned down, because it knows who your allies are.</p></article><article class="card"><h3>Stronger than the Silence</h3><p>Corthexis lives outside the season's world, on a separate instance hosted in Geneva. The Silence wipes the universe, not the memory.</p></article><article class="card"><h3>Yours, for real</h3><p>From the Account tab you read it, take it with you as a file, erase it in one gesture. Your memory, not ours.</p></article></div>
+<p><a class="more" href="https://demo.corthexis.com/" rel="noopener">See Corthexis on a real company memory (public demo) →</a></p>
+</section>
+<script src="/corthexis.js" defer></script>
 <section id="aurane" aria-labelledby="h-aurane">
 <h2 id="h-aurane">L'Aurane</h2>
 <div class="prose"><p>A thousand years ago, the Ancients strung <strong>the Network</strong> between every inhabited star of the Aurane. Over it ran <strong>the Signal</strong>: data, voices, trade and, some say, souls. Then came <strong>the Silence</strong>. In a single night, everything went dark. A thousand years of night.</p><p>Today the old relays flicker back to life: this is <strong>the Awakening</strong>. With each Awakening, Colonies rise to reweave the Network and relight <strong>the Seven Beacons</strong>, which legend says would bring the Signal back for good if lit together. But the Silence returns in waves, roughly every eight weeks, and wipes out everything that was built. Only the stories, the titles and the Generals survive. Four factions fight over the ruins: the Concordat, the Merchants' Guild, the Oracles, the Corsairs. Nobody is right.</p></div>
