@@ -135,13 +135,17 @@ reproduites en § 1, telles que Nick les a transmises ; la lecture de la session
    premier relais, la première parole du Général nomme le voisin et l'étoile disputée ; le Journal et une alerte le
    montrent ; règle de saison `firstContact`, mesurable en accéléré. Répond au point 1 de Grok et au « première
    minute vide » de Nick.
-2. **Le briefing qui se souvient** : une phrase fait + choix dans le briefing de retour et dans l'épisode ; refus
-   motivé d'une doctrine absurde en personnage. Répond au point 2.
+2. **Le briefing qui se souvient** : **livré le 26.09** (décision 0009, statut) : le briefing nomme la dernière décision
+   du joueur en mots et ce qui a suivi, puis le nom qu'il n'oublie pas ; les épisodes citent les choix en mots ; le
+   Général refuse en personnage une doctrine qui coulerait la Colonie (tout vendre, plus d'Énergie, abandonner la
+   capitale, frapper un partenaire de traité) et dit ce qu'il accepterait. Répond au point 2.
 3. **M6 sur un inconnu** : un testeur qui ne connaît pas le jeu, dix minutes, téléphone, sans aide, en regardant.
    Avant tout autre lot d'interface. Grok le dit, Nick le disait, le GDD le dit.
 4. **Lot D des comptes** (garde-fous sur le compte, invitations par compte, « Recommencer »). Répond au point 4.
-5. **Amendements 0011** à trancher : Mécène 12-15 CHF, Éclats 30 jours, « Soutenir Aurane » one-shot en S0 ; puis
-   la landing avec le message de Grok.
+5. **Amendements 0011** : **tranchés le 26.09** (Nick : « oui pour tout ; pour les prix on suit tes recos ») : Mécène
+   12 CHF la saison, Éclats périmés 30 jours après achat, « Soutenir Aurane » achat unique dès S0 via marchand officiel,
+   Chroniqueur en premier, seconde Colonie S2 au plus tôt (décision 0011, section « Décision »). La landing porte le
+   message du partenaire et de la mémoire Corthexis depuis la PR 24.
 6. **Plus tard** : notifications push (après M6), modèle plus petit pour le Conseil (à 2 000 joueurs), chat public
    (après S0), art (budget).
 
