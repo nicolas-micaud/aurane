@@ -461,7 +461,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
       </div>
       <div class="body">
         {current === 'colony' && <ColonyPanel v={v} map={map} />}
-        {current === 'system' && <SystemPanel v={v} />}
+        {current === 'system' && <SystemPanel v={v} map={map} />}
         {current === 'logistics' && <LogisticsPanel v={v} onCenter={(id) => { selected.value = id; map.current?.centerOn(id); }} />}
         {current === 'market' && <MarketPanel v={v} />}
         {current === 'fleets' && <FleetsPanel v={v} map={map} />}
@@ -474,12 +474,23 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   );
 }
 
+/** The capital, whatever was selected last (a relay just built leaves the panel on the new star): selected and
+ *  centred, or its plateau opened straight away. */
+function goCapital(v: PlayerView, map: GalaxyMap | null, enter = false): void {
+  selected.value = v.me.capital;
+  tab.value = 'system';
+  map?.centerOn(v.me.capital);
+  if (enter) systemMode.value = v.me.capital;
+}
+
 function ColonyPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const mine = v.systems.filter((s) => s.owner === v.me.id);
+  const capName = v.systems.find((s) => s.id === v.me.capital)?.name ?? v.me.capital;
   return (
     <div>
       <h2>{v.me.name} <small class={`f-${v.me.faction}`}>{t(v.me.faction as 'guild')}</small></h2>
       <p>{t(v.me.persona as 'vane')} · {v.me.watching ? t('watching') : ''}</p>
+      <div class="actions"><button class="enter" onClick={() => goCapital(v, map.current, true)}>◎ {t('enterSystem')} · {capName} ★</button></div>
       <ul class="list">
         {mine.map((s) => (
           <li key={s.id} onClick={() => { selected.value = s.id; tab.value = 'system'; map.current?.centerOn(s.id); }}>
@@ -519,11 +530,13 @@ function Decrees({ v }: { v: PlayerView }) {
   );
 }
 
-function SystemPanel({ v }: { v: PlayerView }) {
+function SystemPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const sel = useSig(selected);
   const tv = useSig(teach);
   const s = v.systems.find((x) => x.id === sel);
-  if (!s) return <p class="muted">{t('selectHint')}</p>;
+  const capName = v.systems.find((x) => x.id === v.me.capital)?.name ?? v.me.capital;
+  const toCapital = <button class="capjump" onClick={() => goCapital(v, map.current)} title={t('capitalTag')}>★ {capName}</button>;
+  if (!s) return <div><p class="muted">{t('selectHint')}</p>{toCapital}</div>;
   const mine = s.owner === v.me.id;
   const ownerName = s.owner ? v.colonies.find((c) => c.id === s.owner)?.name ?? s.owner : t('unclaimed');
   const totalSlots = s.slots + (s.id === v.me.capital ? 3 : 0);
@@ -534,6 +547,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
   const linking = useSig(linkFrom) === s.id;
   return (
     <div>
+      {s.id !== v.me.capital && toCapital}
       <h2><span class={`r-${s.resource}`}><Icon name={s.resource} size={18} /></span> {s.name} {s.id === v.me.capital && <span class="tag">{t('capitalTag')}</span>} {s.kind === 'pulsar' && <span class="tag">{t('kindPulsar')}</span>} {s.kind === 'beacon' && <span class="tag">{t('kindBeacon')}</span>}</h2>
       <div class="facts">
         <span><b class={`r-${s.resource}`}>{t(s.resource)}</b> · {t(`${s.resource}Desc`)}</span>
