@@ -25,6 +25,8 @@ export interface DoctrineContext {
   allies?: string[] | undefined;
   /** The General answering, for the voice of the reply. */
   persona?: Persona;
+  /** The capital's system id, when known: "defend the capital" resolves to it (or to "__capital__"). */
+  capital?: string | undefined;
 }
 
 export interface DoctrineExtras {
