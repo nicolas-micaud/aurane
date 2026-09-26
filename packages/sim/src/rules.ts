@@ -35,6 +35,10 @@ export interface SeasonRules {
   concordatRangeMult: number;
   /** Corsair capitals prefer lair systems (hidden main body) and others avoid them. Off in Season 0 (nobody starts in a lair): the bias cost the Corsairs 25 points of score swing (REVIEW-S0 § 3). */
   spawnLairBias: boolean;
+  /** First contact (Grok's read of 26.09, Nick's "empty first minute"): within `withinSeconds` of a human colony's founding, its
+   *  nearest NPC neighbour lights a relay towards a star the newcomer can also reach, the sectors involved are revealed to the
+   *  newcomer for `revealHours`, and the event feeds the Journal and the General. The world moves before the first Draw. */
+  firstContact: { enabled: boolean; withinSeconds: number; revealHours: number };
 }
 
 export const DEFAULT_RULES: SeasonRules = {
@@ -55,6 +59,7 @@ export const DEFAULT_RULES: SeasonRules = {
   oracleHintMinutes: 60,
   concordatRangeMult: 1.05,
   spawnLairBias: false,
+  firstContact: { enabled: true, withinSeconds: 90, revealHours: 6 },
 };
 
 /** The rules of the first prototype seasons, for measuring what each guard-rail changes. */
@@ -76,8 +81,9 @@ export const LEGACY_RULES: SeasonRules = {
   oracleHintMinutes: 0,
   concordatRangeMult: 1.1,
   spawnLairBias: true,
+  firstContact: { enabled: false, withinSeconds: 0, revealHours: 0 },
 };
 
 export function mergeRules(partial?: Partial<SeasonRules>): SeasonRules {
-  return { ...DEFAULT_RULES, ...(partial ?? {}), galaxyGrowth: { ...DEFAULT_RULES.galaxyGrowth, ...(partial?.galaxyGrowth ?? {}) } };
+  return { ...DEFAULT_RULES, ...(partial ?? {}), galaxyGrowth: { ...DEFAULT_RULES.galaxyGrowth, ...(partial?.galaxyGrowth ?? {}) }, firstContact: { ...DEFAULT_RULES.firstContact, ...(partial?.firstContact ?? {}) } };
 }

@@ -1,6 +1,7 @@
 import { loadConfig } from './config.js';
 import { Engine } from './engine.js';
 import { createHttpServer } from './http.js';
+import { mailerFromEnv } from './mail.js';
 import { FileStore, PgStore, type Store } from './store.js';
 import { FileBudgetStore, FileJobStore, FileMemoryStore, PgBudgetStore, PgJobStore, PgMemoryStore } from './llmstore.js';
 import type { GeneralDeps } from './general.js';
@@ -24,9 +25,10 @@ async function main(): Promise<void> {
   await engine.init();
   await engine.general.init();
   engine.start();
-  const server = createHttpServer(engine);
+  const mailer = mailerFromEnv();
+  const server = createHttpServer(engine, { mailer });
   server.listen(cfg.port, cfg.host, () => {
-    console.log(JSON.stringify({ msg: 'world up', host: cfg.host, port: cfg.port, seed: cfg.seasonSeed, timeScale: cfg.timeScale, store: cfg.databaseUrl ? 'postgres' : 'file', colonies: Object.keys(engine.world.colonies).length, llm: { voice: engine.general.stack.voice?.name ?? null, narrative: engine.general.stack.narrative?.name ?? null, doctrineConfirm: cfg.doctrineConfirm, budget: engine.general.metrics.spend(), memory: cfg.memoryUrl ? 'postgres+instance' : 'postgres' } }));
+    console.log(JSON.stringify({ msg: 'world up', host: cfg.host, port: cfg.port, seed: cfg.seasonSeed, timeScale: cfg.timeScale, store: cfg.databaseUrl ? 'postgres' : 'file', colonies: Object.keys(engine.world.colonies).length, llm: { voice: engine.general.stack.voice?.name ?? null, narrative: engine.general.stack.narrative?.name ?? null, doctrineConfirm: cfg.doctrineConfirm, budget: engine.general.metrics.spend(), memory: cfg.memoryUrl ? 'postgres+instance' : 'postgres' }, mail: mailer.kind }));
   });
   const shutdown = async (): Promise<void> => {
     console.log(JSON.stringify({ msg: 'shutting down' }));

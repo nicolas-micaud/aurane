@@ -36,13 +36,14 @@ export function describeEvent(e: Ev, v: PlayerView, i: number): FeedLine | null 
     const recap: Recap = { index: Number(d.index ?? 0), produced: (d.produced as Record<string, number>) ?? {}, overflow: Number(d.overflow ?? 0), credits: Number(d.credits ?? 0), productive: Number(d.productive ?? 0), drawn: Number(d.drawn ?? 0), unpowered: Number(d.unpowered ?? 0) };
     return { key, at: e.at, tone: 'draw', text: fill(t('events')['draw.recap'] ?? 'Draw {n}', { n: recap.index + 1 }), system: null, recap };
   }
-  const tpl = t('events')[e.kind];
+  const contactKind = e.kind === 'contact.first' ? (d.kind === 'seen' ? 'contact.seen' : Number(d.sectors ?? 0) <= 1 ? 'contact.near' : 'contact.first') : null;
+  const tpl = t('events')[contactKind ?? e.kind];
   if (!tpl) return { key, at: e.at, tone: 'info', text: `${e.kind} ${e.actors.map(name).join(' → ')}`, system };
   // Two-party events name the other party as {b} when we are one of the two ("Barter settled with X").
   const other = e.actors.length === 2 && e.actors.includes(me) ? e.actors.find((x) => x !== me) : undefined;
   const a = name(e.actors[0]), b = name(e.kind === 'barter.done' && other ? other : e.actors[1]);
   const n = e.kind === 'battle' ? Number(d.kills ?? 0) : e.kind === 'fleet.inbound' ? Number(d.size ?? 0) : e.kind === 'refinery.raided' || e.kind === 'depot.loaded' ? Number(d.rium ?? 0)
-    : e.kind === 'salvage' ? Number(d.metal ?? 0) : e.kind === 'probe.done' ? Number(d.found ?? 0) : e.kind === 'onboarding.unlocked' ? Number(d.tier ?? 0) : Number(d.count ?? d.index ?? 0);
+    : e.kind === 'salvage' ? Number(d.metal ?? 0) : e.kind === 'probe.done' ? Number(d.found ?? 0) : e.kind === 'onboarding.unlocked' ? Number(d.tier ?? 0) : e.kind === 'contact.first' ? Number(d.sectors ?? 0) : Number(d.count ?? d.index ?? 0);
   const k = e.kind === 'onboarding.unlocked' ? t(`tier${Number(d.tier ?? 0)}` as 'tier1') : e.kind === 'decree' ? decreeLabel(String(d.kind ?? '')) : e.kind === 'treaty.signed' ? t(String(d.kind ?? 'nap') as 'nap') : String(d.name ?? d.beacon ?? (Array.isArray(d.bands) ? (d.bands as number[]).join(' · ') : ''));
   const eta = e.kind === 'fleet.inbound' ? etaText(Number(d.arriveAt ?? e.at) - e.at) : '';
   const text = fill(tpl, { a, b, s: sysName(d.system), n, k, t: eta });

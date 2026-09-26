@@ -39,7 +39,11 @@ export interface Colony {
   watchChangedAt?: number;
   /** Progressive onboarding tier (docs/design/ONBOARDING-S0.md); NPCs and veterans sit at the last tier. */
   onboarding: Onboarding;
+  /** First contact (rule `firstContact`): the nearest NPC at founding, when it must move, and the star it lit (null until it did). */
+  contact?: FirstContact;
 }
+
+export interface FirstContact { rival: string; at: number; system: string | null }
 
 /** Onboarding tier and when each tier opened (index = tier). */
 export interface Onboarding { tier: number; unlockedAt: number[] }

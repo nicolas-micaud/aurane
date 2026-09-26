@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, answerCounsel, eraseMemory, exportMemory, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, revokeSession, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { act, addPasskey, answerCounsel, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -57,6 +57,15 @@ export function Game() {
   }, []);
 
   useEffect(() => { map.current?.update(v); }, [v]);
+  // First contact: when the neighbour's relay lights up, its star flashes on the galaxy once (the Journal and the General say the rest).
+  const lastContact = useRef<number>(0);
+  useEffect(() => {
+    const e = v.events.filter((x) => x.kind === 'contact.first' && x.actors[0] === v.me.id).pop();
+    if (!e || e.at <= lastContact.current) return;
+    lastContact.current = e.at;
+    const sys = (e.data as { system?: string } | undefined)?.system;
+    if (sys && map.current) setTimeout(() => map.current?.flash(sys), 400);
+  }, [v]);
   useEffect(() => { void fetchBriefing(lang.value).then((b) => { if (b && b.awaySeconds >= 600) briefing.value = b; }); }, []);
   const brief = useSig(briefing);
   useEffect(() => { map.current?.setSelection(selV); }, [selV]);
@@ -680,7 +689,14 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } }, []);
   // The General speaks first when a hostile fleet heads our way: pick up its line when such an event lands.
   const inboundCount = v.events.filter((e) => e.kind === 'fleet.inbound' && e.actors[1] === v.me.id).length;
-  useEffect(() => { if (talkLoaded && inboundCount > 0) void fetchTalk().then((h) => { if (h.length > talk.value.length) talk.value = h; }); }, [inboundCount]);
+  // Whenever the General may have spoken first (hostile fleet, new tier, first contact), the thread is refetched: the
+  // view push carries the event, not the words.
+  const spokeCount = v.events.filter((e) => (e.kind === 'fleet.inbound' && e.actors[1] === v.me.id) || ((e.kind === 'onboarding.unlocked' || e.kind === 'contact.first') && e.actors[0] === v.me.id)).length;
+  useEffect(() => {
+    if (!talkLoaded || (spokeCount === 0 && inboundCount === 0)) return;
+    const timer = setTimeout(() => void fetchTalk().then((h) => { const last = talk.value[talk.value.length - 1]; if (h.length && (h.length !== talk.value.length || h[h.length - 1]!.at !== last?.at)) talk.value = h; }), 300);
+    return () => clearTimeout(timer);
+  }, [spokeCount, inboundCount]);
   const journal = [...v.me.journal].reverse().slice(0, 12);
   const tv = useSig(teach);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
@@ -728,13 +744,79 @@ function GeneralPanel({ v }: { v: PlayerView }) {
 
 /** The Account tab (decision 0010, lot A): who I am, the devices holding this Colony, the General's memory, language,
  *  installation, and the way out. Guests are told what leaving costs; the passkey comes with lot B. */
+/** The rescue e-mail (decision 0010, lot C): address, then the six-digit code, typed here, never a link. */
+function EmailSection({ email, onChange, say }: { email: string | null; onChange: () => void; say: (text: string, kind?: 'ok' | 'err') => void }) {
+  const [step, setStep] = useState<'idle' | 'address' | 'code'>('idle');
+  const [addr, setAddr] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const l = useSig(lang);
+  const send = async (e: Event) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const r = await startEmail(addr.trim(), l);
+    setBusy(false);
+    if (r.ok) { setStep('code'); setCode(''); } else setErr(tError(r.reason ?? ''));
+  };
+  const confirm = async (e: Event) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const r = await verifyEmail(code);
+    setBusy(false);
+    if (r.ok) { say(t('emailAdded')); setStep('idle'); onChange(); } else setErr(tError(r.reason ?? ''));
+  };
+  const drop = async () => { if (await removeEmail()) { say(t('emailRemoved')); onChange(); } };
+  if (step === 'idle') {
+    return (
+      <>
+        <p class="muted small">{t('rescueEmailHelp')}</p>
+        {email ? (
+          <ul class="list"><li><span><b>{email}</b></span><span class="actions"><button onClick={() => { setAddr(email); setStep('address'); }}>{t('changeEmail')}</button><button onClick={() => void drop()}>{t('emailRemove')}</button></span></li></ul>
+        ) : <button class="primary" onClick={() => setStep('address')}>{t('addEmail')}</button>}
+      </>
+    );
+  }
+  return (
+    <form class="selbox emailform" onSubmit={(e) => void (step === 'address' ? send(e) : confirm(e))}>
+      {step === 'address' ? (
+        <label>{t('emailAddress')}<input type="email" inputMode="email" autoComplete="email" value={addr} onInput={(e) => setAddr((e.target as HTMLInputElement).value)} required autoFocus /></label>
+      ) : (
+        <>
+          <p class="muted small">{t('codeSentTo').replace('{e}', addr.trim().toLowerCase())}</p>
+          <label>{t('typeCode')}<input class="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} value={code} onInput={(e) => setCode((e.target as HTMLInputElement).value)} required autoFocus /></label>
+        </>
+      )}
+      {err && <p class="error">{err}</p>}
+      <div class="actions">
+        <button class="primary" disabled={busy || (step === 'address' ? !addr.includes('@') : code.replace(/\D/g, '').length !== 6)}>{step === 'address' ? t('sendCode') : t('confirmCode')}</button>
+        {step === 'code' && <button type="button" disabled={busy} onClick={() => setStep('address')}>{t('back')}</button>}
+        <button type="button" onClick={() => { setStep('idle'); setErr(null); }}>{t('cancel')}</button>
+      </div>
+    </form>
+  );
+}
+
 function AccountPanel({ v }: { v: PlayerView }) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [erasing, setErasing] = useState(false);
+  const [keying, setKeying] = useState(false);
   const l = useSig(lang);
-  const load = () => { void fetchSessions().then(setSessions); };
+  const load = () => { void fetchSessions().then(setSessions); void fetchAccount().then(setAccount); };
   useEffect(load, []);
+  const hasKeys = (account?.passkeys.length ?? 0) > 0;
+  const hasEmail = !!account?.account?.email;
+  const protectedBy = hasKeys || hasEmail;
+  const say = (text: string, kind: 'ok' | 'err' = 'ok') => { toast.value = { text, kind }; setTimeout(() => { if (toast.value?.text === text) toast.value = null; }, 3000); };
+  const enroll = async () => {
+    setKeying(true);
+    const r = await addPasskey(l);
+    setKeying(false);
+    if (r.ok) { say(t('passkeyAdded')); load(); }
+    else if (r.reason === 'cancelled') say(t('passkeyCancelled'), 'err');
+    else say(t('passkeyFailed').replace('{r}', r.reason ?? ''), 'err');
+  };
+  const drop = async (id: string) => { if (await removePasskey(id)) load(); };
   const when = (ms: number | null): string => (ms ? new Date(ms).toLocaleString(l === 'fr' ? 'fr-CH' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : t('neverSeen'));
   const cut = async (id: string) => { if (await revokeSession(id)) { toast.value = { text: t('cutOffDone'), kind: 'ok' }; setTimeout(() => { toast.value = null; }, 2500); load(); } };
   const download = async () => {
@@ -747,8 +829,21 @@ function AccountPanel({ v }: { v: PlayerView }) {
   return (
     <div class="account">
       <h2>{v.me.name} <small class={`f-${v.me.faction}`}>{t(v.me.faction as 'guild')}</small></h2>
-      <p class="muted">{t(v.me.persona as 'vane')} · <span class="tag">{t('accountGuest')}</span></p>
-      <p class="muted small">{t('accountGuestHelp')}</p>
+      <p class="muted">{t(v.me.persona as 'vane')} · <span class={`tag ${protectedBy ? 'ok' : ''}`}>{protectedBy ? t('accountProtected') : t('accountGuest')}</span></p>
+      <p class="muted small">{hasKeys ? t('accountProtectedHelp') : hasEmail ? t('accountProtectedEmail') : t('accountGuestHelp')}</p>
+      <h3>{t('passkeys')} {account && account.passkeys.length > 0 && <small>{account.passkeys.length}</small>}</h3>
+      {!protectedBy && <p class="muted small">{t('addPasskeyHelp')}</p>}
+      <ul class="list">
+        {(account?.passkeys ?? []).map((k) => (
+          <li key={k.id}>
+            <span><b>{k.label || '—'}</b> <small>· {t('lastUsed')} {when(k.lastUsedAt)}</small></span>
+            <button onClick={() => void drop(k.id)}>{t('removePasskey')}</button>
+          </li>
+        ))}
+      </ul>
+      {passkeysSupported() ? <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button> : <p class="muted small">{t('passkeyUnsupported')}</p>}
+      <h3>{t('rescueEmail')}</h3>
+      <EmailSection email={account?.account?.email ?? null} onChange={load} say={say} />
       <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
       <ul class="list">
         {(sessions ?? []).map((s) => (
@@ -769,10 +864,19 @@ function AccountPanel({ v }: { v: PlayerView }) {
       <div class="lang"><button class={l === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button><button class={l === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
       <div class="actions"><InstallButton compact /><a class="link" href={`/c/${encodeURIComponent(v.me.id)}`} target="_blank" rel="noopener">{t('colonyPage')} ›</a></div>
       <h3>{t('logout')}</h3>
-      {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : (
+      {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : protectedBy ? (
+        <div class="selbox">
+          <p class="muted">{hasKeys ? t('logoutSafe') : t('logoutSafeEmail')}</p>
+          <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logout')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
+        </div>
+      ) : (
         <div class="selbox">
           <p class="bad">{t('logoutWarn')}</p>
-          <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logoutAnyway')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
+          <div class="actions">
+            {passkeysSupported() && <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button>}
+            <button onClick={() => void logout()}>{t('logoutAnyway')}</button>
+            <button onClick={() => setLeaving(false)}>{t('cancel')}</button>
+          </div>
         </div>
       )}
     </div>

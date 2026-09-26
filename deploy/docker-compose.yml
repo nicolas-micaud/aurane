@@ -16,6 +16,9 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       AUTH_SECRET: ${AUTH_SECRET}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://play.playaurane.com}
+      # Passkeys (decision 0010): RP ID = registrable domain of PUBLIC_ORIGIN unless set; extra origins for staging.
+      RP_ID: ${RP_ID:-}
+      RP_ORIGINS: ${RP_ORIGINS:-}
       SEASON_DAYS: ${SEASON_DAYS:-56}
       NPC_COUNT: ${NPC_COUNT:-30}
       TIME_SCALE: "1"

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { limitsFromEnv, type QuotaLimits } from '@aurane/general';
+import { rpIdFor } from './auth.js';
 
 export interface Config {
   port: number;
@@ -25,6 +26,10 @@ export interface Config {
   authSecret: string;
   /** Public origin used in device links, e.g. https://play.playaurane.com. */
   publicOrigin: string;
+  /** WebAuthn RP ID (decision 0010): the registrable domain of the public origin unless RP_ID says otherwise. */
+  rpId: string;
+  /** Origins a passkey ceremony may come from: the public origin, plus RP_ORIGINS (comma separated) for development. */
+  rpOrigins: string[];
   /** A compiled doctrine waits for the player's confirmation before it is active (DOCTRINE_CONFIRM=1). */
   doctrineConfirm: boolean;
   /** How long a live request waits for the model before the General answers in character without it. */
@@ -71,6 +76,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     adminToken: env.ADMIN_TOKEN || null,
     authSecret: env.AUTH_SECRET || randomBytes(32).toString('hex'),
     publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
+    rpId: env.RP_ID || rpIdFor(env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com'),
+    rpOrigins: [env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com', ...(env.RP_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)],
     doctrineConfirm: env.DOCTRINE_CONFIRM === '1' || env.DOCTRINE_CONFIRM === 'true',
     talkDeadlineMs: num(env.LLM_TALK_DEADLINE_MS, 25000),
     briefingDeadlineMs: num(env.LLM_BRIEFING_DEADLINE_MS, 8000),

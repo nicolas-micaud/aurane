@@ -10,7 +10,10 @@ Décidé le 24.09.2026. Une saison courte (7 jours) sur playaurane.com, 20 à 30
 | `INVITE_CODES` | codes d'amorçage, séparés par des virgules, utilisables une fois chacun | quelques codes pour les premiers testeurs, le reste par l'admin |
 | `ADMIN_TOKEN` | jeton des routes `/api/admin/*` (en-tête `x-admin-token`) ; absent = routes désactivées | secret Vaultwarden, 32 octets aléatoires |
 | `AUTH_SECRET` | signe les liens d'appareil (`/#join=…`, 24 h) ; absent = aléatoire par processus, les liens meurent au redémarrage | secret Vaultwarden, 32 octets aléatoires |
-| `PUBLIC_ORIGIN` | origine des liens d'appareil | `https://play.playaurane.com` |
+| `PUBLIC_ORIGIN` | origine des liens d'appareil et des cérémonies passkey | `https://play.playaurane.com` |
+| `RP_ID` | identifiant WebAuthn (décision 0010) ; absent = domaine enregistrable de `PUBLIC_ORIGIN` (`playaurane.com`) | vide |
+| `RP_ORIGINS` | origines supplémentaires acceptées pour les passkeys (préproduction), séparées par des virgules | vide |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | expéditeur des codes à six chiffres (décision 0010, lot C) ; 465 = TLS implicite, sinon STARTTLS exigé ; **tant qu'une variable manque, le code est écrit dans les logs de `world`** (`[mail] no SMTP configured; to=…`), ce qui suffit en bêta fermée pour dépanner un joueur à la main | vides (mode logs) ; port `587` |
 | `SEASON_SEED` | graine de la saison ; changer la graine (ou le rayon) = nouvelle saison : le monde précédent est archivé au démarrage (`world_snapshots.season:<graine>-<temps>` en Postgres, `world-<…>.json` en fichier), une galaxie neuve est créée | `beta-2` (depuis le 25.09) |
 | `GALAXY_RADIUS` | rayon de la galaxie en secteurs ; 6 = 127 secteurs, dense pour 20 à 40 Colonies ; 12 = 200 à 500 Colonies | `6` (depuis le 25.09, décision 0005 § 4.1) |
 | `SEASON_DAYS` | durée de la saison | `7` |
