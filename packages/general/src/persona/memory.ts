@@ -224,6 +224,7 @@ export class MirroredMemoryStore implements MemoryStore {
   private lastRev = 0;
   private flushing: Promise<number> | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
+  private retry: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly primary: MemoryStore, private readonly mirror: HttpMemoryStore, private readonly onError: (err: Error) => void = () => undefined, opts: MirroredOptions = {}) {
     this.outbox = opts.outbox ?? new InMemoryOutbox();
@@ -377,7 +378,11 @@ export class MirroredMemoryStore implements MemoryStore {
       }
       for (const [k, x] of remote) if (!known.has(k) && !x.erased) r.remoteOnly++;
       this.succeeded();
-    } catch (err) { r.error = (err as Error).message; this.failed(err as Error); }
+    } catch (err) {
+      r.error = (err as Error).message; this.failed(err as Error);
+      // Started before the instance (a deploy): try again in a minute rather than stay red for the hour.
+      if (this.timers.length && !this.retry) { this.retry = setTimeout(() => { this.retry = null; void this.reconcile(); }, 60000); this.retry.unref?.(); }
+    }
     this.stats.reconcile = r;
     if (r.pushed + r.pulled + r.erased) this.kick();
     return r;
@@ -392,7 +397,7 @@ export class MirroredMemoryStore implements MemoryStore {
     this.timers.push(t1, t2);
     void this.reconcile();
   }
-  async stop(): Promise<void> { for (const t of this.timers) clearInterval(t); this.timers = []; if (this.flushing) await this.flushing.catch(() => undefined); }
+  async stop(): Promise<void> { for (const t of this.timers) clearInterval(t); this.timers = []; if (this.retry) clearTimeout(this.retry); this.retry = null; if (this.flushing) await this.flushing.catch(() => undefined); }
 
   /** Kept for the admin snapshot (consecutive failures, as before). */
   get mirrorFailures(): number { return this.stats.consecutiveFailures; }
