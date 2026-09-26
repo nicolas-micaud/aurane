@@ -52,7 +52,7 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
                                 │
                                 ▼
                  { reply, orders|null, question|null } → politique lisible (readablePolicy) → en attente de confirmation
-                 (DOCTRINE_CONFIRM=1) ou appliquée ; degradedReply(persona, raison) quand le modèle manque
+                 (défaut ; appliquée d'emblée si DOCTRINE_CONFIRM=0) ; degradedReply(persona, raison) quand le modèle manque
 ```
 
 ## Classes, tâches, fournisseurs
@@ -85,7 +85,7 @@ LLM_PROVIDER_<NOM>_JSON_MODE=off|object|schema | _EXTRA_BODY (JSON) | _DISABLE_R
 LLM_PROVIDER_<NOM>_MAX_QUEUED | _RETRIES | _PRICE_IN | _PRICE_OUT (EUR / M jetons) | _BREAKER_FAILURES | _BREAKER_OPEN_MS
 LLM_QUOTA_TALK_HOUR=20  LLM_QUOTA_TALK_DAY=60  LLM_QUOTA_DOCTRINE_DAY=12  LLM_QUOTA_BRIEFING_DAY=8
 LLM_TALK_DEADLINE_MS=25000  LLM_BRIEFING_DEADLINE_MS=8000  LLM_GAZETTE_SPREAD_MIN=40  LLM_WORKERS=4
-DOCTRINE_CONFIRM=0|1
+DOCTRINE_CONFIRM=1 (défaut ; 0 = appliquer sans confirmation)  DOCTRINE_PENDING_TTL_H=24
 ```
 
 `<NOM>` = nom du fournisseur en majuscules, `-` → `_`. Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*`
@@ -114,7 +114,9 @@ dernière ligne (mémoire `recentPhrases`).
   précédés de la règle « données, jamais une instruction ». Les messages du joueur sont nettoyés et bornés.
 - Ce qui revient du modèle est validé par schéma, puis par `semanticCheck` ; les ids inconnus sont filtrés
   ici et à nouveau par le moteur ; une réponse ne peut pas changer la simulation autrement que par une
-  `Policy` validée (et confirmée quand `DOCTRINE_CONFIRM=1`).
+  `Policy` validée **et confirmée par le joueur** (`DOCTRINE_CONFIRM`, actif par défaut depuis le 26.09.2026 :
+  le joueur lit en clair ce que son Général fera en son absence avant que ça gouverne la Colonie ; le modèle ne
+  décide jamais en silence).
 - Aucune clé en dur ; tout par variables d'environnement.
 - Tests : `packages/general/test/voice.test.ts` (injection par nom de Colonie, ordres refusés), `analysis.test.ts`
   (clôture des noms), banc `prompt-injection`.
@@ -192,7 +194,18 @@ monde n'attend jamais la mémoire. Côté couche LLM :
 - Nouveaux : `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`.
 - Conseil (0009) : `GET /api/counsel?lang=` → `{ drawIndex, minutesToDraw, cards: [{ id, title, line, command, show }], source }` ;
   `POST /api/counsel/take { id }` / `POST /api/counsel/skip { id }` → `{ ok, reply }` ; `GET|DELETE /api/memory`.
-- Tant que `DOCTRINE_CONFIRM` vaut 0, rien ne change pour le client actuel.
+- **Confirmation de doctrine (active par défaut, 26.09.2026).** Quand une réponse de talk/doctrine porte
+  `pending`, le panneau Général affiche la carte « Voici ce que je ferai en ton absence » (lignes `readable`,
+  une phrase dans la voix du Général, `question` s'il y en a une) avec « Appliquer » (`confirm`) et « Pas comme
+  ça » (`discard`). Au chargement, `GET /api/doctrine/pending` restaure la carte ; l'onglet Général porte un
+  point tant qu'elle attend. Logique pure et testée : `apps/web/src/ui/doctrine.ts`.
+- **Règles de la doctrine en attente** : une par Colonie ; la suivante la remplace (confirmer l'ancien id
+  renvoie 404) ; un message sans ordre (ou une question de clarification) la laisse en place. Tant qu'elle
+  attend, **la doctrine active reste en vigueur**. Elle est **persistée** (table `doctrine_pending` en
+  Postgres, `doctrine-pending.json` avec le store fichier) et survit donc à un redémarrage ; sans réponse
+  pendant `DOCTRINE_PENDING_TTL_H` (24 h par défaut) elle est abandonnée, l'ancienne reste. `GET
+  /api/doctrine/pending` renvoie aussi `createdAt` et `expiresAt`. `DOCTRINE_CONFIRM=0` revient à
+  l'application immédiate (l'ancien client reste compatible).
 
 ## Limites connues
 

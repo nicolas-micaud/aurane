@@ -41,5 +41,6 @@ banc : [docs/ai/persona-report.md](../ai/persona-report.md).
 - **Modèle de la classe `narrative`** : Apertus 70B (Infomaniak, Suisse) proposé ; ou rester sur Mistral
   Small pour la Gazette tant que le volume est faible.
 - **Quotas** : 20 messages par heure et 60 par jour, 12 doctrines et 8 briefings par jour proposés.
-- **`DOCTRINE_CONFIRM`** : activer quand la session cloud aura câblé l'écran de confirmation.
+- **`DOCTRINE_CONFIRM`** : activer quand la session cloud aura câblé l'écran de confirmation. **Fait le 26.09.2026** :
+  écran câblé dans le panneau Général, confirmation active par défaut (`DOCTRINE_CONFIRM=0` pour la couper).
 - **Mémoires de fin de saison** : contenu à décider avant de les écrire.

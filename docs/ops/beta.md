@@ -60,7 +60,10 @@ les stores, stockage hors ligne limité à la coquille de l'app (la partie exige
 La couche LLM se configure par classe et par fournisseur (`LLM_VOICE_*`, `LLM_NARRATIVE_*`,
 `LLM_PROVIDER_<NOM>_*`), avec quotas par joueur (`LLM_QUOTA_*`), échéances des requêtes vivantes
 (`LLM_TALK_DEADLINE_MS`, `LLM_BRIEFING_DEADLINE_MS`), lissage de la Gazette (`LLM_GAZETTE_SPREAD_MIN`) et
-confirmation de doctrine (`DOCTRINE_CONFIRM`). La liste complète, les valeurs proposées pour la bêta et
+confirmation de doctrine (`DOCTRINE_CONFIRM`, **active par défaut** depuis le 26.09.2026 : le joueur valide
+en clair ce que son Général fera en son absence ; `DOCTRINE_CONFIRM=0` la coupe ; une doctrine non confirmée
+expire après `DOCTRINE_PENDING_TTL_H`, 24 h, et la précédente reste active ; table `doctrine_pending` créée au
+démarrage). La liste complète, les valeurs proposées pour la bêta et
 la marche à suivre pour vérifier le catalogue d'un fournisseur sont dans
 [docs/ai/ARCHITECTURE.md](../ai/ARCHITECTURE.md). Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*`
 restent lues en compatibilité. Métriques : `GET /api/admin/llm/metrics` (jeton admin).
