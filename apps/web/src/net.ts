@@ -278,8 +278,21 @@ export async function addPasskey(lang: 'fr' | 'en'): Promise<{ ok: boolean; reas
   } catch (err) { return { ok: false, reason: (err as Error).name === 'NotAllowedError' ? 'cancelled' : (err as Error).message }; }
 }
 
+/** A returning account with no colony this season: a single-use ticket to found one, last season's colony to prefill the
+ *  form, and whether its General remembers it. */
+export interface FoundOffer { ticket: string; expiresAt: number; previous: { name: string; faction: Faction; persona: Persona } | null; remembers: boolean }
+export interface SignInResult { ok: boolean; reason?: string; found?: FoundOffer }
+
+/** Founds this season's colony of a returning account (no invitation); the device session is kept like a guest's. */
+export async function foundColony(ticket: string, name: string, faction: Faction, persona: Persona): Promise<void> {
+  const res = await fetch('/api/account/found', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket, name, faction, persona }) });
+  const body = await res.json().catch(() => ({})) as { token?: string; error?: string };
+  if (!res.ok || !body.token) throw new Error(body.error ?? 'network');
+  setToken(body.token);
+}
+
 /** Signs in with a passkey from the landing page: the account's colony opens here with a fresh session. */
-export async function loginWithPasskey(): Promise<{ ok: boolean; reason?: string }> {
+export async function loginWithPasskey(): Promise<SignInResult> {
   try {
     const { startAuthentication } = await import('@simplewebauthn/browser');
     const optRes = await fetch('/api/auth/passkey/login/options', { method: 'POST' });
@@ -287,8 +300,8 @@ export async function loginWithPasskey(): Promise<{ ok: boolean; reason?: string
     const { handle, options } = await optRes.json() as { handle: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] };
     const response = await startAuthentication({ optionsJSON: options });
     const res = await fetch('/api/auth/passkey/login/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ handle, response }) });
-    const body = await res.json().catch(() => ({})) as { token?: string; error?: string };
-    if (!res.ok || !body.token) return { ok: false, reason: body.error ?? 'verify' };
+    const body = await res.json().catch(() => ({})) as { token?: string; error?: string; found?: FoundOffer };
+    if (!res.ok || !body.token) return { ok: false, reason: body.error ?? 'verify', ...(body.found ? { found: body.found } : {}) };
     setToken(body.token);
     return { ok: true };
   } catch (err) { return { ok: false, reason: (err as Error).name === 'NotAllowedError' ? 'cancelled' : (err as Error).message }; }
@@ -330,11 +343,11 @@ export async function startEmailLogin(email: string, lang: 'fr' | 'en'): Promise
   } catch { return null; }
 }
 
-export async function verifyEmailLogin(handle: string, code: string): Promise<{ ok: boolean; reason?: string }> {
+export async function verifyEmailLogin(handle: string, code: string): Promise<SignInResult> {
   try {
     const res = await fetch('/api/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ handle, code }) });
-    const body = await res.json().catch(() => ({})) as { token?: string; error?: string };
-    if (!res.ok || !body.token) return { ok: false, reason: body.error ?? 'verify' };
+    const body = await res.json().catch(() => ({})) as { token?: string; error?: string; found?: FoundOffer };
+    if (!res.ok || !body.token) return { ok: false, reason: body.error ?? 'verify', ...(body.found ? { found: body.found } : {}) };
     setToken(body.token);
     return { ok: true };
   } catch (err) { return { ok: false, reason: (err as Error).message }; }

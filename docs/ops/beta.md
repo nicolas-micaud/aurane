@@ -35,10 +35,29 @@ le client revient à l'écran d'entrée.
 
 ## Comptes
 
-Pas d'e-mail ni de mot de passe en bêta fermée : le jeton d'appareil est le compte. Pour jouer depuis
+Un invité joue d'abord avec le seul jeton d'appareil ; il protège sa Colonie en ajoutant une passkey (RP ID
+playaurane.com) ou un e-mail de secours (code à six chiffres envoyé par Resend depuis noreply@playaurane.com), ce qui
+crée son compte (décision 0010). Sans mot de passe, jamais. Pour jouer depuis
 un second appareil, « Lier un autre appareil » dans le panneau du Général donne un lien valable 24 h
 qui ouvre la même Colonie ; la page d'accueil accepte aussi ce lien collé. Un joueur qui perd tous ses
 appareils demande un nouveau lien à l'admin (à ajouter si le besoin apparaît : `/api/admin/link`).
+
+### Nouvelle saison : un compte retrouve une Colonie (26.09.2026)
+
+Un joueur qui a protégé sa Colonie (passkey ou e-mail de secours) se connecte à la saison suivante depuis l'écran
+d'entrée ; son compte n'a pas encore de Colonie dans la saison, le serveur lui remet un **ticket de fondation** et le
+client ouvre le formulaire habituel, prérempli avec le nom, la faction et le Général de sa Colonie précédente (lue dans
+l'archive de la saison), avec « Ton Général se souvient de toi » quand la mémoire du compte n'est pas vide.
+
+- Ticket : 24 octets aléatoires, gardé haché **en mémoire du processus** (comme les défis passkey), émis seulement par
+  une connexion qui vient de prouver le compte ; **usage unique** (dépensé à la première présentation, même en échec),
+  **15 minutes**, lié à la graine de saison ; un redémarrage du monde les annule (se reconnecter suffit).
+- **Pas de code d'invitation**, même avec `REQUIRE_INVITE=1` : le compte a été admis dans une saison passée. Un invité
+  sans compte en exige toujours un.
+- **Une Colonie par compte et par saison** : un second ticket (autre onglet, double touche) rouvre la même Colonie
+  (`200`, `created: false`) au lieu d'en fonder une autre ; fondations simultanées sérialisées par compte.
+- La Colonie est liée au compte (`account_colonies`) avant toute lecture de mémoire, et la session d'appareil appartient
+  au compte : la mémoire `account:<id>` et le titre de fondateur suivent aussitôt.
 
 ## Installer Aurane sur mobile (PWA)
 

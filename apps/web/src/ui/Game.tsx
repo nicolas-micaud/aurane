@@ -11,7 +11,7 @@ import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
 import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
-import { cardAfterTalk, cardFromPending, pendingLineKey, type PendingCard } from './doctrine.js';
+import { CARD_LINES, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from './doctrine.js';
 import { marketPrefill, pendingDemo, pointAt, sceneFlashReq, stopTeaching, teach, teachClass, teachKey } from './teach.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log' | 'account';
@@ -714,17 +714,28 @@ function DoctrineCard({ v, card }: { v: PlayerView; card: PendingCard }) {
     say(t('pendingDiscarded'));
     (document.querySelector('.generalpanel .say textarea') as HTMLTextAreaElement | null)?.focus();
   };
+  // On a phone the buttons come right under the title, before the lines, and the list folds after a few lines: the
+  // yes and the no stay in view above the composer (390x844), the rest is one tap away.
+  const [all, setAll] = useState(false);
+  useEffect(() => setAll(false), [card.id]);
+  const { shown, hidden } = visibleLines(card.readable, all);
   return (
     <div class="doctrine-card" role="region" aria-label={t('pendingTitle')}>
       <small class="who">{t(v.me.persona as 'vane')}</small>
       <p class="title"><b>{t('pendingTitle')}</b></p>
       <p class="voice">{t(pendingLineKey(v.me.persona))}</p>
-      {card.readable.length > 0 ? <ul>{card.readable.map((l, i) => <li key={i}>{l}</li>)}</ul> : <p class="muted small">{t('pendingNothing')}</p>}
       {card.question && <p class="question">{card.question}</p>}
       <div class="acts">
         <button class="primary" disabled={busy} onClick={() => void apply()}>{t('pendingApply')}</button>
         <button disabled={busy} onClick={() => void notThat()}>{t('pendingNotThat')}</button>
       </div>
+      {card.readable.length > 0 ? (
+        <>
+          <ul>{shown.map((l, i) => <li key={i}>{l}</li>)}</ul>
+          {hidden > 0 && <button class="link more" onClick={() => setAll(true)}>{t('pendingSeeAll').replace('{n}', String(hidden))}</button>}
+          {all && card.readable.length > CARD_LINES + 1 && <button class="link more" onClick={() => setAll(false)}>{t('pendingSeeLess')}</button>}
+        </>
+      ) : <p class="muted small">{t('pendingNothing')}</p>}
     </div>
   );
 }

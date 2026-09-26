@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol';
-import { connect, createGuest, fetchPublicConfig, loginWithPasskey, passkeysSupported, redeem, startEmailLogin, verifyEmailLogin } from '../net.js';
+import { connect, createGuest, fetchPublicConfig, foundColony, loginWithPasskey, passkeysSupported, redeem, startEmailLogin, verifyEmailLogin, type FoundOffer, type SignInResult } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { InstallButton } from './bits.js';
@@ -19,20 +19,40 @@ export function Landing() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [handle, setHandle] = useState<string | null>(null);
+  /** A returning account with no colony this season: the founding form, prefilled, no invitation. */
+  const [returning, setReturning] = useState<FoundOffer | null>(null);
   const l = useSig(lang);
   useEffect(() => { void fetchPublicConfig().then((c) => setRequireInvite(c.requireInvite)); }, []);
 
   const submit = async (e: Event) => {
     e.preventDefault();
     setBusy(true); setError(null);
-    try { await createGuest(name.trim(), faction, persona, invite.trim() || undefined); connect(); } catch (err) { setError(tError((err as Error).message)); } finally { setBusy(false); }
+    try {
+      if (returning) await foundColony(returning.ticket, name.trim(), faction, persona);
+      else await createGuest(name.trim(), faction, persona, invite.trim() || undefined);
+      connect();
+    } catch (err) {
+      const reason = (err as Error).message;
+      if (reason === 'ticket expired or used') setReturning(null);
+      setError(tError(reason));
+    } finally { setBusy(false); }
+  };
+  /** After a sign-in: the colony opens, or a returning account gets the founding form. */
+  const signedIn = (r: SignInResult, failed: (reason: string) => string) => {
+    if (r.ok) { connect(); return; }
+    if (r.found) {
+      setReturning(r.found);
+      if (r.found.previous) { setName(r.found.previous.name); setFaction(r.found.previous.faction); setPersona(r.found.previous.persona); }
+      setMail('off'); setJoining(false);
+      return;
+    }
+    setError(r.reason === 'no colony this season' ? t('noColonyThisSeason') : failed(r.reason ?? ''));
   };
   const signIn = async () => {
     setBusy(true); setError(null);
     const r = await loginWithPasskey();
     setBusy(false);
-    if (r.ok) connect();
-    else if (r.reason !== 'cancelled') setError(r.reason === 'no colony this season' ? t('noColonyThisSeason') : t('signInFailed').replace('{r}', tError(r.reason ?? '')));
+    if (r.ok || r.reason !== 'cancelled') signedIn(r, (reason) => t('signInFailed').replace('{r}', tError(reason)));
   };
   const askCode = async (e: Event) => {
     e.preventDefault(); setBusy(true); setError(null);
@@ -46,8 +66,7 @@ export function Landing() {
     setBusy(true); setError(null);
     const r = await verifyEmailLogin(handle, code);
     setBusy(false);
-    if (r.ok) connect();
-    else setError(r.reason === 'no colony this season' ? t('noColonyThisSeason') : tError(r.reason ?? ''));
+    signedIn(r, tError);
   };
   const join = async (e: Event) => {
     e.preventDefault();
@@ -65,8 +84,14 @@ export function Landing() {
       <p class="tagline">{t('tagline')}</p>
       <p class="subtitle">{t('subtitle')}</p>
       <form onSubmit={submit} class="card">
+        {returning && (
+          <div class="returning">
+            <b>{t('returningTitle')}</b>
+            <p>{returning.remembers ? t('returningRemembers') : t('returningFresh')}</p>
+          </div>
+        )}
         <label>{t('yourName')}<input value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)} minLength={2} maxLength={32} required autoFocus /></label>
-        {requireInvite && <label>{t('inviteCode')}<input value={invite} onInput={(e) => setInvite((e.target as HTMLInputElement).value)} placeholder="AUR-XXXXXXXX" maxLength={40} required /></label>}
+        {requireInvite && !returning && <label>{t('inviteCode')}<input value={invite} onInput={(e) => setInvite((e.target as HTMLInputElement).value)} placeholder="AUR-XXXXXXXX" maxLength={40} required /></label>}
         <fieldset>
           <legend>{t('faction')}</legend>
           <div class="choices">
@@ -88,7 +113,9 @@ export function Landing() {
           </div>
         </fieldset>
         {error && <p class="error">{error}</p>}
-        <button class="primary" disabled={busy || name.trim().length < 2 || (requireInvite && invite.trim().length < 4)}>{t('play')}</button>
+        <button class="primary" disabled={busy || name.trim().length < 2 || (requireInvite && !returning && invite.trim().length < 4)}>{returning ? t('returningFound') : t('play')}</button>
+        {returning && <p class="muted small"><button type="button" class="link" onClick={() => { setReturning(null); setName(''); setError(null); }}>{t('returningOther')}</button></p>}
+        {!returning && <>
         {passkeysSupported() && <button type="button" class="passkey" disabled={busy} onClick={() => void signIn()}>{t('signInPasskey')}</button>}
         {mail === 'off' ? <button type="button" class="passkey" disabled={busy} onClick={() => { setMail('address'); setError(null); }}>{t('signInEmail')}</button> : (
           <div class="join emailform">
@@ -115,6 +142,7 @@ export function Landing() {
             <button type="button" disabled={busy || !joinCode.trim()} onClick={(e) => void join(e)}>{t('openColony')}</button>
           </div>
         )}
+        </>}
       </form>
     </div>
   );
