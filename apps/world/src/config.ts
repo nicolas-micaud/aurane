@@ -30,8 +30,11 @@ export interface Config {
   rpId: string;
   /** Origins a passkey ceremony may come from: the public origin, plus RP_ORIGINS (comma separated) for development. */
   rpOrigins: string[];
-  /** A compiled doctrine waits for the player's confirmation before it is active (DOCTRINE_CONFIRM=1). */
+  /** A compiled doctrine waits for the player's confirmation before it is active. On by default: the player reads
+   *  what the General will do while they are away before it governs the Colony. DOCTRINE_CONFIRM=0 turns it off. */
   doctrineConfirm: boolean;
+  /** A doctrine left unconfirmed this long is dropped (the active one stays); DOCTRINE_PENDING_TTL_H, default 24. */
+  doctrinePendingTtlMs: number;
   /** How long a live request waits for the model before the General answers in character without it. */
   talkDeadlineMs: number;
   briefingDeadlineMs: number;
@@ -78,7 +81,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
     rpId: env.RP_ID || rpIdFor(env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com'),
     rpOrigins: [env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com', ...(env.RP_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)],
-    doctrineConfirm: env.DOCTRINE_CONFIRM === '1' || env.DOCTRINE_CONFIRM === 'true',
+    doctrineConfirm: env.DOCTRINE_CONFIRM !== '0' && env.DOCTRINE_CONFIRM !== 'false',
+    doctrinePendingTtlMs: num(env.DOCTRINE_PENDING_TTL_H, 24) * 3600 * 1000,
     talkDeadlineMs: num(env.LLM_TALK_DEADLINE_MS, 25000),
     briefingDeadlineMs: num(env.LLM_BRIEFING_DEADLINE_MS, 8000),
     gazetteSpreadMin: num(env.LLM_GAZETTE_SPREAD_MIN, 40),

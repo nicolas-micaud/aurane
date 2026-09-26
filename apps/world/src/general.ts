@@ -18,12 +18,17 @@ export interface GeneralDeps {
   jobStore?: JobStore | undefined;
   memoryStore?: MemoryStore | undefined;
   budgetStore?: BudgetStore | undefined;
+  /** Doctrines awaiting the player's yes, kept across a restart (Postgres or a file); memory only when absent. */
+  pendingStore?: PendingDoctrineStore | undefined;
   stack?: LlmStack | undefined;
   metrics?: LlmMetrics | undefined;
   env?: NodeJS.ProcessEnv | undefined;
 }
 
 export interface PendingDoctrine { id: string; colonyId: string; policy: Policy; readable: string[]; summary: string; reply: string; createdAt: number; lang: 'fr' | 'en' }
+
+/** One pending doctrine per Colony: a new one replaces the previous, a yes or a no removes it. */
+export interface PendingDoctrineStore { loadAll(): Promise<PendingDoctrine[]>; save(p: PendingDoctrine): Promise<void>; remove(colonyId: string): Promise<void> }
 
 export interface TalkResponse { reply: string; source: string; policyChanged: boolean; pending: { id: string; readable: string[] } | null; question: string | null; history: Turn[] }
 export interface DoctrineResponse { policy: Policy; summary: string; readable: string[]; question: string | null; source: string; warnings: string[]; reply: string; pending: { id: string } | null; applied: boolean }
@@ -49,6 +54,7 @@ export class GeneralService {
   private readonly memoryStore: MemoryStore;
   private readonly mirror: MirroredMemoryStore | null = null;
   private readonly budgetStore: BudgetStore | null;
+  private readonly pendingStore: PendingDoctrineStore | null;
   private lastBudgetSave = 0;
   private talks = new Map<string, Turn[]>();
   private langs = new Map<string, 'fr' | 'en'>();
@@ -79,6 +85,7 @@ export class GeneralService {
       this.memoryStore = this.mirror;
     } else this.memoryStore = primary;
     this.budgetStore = deps.budgetStore ?? null;
+    this.pendingStore = deps.pendingStore ?? null;
     if (cfg.budgetEurMonth > 0) this.metrics.budget = { eurPerMonth: cfg.budgetEurMonth, alertRatio: cfg.budgetAlertRatio };
     this.metrics.onSpend = (month, eur) => { const now = Date.now(); if (now - this.lastBudgetSave < 10000) return; this.lastBudgetSave = now; void this.budgetStore?.save(month, eur).catch((err: Error) => console.warn(JSON.stringify({ msg: 'budget save', error: err.message }))); };
     this.metrics.onAlert = (kind, month, eur, budget) => console.warn(JSON.stringify({ msg: kind === 'cap' ? 'LLM BUDGET REACHED: every task degrades in character until the month turns' : 'LLM budget alert', month, eur: Math.round(eur * 100) / 100, budgetEur: budget.eurPerMonth, ratio: Math.round((eur / budget.eurPerMonth) * 100) / 100 }));
@@ -94,11 +101,20 @@ export class GeneralService {
     this.scheduler.handle<EpisodeJob, string>('episode', (job) => this.runEpisode(job.payload));
   }
 
-  /** Restore the month's spend so the cap survives a restart. */
+  /** Restore the month's spend so the cap survives a restart, and the doctrines still waiting for a yes. */
   async init(): Promise<void> {
-    if (!this.budgetStore) return;
-    const month = LlmMetrics.monthKey();
-    try { this.metrics.seedSpend(month, await this.budgetStore.load(month)); } catch (err) { console.warn(JSON.stringify({ msg: 'budget load', error: (err as Error).message })); }
+    if (this.budgetStore) {
+      const month = LlmMetrics.monthKey();
+      try { this.metrics.seedSpend(month, await this.budgetStore.load(month)); } catch (err) { console.warn(JSON.stringify({ msg: 'budget load', error: (err as Error).message })); }
+    }
+    if (this.pendingStore) {
+      try {
+        for (const p of await this.pendingStore.loadAll()) {
+          if (this.expired(p) || !this.colony(p.colonyId)) this.forget(p.colonyId);
+          else this.pending.set(p.colonyId, p);
+        }
+      } catch (err) { console.warn(JSON.stringify({ msg: 'pending doctrines load', error: (err as Error).message })); }
+    }
   }
 
   /** The month's cap is reached: no model for anyone, in-character lines everywhere (decision 0009: never a silence). */
@@ -109,7 +125,7 @@ export class GeneralService {
   }
 
   start(): void { this.scheduler.start(); }
-  async stop(): Promise<void> { await this.scheduler.stop(); }
+  async stop(): Promise<void> { await this.scheduler.stop(); await this.pendingWrites; }
 
   // --- context ---------------------------------------------------------------
 
@@ -155,9 +171,27 @@ export class GeneralService {
   private hold(c: Colony, r: { policy: Policy; readable: string[]; summary: string; reply: string }, lang: 'fr' | 'en'): PendingDoctrine {
     const id = `d${Date.now().toString(36)}${(this.seq++).toString(36)}`;
     const p: PendingDoctrine = { id, colonyId: c.id, policy: r.policy, readable: r.readable, summary: r.summary, reply: r.reply, createdAt: Date.now(), lang };
-    this.pending.set(c.id, p);
+    this.pending.set(c.id, p); // replaces the previous one: the player answers the latest doctrine, not a queue of them
+    this.persist('save', () => this.pendingStore!.save(p));
     return p;
   }
+
+  private expired(p: PendingDoctrine, now = Date.now()): boolean { return now - p.createdAt > this.cfg.doctrinePendingTtlMs; }
+
+  private forget(colonyId: string): void {
+    this.pending.delete(colonyId);
+    this.persist('remove', () => this.pendingStore!.remove(colonyId));
+  }
+
+  /** Writes are chained: a save then a remove must reach the store in that order, or a confirmed doctrine comes back. */
+  private pendingWrites: Promise<void> = Promise.resolve();
+  private persist(what: 'save' | 'remove', op: () => Promise<void>): void {
+    if (!this.pendingStore) return;
+    this.pendingWrites = this.pendingWrites.then(op).catch((err: Error) => console.warn(JSON.stringify({ msg: `pending doctrine ${what}`, error: err.message })));
+  }
+
+  /** Resolves when the pending doctrines are written (tests, shutdown). */
+  flushPending(): Promise<void> { return this.pendingWrites; }
 
   // --- talk --------------------------------------------------------------------
 
@@ -238,19 +272,25 @@ export class GeneralService {
     return { policy: compiled.policy, summary: compiled.summary, readable: compiled.readable, question: compiled.question, source: compiled.source, warnings: compiled.warnings, reply: compiled.reply, pending, applied };
   }
 
-  pendingDoctrine(colonyId: string): PendingDoctrine | null { return this.pending.get(colonyId) ?? null; }
+  /** The doctrine waiting for a yes; one left unanswered past DOCTRINE_PENDING_TTL_H is dropped (the active one stays). */
+  pendingDoctrine(colonyId: string, now = Date.now()): PendingDoctrine | null {
+    const p = this.pending.get(colonyId);
+    if (!p) return null;
+    if (this.expired(p, now)) { this.forget(colonyId); return null; }
+    return p;
+  }
 
   /** The player read the doctrine and confirms: it becomes active. */
-  confirmDoctrine(colonyId: string, id: string): { ok: true; summary: string } | { ok: false; reason: string } {
+  confirmDoctrine(colonyId: string, id: string, now = Date.now()): { ok: true; summary: string } | { ok: false; reason: string } {
     const c = this.colony(colonyId);
-    const p = this.pending.get(colonyId);
+    const p = this.pendingDoctrine(colonyId, now);
     if (!c || !p || p.id !== id) return { ok: false, reason: 'no such pending doctrine' };
-    this.pending.delete(colonyId);
+    this.forget(colonyId);
     this.applyPolicy(c, p.policy);
     return { ok: true, summary: p.summary };
   }
 
-  discardDoctrine(colonyId: string): void { this.pending.delete(colonyId); }
+  discardDoctrine(colonyId: string): void { this.forget(colonyId); }
 
   // --- briefing ----------------------------------------------------------------
 

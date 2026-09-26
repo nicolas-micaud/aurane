@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
 import { MemoryJobStore, emptyMemory, type Job, type JobState, type JobStore, type MemoryRecord, type MemoryStore } from '@aurane/general';
+import type { PendingDoctrine, PendingDoctrineStore } from './general.js';
 
 /** Jobs and memory in one JSON file per kind, rewritten on change: fine for a developer's machine. */
 export class FileJobStore extends MemoryJobStore {
@@ -138,6 +139,34 @@ export class PgBudgetStore implements BudgetStore {
   static async migrate(pool: pg.Pool): Promise<void> { await pool.query('create table if not exists llm_budget (month text primary key, eur double precision not null default 0, updated_at timestamptz not null default now())'); }
   async load(month: string): Promise<number> { const r = await this.pool.query<{ eur: number }>('select eur from llm_budget where month = $1', [month]); return Number(r.rows[0]?.eur ?? 0); }
   async save(month: string, eur: number): Promise<void> { await this.pool.query('insert into llm_budget (month, eur, updated_at) values ($1, $2, now()) on conflict (month) do update set eur = greatest(llm_budget.eur, excluded.eur), updated_at = now()', [month, eur]); }
+}
+
+/** Doctrines waiting for the player's yes, one JSON file for the whole world (development). */
+export class FilePendingDoctrineStore implements PendingDoctrineStore {
+  constructor(private readonly dir: string) {}
+  private file(): string { return join(this.dir, 'doctrine-pending.json'); }
+  private async read(): Promise<Record<string, PendingDoctrine>> {
+    try { return JSON.parse(await readFile(this.file(), 'utf8')) as Record<string, PendingDoctrine>; } catch { return {}; }
+  }
+  private async write(all: Record<string, PendingDoctrine>): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    const tmp = `${this.file()}.tmp`;
+    await writeFile(tmp, JSON.stringify(all));
+    await rename(tmp, this.file());
+  }
+  async loadAll(): Promise<PendingDoctrine[]> { return Object.values(await this.read()); }
+  async save(p: PendingDoctrine): Promise<void> { const all = await this.read(); all[p.colonyId] = p; await this.write(all); }
+  async remove(colonyId: string): Promise<void> { const all = await this.read(); if (!(colonyId in all)) return; delete all[colonyId]; await this.write(all); }
+}
+
+export class PgPendingDoctrineStore implements PendingDoctrineStore {
+  constructor(private readonly pool: pg.Pool) {}
+  static async migrate(pool: pg.Pool): Promise<void> { await pool.query('create table if not exists doctrine_pending (colony_id text primary key, data jsonb not null, created_at bigint not null)'); }
+  async loadAll(): Promise<PendingDoctrine[]> { return (await this.pool.query<{ data: PendingDoctrine }>('select data from doctrine_pending')).rows.map((r) => r.data); }
+  async save(p: PendingDoctrine): Promise<void> {
+    await this.pool.query('insert into doctrine_pending (colony_id, data, created_at) values ($1, $2, $3) on conflict (colony_id) do update set data = excluded.data, created_at = excluded.created_at', [p.colonyId, JSON.stringify(p), p.createdAt]);
+  }
+  async remove(colonyId: string): Promise<void> { await this.pool.query('delete from doctrine_pending where colony_id = $1', [colonyId]); }
 }
 
 export { emptyMemory };

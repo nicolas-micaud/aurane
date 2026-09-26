@@ -218,8 +218,8 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         if (!parsed.success) return json(res, 400, { error: 'invalid doctrine' });
         return json(res, 200, await engine.doctrine(colony.id, parsed.data.text, parsed.data.lang));
       }
-      // The doctrine shown to the player, waiting for a yes (DOCTRINE_CONFIRM=1), and the yes itself.
-      if (req.method === 'GET' && url.pathname === '/api/doctrine/pending') { const p = engine.general.pendingDoctrine(colony.id); return json(res, 200, p ? { id: p.id, readable: p.readable, summary: p.summary, reply: p.reply } : null); }
+      // The doctrine shown to the player, waiting for a yes (DOCTRINE_CONFIRM, on by default), and the yes itself.
+      if (req.method === 'GET' && url.pathname === '/api/doctrine/pending') { const p = engine.general.pendingDoctrine(colony.id); return json(res, 200, p ? { id: p.id, readable: p.readable, summary: p.summary, reply: p.reply, createdAt: p.createdAt, expiresAt: p.createdAt + engine.cfg.doctrinePendingTtlMs } : null); }
       if (req.method === 'POST' && url.pathname === '/api/doctrine/confirm') {
         const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid confirmation' });

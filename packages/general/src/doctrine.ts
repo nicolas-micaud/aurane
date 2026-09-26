@@ -82,11 +82,11 @@ function cannedReply(ctx: DoctrineContext, policy: Policy): string {
   const changed = policyChanged(policy, ctx.current);
   if (ctx.lang === 'fr') {
     return changed
-      ? `Compris. Doctrine en vigueur : ${summarize(policy, 'fr')}. ${voice.signoff.fr}`
+      ? `Compris. Ma lecture : ${summarize(policy, 'fr')}. ${voice.signoff.fr}`
       : `Je t'écoute, mais je n'y lis pas d'ordre. Dis-moi quoi défendre, quoi vendre ou acheter, jusqu'où t'étendre, qui ne jamais attaquer : je le traduis en règles. ${voice.signoff.fr}`;
   }
   return changed
-    ? `Understood. Standing doctrine: ${summarize(policy, 'en')}. ${voice.signoff.en}`
+    ? `Understood. My reading: ${summarize(policy, 'en')}. ${voice.signoff.en}`
     : `I hear you, but I read no order in it. Tell me what to defend, what to sell or buy, how far to expand, whom never to attack: I turn it into rules. ${voice.signoff.en}`;
 }
 
