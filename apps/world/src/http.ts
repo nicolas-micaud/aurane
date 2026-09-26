@@ -46,6 +46,14 @@ function clientIp(req: IncomingMessage): string | undefined {
   return req.socket.remoteAddress ?? undefined;
 }
 
+/** A short device name from the user agent, for the sessions list ("iPhone · Safari"); never the raw string. */
+export function deviceLabel(ua: string | string[] | undefined): string {
+  const u = (Array.isArray(ua) ? ua[0] : ua) ?? '';
+  const device = /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Macintosh/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /Linux/.test(u) ? 'Linux' : '';
+  const browser = /Edg\//.test(u) ? 'Edge' : /OPR\//.test(u) ? 'Opera' : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : '';
+  return [device, browser].filter(Boolean).join(' · ');
+}
+
 function bearer(req: IncomingMessage): string | null {
   const h = req.headers.authorization;
   if (h?.startsWith('Bearer ')) return h.slice(7);
@@ -80,14 +88,14 @@ export function createHttpServer(engine: Engine): Server {
       if (req.method === 'POST' && url.pathname === '/api/guest') {
         const parsed = GuestSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid guest', issues: parsed.error.issues });
-        const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite, engine.originHash(clientIp(req)));
+        const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite, engine.originHash(clientIp(req)), deviceLabel(req.headers['user-agent']));
         if ('error' in made) return json(res, 403, { error: made.error });
         return json(res, 201, { token: made.token, colonyId: made.colony.id });
       }
       if (req.method === 'POST' && url.pathname === '/api/redeem') {
         const parsed = z.object({ code: z.string().min(10).max(400) }).safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid code' });
-        const made = await engine.redeemLink(parsed.data.code.trim());
+        const made = await engine.redeemLink(parsed.data.code.trim(), deviceLabel(req.headers['user-agent']));
         return made ? json(res, 200, { token: made.token, colonyId: made.colony.id }) : json(res, 403, { error: 'link expired or invalid' });
       }
       if (url.pathname.startsWith('/api/admin/')) {
@@ -106,9 +114,17 @@ export function createHttpServer(engine: Engine): Server {
         return json(res, 404, { error: 'not found' });
       }
       const token = bearer(req);
-      const colony = token ? await engine.authenticate(token) : null;
-      if (!colony) return json(res, 401, { error: 'unauthorized' });
+      const session = token ? await engine.authenticateSession(token) : null;
+      if (!session) return json(res, 401, { error: 'unauthorized' });
+      const colony = session.colony;
       if (req.method === 'GET' && url.pathname === '/api/me') return json(res, 200, engine.view(colony.id));
+      // Sessions (decision 0010, lot A): the devices that hold this colony; leave here, or cut another one off.
+      if (req.method === 'GET' && url.pathname === '/api/sessions') return json(res, 200, { sessions: await engine.sessions(colony.id, session.playerId) });
+      if (req.method === 'DELETE' && url.pathname === '/api/session') { await engine.revokeSession(colony.id, session.playerId); return json(res, 200, { ok: true }); }
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/sessions/')) {
+        const ok = await engine.revokeSession(colony.id, decodeURIComponent(url.pathname.slice('/api/sessions/'.length)));
+        return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no such session' });
+      }
       if (req.method === 'POST' && url.pathname === '/api/link') { const code = engine.linkCode(colony.id); return json(res, 200, { code, url: `${engine.cfg.publicOrigin}/#join=${encodeURIComponent(code)}` }); }
       if (req.method === 'GET' && url.pathname.startsWith('/api/system/')) {
         const v = engine.systemView(colony.id, decodeURIComponent(url.pathname.slice('/api/system/'.length)));
@@ -167,19 +183,22 @@ export function createHttpServer(engine: Engine): Server {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws') { socket.destroy(); return; }
     const token = url.searchParams.get('token') ?? '';
-    void engine.authenticate(token).then((colony) => {
-      if (!colony) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
-      wss.handleUpgrade(req, socket, head, (ws) => attach(ws, colony.id));
+    void engine.authenticateSession(token).then((session) => {
+      if (!session) { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
+      wss.handleUpgrade(req, socket, head, (ws) => attach(ws, session.colony.id, session.playerId));
     });
   });
 
   const WatchSchema = z.object({ watch: z.string().max(64).nullable() });
   const EnvelopeSchema = z.object({ id: z.string().optional(), command: CommandSchema });
 
-  function attach(ws: WebSocket, colonyId: string): void {
+  function attach(ws: WebSocket, colonyId: string, playerId: string): void {
     const unsubscribe = engine.subscribe(colonyId, (view) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'view', view }));
     });
+    // A revoked session loses its socket at once; the client reads 4401 as "go back to the landing page".
+    const offRevoke = engine.onRevoke((id) => { if (id === playerId && ws.readyState === ws.OPEN) ws.close(4401, 'session revoked'); });
+    ws.once('close', offRevoke);
     // One watched plateau per connection: {"watch": systemId} starts the 2 Hz stream, {"watch": null} stops it.
     let unwatch: (() => void) | null = null;
     ws.on('message', (raw) => {

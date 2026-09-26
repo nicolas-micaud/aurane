@@ -162,7 +162,7 @@ export class Engine {
 
   // --- players -------------------------------------------------------------
 
-  async createGuest(name: string, faction: Faction, persona: Persona, invite?: string, origin?: string): Promise<{ token: string; colony: Colony } | { error: 'invite required' | 'invalid invite' }> {
+  async createGuest(name: string, faction: Faction, persona: Persona, invite?: string, origin?: string, device?: string): Promise<{ token: string; colony: Colony } | { error: 'invite required' | 'invalid invite' }> {
     const spawn = (): Colony => spawnColony(this.world, { name, faction, persona, npc: false, ...(origin ? { origin } : {}) });
     // Closed beta: the invitation must exist (store, or the environment's bootstrap list) and be unused.
     const code = (invite ?? '').trim().toUpperCase();
@@ -179,10 +179,10 @@ export class Engine {
       const colony = spawn();
       await this.store.createInvite({ code, note: 'env', createdAt: Date.now(), usedBy: colony.id, usedAt: Date.now() }).catch(() => undefined);
       await this.store.useInvite(code, colony.id, Date.now()).catch(() => undefined);
-      return this.issueToken(colony, name);
+      return this.issueToken(colony, name, device);
     }
     const colony = spawn();
-    return this.issueToken(colony, name);
+    return this.issueToken(colony, name, device);
   }
 
   /** Opaque origin of a request (client address hashed with the auth secret): same origin ⇒ same household, no trade between its colonies. */
@@ -191,11 +191,43 @@ export class Engine {
     return createHmac('sha256', this.cfg.authSecret).update(`origin:${ip}`).digest('hex').slice(0, 16);
   }
 
-  private async issueToken(colony: Colony, name: string): Promise<{ token: string; colony: Colony }> {
+  private async issueToken(colony: Colony, name: string, device?: string): Promise<{ token: string; colony: Colony }> {
     const token = randomBytes(24).toString('base64url');
-    await this.store.createPlayer({ id: `P${colony.id}`, colonyId: colony.id, tokenHash: hashToken(token), name, createdAt: Date.now() });
+    await this.store.createPlayer({ id: `P${colony.id}`, colonyId: colony.id, tokenHash: hashToken(token), name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null });
     await this.snapshot();
     return { token, colony };
+  }
+
+  // --- sessions (decision 0010, lot A): one token per device, listed, revocable ---------
+
+  private readonly revokeListeners = new Set<(playerId: string) => void>();
+  /** Called with the session id when a session is revoked, so live sockets can be closed. */
+  onRevoke(cb: (playerId: string) => void): () => void { this.revokeListeners.add(cb); return () => { this.revokeListeners.delete(cb); }; }
+
+  async sessions(colonyId: string, currentId: string): Promise<{ id: string; label: string; createdAt: number; lastSeenAt: number | null; current: boolean }[]> {
+    const rows = await this.store.listPlayers(colonyId);
+    return rows.filter((p) => !p.revokedAt).map((p) => ({ id: p.id, label: p.label ?? '', createdAt: p.createdAt, lastSeenAt: p.lastSeenAt ?? null, current: p.id === currentId })).sort((a, b) => (b.lastSeenAt ?? b.createdAt) - (a.lastSeenAt ?? a.createdAt));
+  }
+
+  /** Ends a session of this colony (its own or another device's). False when the id is not one of the colony's. */
+  async revokeSession(colonyId: string, playerId: string): Promise<boolean> {
+    const rows = await this.store.listPlayers(colonyId);
+    const p = rows.find((x) => x.id === playerId);
+    if (!p) return false;
+    if (!p.revokedAt) { await this.store.updatePlayer(playerId, { revokedAt: Date.now() }); for (const cb of this.revokeListeners) cb(playerId); }
+    return true;
+  }
+
+  private readonly touched = new Map<string, number>();
+  /** The token's colony and session, or null when unknown or revoked; last activity kept fresh at most every five minutes. */
+  async authenticateSession(token: string): Promise<{ colony: Colony; playerId: string } | null> {
+    const p = await this.store.findPlayerByToken(hashToken(token));
+    if (!p || p.revokedAt) return null;
+    const colony = this.world.colonies[p.colonyId];
+    if (!colony) return null;
+    const now = Date.now();
+    if ((this.touched.get(p.id) ?? 0) < now - 5 * 60000) { this.touched.set(p.id, now); void this.store.updatePlayer(p.id, { lastSeenAt: now }).catch(() => undefined); }
+    return { colony, playerId: p.id };
   }
 
   /** Invitations minted by the admin: short, unambiguous codes. */
@@ -220,7 +252,7 @@ export class Engine {
     return `${payload}.${sig}`;
   }
 
-  async redeemLink(code: string): Promise<{ token: string; colony: Colony } | null> {
+  async redeemLink(code: string, device?: string): Promise<{ token: string; colony: Colony } | null> {
     const [payload, sig] = code.split('.');
     if (!payload || !sig) return null;
     const expected = createHmac('sha256', this.cfg.authSecret).update(payload).digest('base64url');
@@ -231,14 +263,12 @@ export class Engine {
     const colony = this.world.colonies[data.c];
     if (!colony || colony.npc) return null;
     const token = randomBytes(24).toString('base64url');
-    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now() });
+    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null });
     return { token, colony };
   }
 
   async authenticate(token: string): Promise<Colony | null> {
-    const p = await this.store.findPlayerByToken(hashToken(token));
-    if (!p) return null;
-    return this.world.colonies[p.colonyId] ?? null;
+    return (await this.authenticateSession(token))?.colony ?? null;
   }
 
   command(colonyId: string, cmd: Command): ApplyResult {

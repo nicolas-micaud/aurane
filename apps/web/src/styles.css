@@ -219,3 +219,9 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .counsel .acts button.primary { padding: 5px 12px; }
 .counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
 @media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel:not(.first) .card:nth-of-type(n+3) { display: none; } .counsel .card:nth-of-type(n+4) { display: none; } }
+
+/* 0010: the Account tab. */
+.account .lang { align-self: flex-start; margin: 4px 0 8px; }
+.account .actions a.link { align-self: center; color: var(--muted); font-size: 13px; }
+.account .selbox p.bad { margin: 0 0 8px; }
+
