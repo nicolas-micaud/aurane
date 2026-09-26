@@ -4,7 +4,7 @@
     "otherLang": "en",
     "htmlLang": "fr",
     "title": "Aurane — jeu de stratégie spatiale gratuit dans le navigateur",
-    "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, et laisse ton Général IA jouer pendant que tu dors : il se souvient de toi d'une saison à l'autre.",
+    "description": "Aurane : un jeu de stratégie spatiale gratuit, persistant et massivement multijoueur, dans le navigateur et sur mobile. Relie les étoiles, survis au Silence, avec un Général qui pense avec toi, joue quand tu dors et se souvient de tout, tout le temps : la mémoire Corthexis.",
     "rulesTitle": "Les règles d'Aurane — Saison 0",
     "rulesDescription": "Les règles complètes d'Aurane pour la Saison 0 : relier, le Tirage et les ressources, le Marché, construire, combattre, la diplomatie et les Sept Phares.",
     "privacyTitle": "Confidentialité — Aurane",
@@ -22,7 +22,7 @@
       "play": "play.playaurane.com"
     },
     "tagline": "can't stop the signal",
-    "hook": "Ton Général IA joue pendant que tu dors. Et il se souvient de toi d'une saison à l'autre.",
+    "hook": "Un vrai partenaire, pas un pilote automatique. Ton Général pense avec toi, joue quand tu dors, et se souvient de tout, tout le temps.",
     "cta": "Rejoindre la liste d'attente",
     "ctaSub": "Join the waitlist",
     "haveCode": "J'ai un code d'invitation",
@@ -48,7 +48,7 @@
       {
         "id": "general",
         "title": "Le Général",
-        "quote": "Tu lui écris ta doctrine en langage naturel — « défends le pont vers Ancre à tout prix, vends le surplus de Vivres, ne déclare jamais la guerre sans moi » — et il l'exécute quand tu dors.",
+        "quote": "Un <strong>partenaire</strong>, pas un pilote automatique : il te montre où agir, propose trois coups avant chaque Tirage, exécute ta doctrine quand tu dors, et se souvient de tout, tout le temps. Sa mémoire s'appelle <strong>Corthexis</strong> : tes choix, tes batailles, tes alliés, ceux qui t'ont trahi, d'une saison à l'autre.",
         "icon": "/images/game/structure-antenna.png",
         "alt": "Antenne"
       }
@@ -132,7 +132,7 @@
     "otherLang": "fr",
     "htmlLang": "en",
     "title": "Aurane — free space strategy game in your browser",
-    "description": "Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, and let your AI General play while you sleep: it remembers you from one season to the next.",
+    "description": "Aurane: a free, persistent, massively multiplayer space strategy game, in the browser and on mobile. Link the stars, survive the Silence, with a General who thinks with you, plays while you sleep and remembers everything, all the time: Corthexis memory.",
     "rulesTitle": "The rules of Aurane — Season 0",
     "rulesDescription": "The complete rules of Aurane for Season 0: linking, the Draw and resources, the Market, building, fighting, diplomacy and the Seven Beacons.",
     "privacyTitle": "Privacy — Aurane",
@@ -150,7 +150,7 @@
       "play": "play.playaurane.com"
     },
     "tagline": "can't stop the signal",
-    "hook": "Your AI General plays while you sleep. And it remembers you from one season to the next.",
+    "hook": "A real partner, not an autopilot. Your General thinks with you, plays while you sleep, and remembers everything, all the time.",
     "cta": "Join the waitlist",
     "ctaSub": "Rejoindre la liste d'attente",
     "haveCode": "I have an invitation code",
@@ -176,7 +176,7 @@
       {
         "id": "general",
         "title": "The General",
-        "quote": "You write your doctrine in plain language — \"hold the bridge to Anchor at all costs, sell surplus Food, never declare war without me\" — and the General carries it out while you sleep.",
+        "quote": "A <strong>partner</strong>, not an autopilot: it shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep, and remembers everything, all the time. Its memory is called <strong>Corthexis</strong>: your choices, your battles, your allies, those who betrayed you, from one season to the next.",
         "icon": "/images/game/structure-antenna.png",
         "alt": "Antenna"
       }
