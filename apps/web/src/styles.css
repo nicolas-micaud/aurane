@@ -203,7 +203,7 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .alert.inbound { background: linear-gradient(135deg, rgba(255,209,102,.22), rgba(14,23,48,.95)); border-color: var(--energy); } .alert.inbound i { background: var(--energy); }
 .alert.soft { background: linear-gradient(135deg, rgba(125,211,252,.18), rgba(14,23,48,.95)); border-color: var(--accent); } .alert.soft i { background: var(--accent); animation: none; }
 .alert span { flex: 1; } .alerts small { padding-left: 12px; }
-.badge { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--err); color: #fff; font-size: 10px; font-style: normal; font-weight: 700; line-height: 16px; text-align: center; margin-left: 4px; vertical-align: middle; }
+.badge { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--err); color: #fff; font-size: 10px; font-style: normal; font-weight: 700; line-height: 16px; text-align: center; margin-left: 6px; vertical-align: middle; }
 .feed li { font-size: 13px; gap: 8px; flex-wrap: nowrap; align-items: flex-start; } .feed li > span { flex: 1; } .feed li > small { white-space: nowrap; }
 .feed li > i { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--muted); }
 .feed li.tone-bad > i { background: var(--err); } .feed li.tone-good > i { background: var(--ok); } .feed li.tone-draw { display: block; }
@@ -222,12 +222,14 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .counsel .card p { margin: 0 0 6px; font-size: 14px; line-height: 1.35; }
 .counsel .acts { display: flex; gap: 6px; flex-wrap: wrap; } .counsel .acts button { font-size: 13px; padding: 5px 10px; }
 .counsel .acts button.primary { padding: 5px 12px; }
-.counsel .card.done { border-left-color: var(--ok); opacity: .85; animation: counsel-done 4s ease forwards; }
-/* The next tier's advice comes in after the done mark, not in its place (issue #33). */
+/* The next tier's advice comes in after the done line, not silently in the old card's place (issues #33, #35). */
 .counsel .card.fresh { animation: counsel-fresh .9s ease .5s both; }
 @keyframes counsel-fresh { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.counsel .card.done p { margin: 0; } .counsel .card.done b { color: var(--ok); }
-@keyframes counsel-done { 0%, 80% { opacity: .95; } 100% { opacity: 0; } }
+/* Issue #35: what was reached this Draw stays said at the top until the Draw, readable at a glance (not the fading mark). */
+.counsel .who { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.counsel .who .tally { color: var(--text); letter-spacing: .03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.counsel .done-draw { margin: 0; background: rgba(14,23,48,.94); border: 1px solid rgba(111,207,151,.55); border-left: 3px solid var(--ok); border-radius: 10px; padding: 7px 10px; font-size: 14px; line-height: 1.35; color: var(--text); font-weight: 400; backdrop-filter: blur(6px); }
+.counsel .done-draw b { color: var(--ok); font-weight: 700; margin-right: 2px; }
 .counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
 @media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel:not(.first) .card:nth-of-type(n+3) { display: none; } .counsel .card:nth-of-type(n+4) { display: none; } }
 
@@ -251,6 +253,8 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .doctrine-card ul { margin: 0 0 8px; padding-left: 18px; font-size: 14px; line-height: 1.4; }
 .doctrine-card li + li { margin-top: 2px; }
 .doctrine-card .question { color: var(--energy); }
+/* Issue #35: the General asked back and nothing is pending: say that nothing changed yet. */
+.generalpanel .awaiting { margin: 2px 0 6px; font-size: 13px; color: var(--energy); }
 .doctrine-card .acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
 .doctrine-card button.link.more { background: none; border: 0; padding: 2px 0; min-height: 0; color: var(--accent); text-decoration: underline; font: inherit; font-size: 13px; cursor: pointer; margin-right: 12px; }
 .doctrine-card .acts button { min-height: 40px; padding: 8px 14px; font-size: 14px; }

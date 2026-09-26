@@ -13,6 +13,15 @@ export function cardAfterTalk(current: PendingCard | null, r: { pending?: Pendin
   return { id: r.pending.id, readable: clean(r.pending.readable), question: r.question?.trim() || null };
 }
 
+/**
+ * After `POST /api/talk`: the General answered a doctrine with a question and holds nothing for the player's yes. The
+ * client says so under the bubble (« En attente de ta réponse — doctrine actuelle inchangée », issue #35): the order
+ * was heard, nothing applies until the answer.
+ */
+export function awaitingAnswer(card: PendingCard | null, r: { pending?: Pending; question?: string | null; policyChanged?: boolean }): boolean {
+  return !!r.question?.trim() && !r.pending && !r.policyChanged && !card;
+}
+
 /** After `POST /api/doctrine`: the readable lines come beside `pending: { id }`. */
 export function cardAfterDoctrine(current: PendingCard | null, r: { pending?: Pending; readable?: string[]; question?: string | null }): PendingCard | null {
   if (!r.pending) return current;

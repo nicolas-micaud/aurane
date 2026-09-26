@@ -11,8 +11,8 @@ import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
 import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
-import { CARD_LINES, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from './doctrine.js';
-import { doneCards, type ShownCard } from './counsel.js';
+import { CARD_LINES, awaitingAnswer, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from './doctrine.js';
+import { doneCards, doneThisDraw, type ShownCard } from './counsel.js';
 import { marketPrefill, pendingDemo, pointAt, sceneFlashReq, stopTeaching, teach, teachClass, teachKey } from './teach.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log' | 'account';
@@ -284,34 +284,35 @@ const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)
  *  answered as seen (sent once). */
 const dismissedCounsel = signal<Set<string>>(new Set());
 const lookedAt = new Set<string>();
-/** Cards that just left the Counsel because their goal is reached: shown "✓ Done" for a moment, then gone. */
-const doneCounsel = signal<Map<string, { title: string; index: number }>>(new Map());
 /** Cards that came in as others were done (the next tier's advice): they arrive visibly, not in place of the old. */
 const freshCounsel = signal<Set<string>>(new Set());
-const DONE_MS = 4000;
+const FRESH_MS = 4000;
+/** What this screen saw reached this Draw beyond the journal (a doctrine written, a building placed by hand), id →
+ *  title: joins the world's record in the « ✓ Fait ce Tirage » line, cleared by the next Draw. */
+const doneSession = signal<{ draw: number; cards: Map<string, string> }>({ draw: -1, cards: new Map() });
+view.subscribe((v) => { if (!v) doneSession.value = { draw: -1, cards: new Map() }; }); // logged out: another Colony
 let lastShown: ShownCard[] = [];
 let lastShownDraw = -1;
 /** What the Counsel wants from the voice layer right now; a fetch that answered for another tier is retried once. */
 let counselWanted = { draw: -1, tier: -1 };
 
-function markDone(cards: { id: string; title: string; index: number }[], fresh: string[]): void {
+/** Cards whose goal was just reached join the « ✓ Fait ce Tirage » line (it replaces the fading "✓ Done" mark of
+ *  #33, issue #35); the next tier's cards that came in with them fade in. */
+function markDone(cards: { id: string; title: string }[], fresh: string[], draw: number): void {
   if (!cards.length) return;
-  const next = new Map(doneCounsel.value);
-  for (const c of cards) next.set(c.id, { title: c.title, index: c.index });
-  doneCounsel.value = next;
-  if (fresh.length) freshCounsel.value = new Set([...freshCounsel.value, ...fresh]);
-  setTimeout(() => {
-    const m = new Map(doneCounsel.value); for (const c of cards) m.delete(c.id); doneCounsel.value = m;
-    const f = new Set(freshCounsel.value); for (const id of fresh) f.delete(id); freshCounsel.value = f;
-  }, DONE_MS);
+  const kept = doneSession.value.draw === draw ? doneSession.value.cards : new Map<string, string>();
+  doneSession.value = { draw, cards: new Map([...kept, ...cards.map((c) => [c.id, c.title] as [string, string])]) };
+  if (!fresh.length) return;
+  freshCounsel.value = new Set([...freshCounsel.value, ...fresh]);
+  setTimeout(() => { const f = new Set(freshCounsel.value); for (const id of fresh) f.delete(id); freshCounsel.value = f; }, FRESH_MS);
 }
 
 function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const skipped = useSig(skippedCounsel);
   const dismissed = useSig(dismissedCounsel);
-  const done = useSig(doneCounsel);
   const fresh = useSig(freshCounsel);
   const voice = useSig(voiceCounsel);
+  const session = useSig(doneSession);
   const sel = useSig(selected);
   const sysMode = useSig(systemMode);
   const curTab = useSig(tab);
@@ -380,36 +381,39 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
   const order = new Map(v.me.counsel.map((c, i) => [c.id, i]));
   const cards = [...fromVoice, ...fromSim].sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
   const shown = cards.filter((c) => !skipped.has(c.id));
-  // A card that was on screen and left because its goal is reached (taken, looked at, or done by hand) says so; a
-  // card only pushed out of the top three by the next tier's advice leaves quietly (issue #33).
+  // The goals reached this Draw stay said at the top until the Draw (issue #35): the new tier's cards take the same
+  // places, and a mark that fades leaves the player thinking nothing happened.
+  const doneNow = doneThisDraw(v, session.draw === nextDraw ? session.cards : new Map(), lang.value);
+  // A card that was on screen and left because its goal is reached (taken, looked at, or done by hand) joins that
+  // line; a card only pushed out of the top three by the next tier's advice leaves quietly (issue #33).
   useEffect(() => {
     const ids = new Set(shown.map((c) => c.id));
     // A new Draw renews the whole Counsel: nothing was "done", the hour turned.
     if (lastShownDraw === nextDraw) {
       const answered = new Set([...[...skipped].filter((id) => !dismissed.has(id)), ...lookedAt]);
-      const gone = doneCards(lastShown, ids, v, answered, new Set([...dismissed, ...done.keys()]));
+      const gone = doneCards(lastShown, ids, v, answered, new Set([...dismissed, ...doneNow.map((d) => d.id)]));
       const before = new Set(lastShown.map((c) => c.id));
-      markDone(gone, shown.filter((c) => !before.has(c.id)).map((c) => c.id));
+      markDone(gone, shown.filter((c) => !before.has(c.id)).map((c) => c.id), nextDraw);
     }
     lastShown = shown.map((c) => ({ id: c.id, title: c.title, command: c.command }));
     lastShownDraw = nextDraw;
   });
-  // The "✓ Done" cards keep their place for a moment, so the stack does not jump under the finger.
-  const rows: ({ kind: 'card'; c: UiCard } | { kind: 'done'; id: string; title: string })[] = shown.map((c) => ({ kind: 'card' as const, c }));
-  for (const [id, d] of [...done].sort((a, b) => a[1].index - b[1].index)) if (!shown.some((c) => c.id === id)) rows.splice(Math.min(rows.length, d.index), 0, { kind: 'done', id, title: d.title });
-  if (rows.length === 0) return null;
+  if (shown.length === 0 && doneNow.length === 0) return null;
+  const tally = [
+    ...(doneNow.length ? [t(doneNow.length === 1 ? 'counselDoneOne' : 'counselDoneMany').replace('{n}', String(doneNow.length))] : []),
+    t(shown.length === 1 ? 'counselTipsOne' : 'counselTipsMany').replace('{n}', String(shown.length)),
+  ].join(' · ');
   return (
     <div class={`counsel ${tier <= 1 ? 'first' : ''}`}>
-      <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
-      {rows.map((r) => r.kind === 'done' ? (
-        <div key={r.id} class="card done" aria-live="polite"><p><b>✓ {t('counselDoneMark')}</b> · {r.title}</p></div>
-      ) : (
-        <div key={r.c.id} class={`card u${r.c.urgency} ${fresh.has(r.c.id) ? 'fresh' : ''}`}>
-          <p><b>{r.c.title}</b> · {r.c.line}</p>
+      <small class="who"><span>{t(v.me.persona as 'vane')} · {t('counselTitle')}</span> <span class="tally">{tally}</span></small>
+      {doneNow.length > 0 && <p class="done-draw" role="status"><b aria-hidden="true">✓</b> {t('counselDoneDraw')} {doneNow.map((d) => d.title).join(', ')}</p>}
+      {shown.map((card) => (
+        <div key={card.id} class={`card u${card.urgency} ${fresh.has(card.id) ? 'fresh' : ''}`}>
+          <p><b>{card.title}</b> · {card.line}</p>
           <div class="acts">
-            <button onClick={r.c.go}>{t('showMe')}</button>
-            {r.c.hasCommand && <button class="primary" onClick={() => { const c = r.c; void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
-            <button class="link" onClick={() => answer(r.c.id, false, r.c.voice)}>{t('notNow')}</button>
+            <button onClick={card.go}>{t('showMe')}</button>
+            {card.hasCommand && <button class="primary" onClick={() => { const c = card; void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
+            <button class="link" onClick={() => answer(card.id, false, card.voice)}>{t('notNow')}</button>
           </div>
         </div>
       ))}
@@ -488,7 +492,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
-        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && unread > 0 ? <i class="badge">{unread > 9 ? '9+' : unread}</i> : null}{k === 'general' && pendingV && current !== 'general' ? <i class="dotn" /> : null}</button>)}
+        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && unread > 0 ? <>{' '}<i class="badge" title={t('unreadN').replace('{n}', String(unread))} aria-label={t('unreadN').replace('{n}', String(unread))}>{unread > 9 ? '9+' : unread}</i></> : null}{k === 'general' && pendingV && current !== 'general' ? <i class="dotn" /> : null}</button>)}
         {isNarrow() && <button class={more ? 'on' : ''} onClick={(e) => { e.stopPropagation(); setMore(!more); }} title={t('more')}>⋯</button>}
         <button class="collapse" onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? '▾' : '▴'}</button>
       </div>
@@ -779,11 +783,13 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
 }
 
 const talk = signal<Turn[]>([]);
+/** The General asked back about a doctrine and holds none for the player's yes: until the next message. */
+const awaitingDoctrine = signal(false);
 let talkLoaded = false;
 /** The doctrine waiting for the player's yes (DOCTRINE_CONFIRM): restored from the server once per load. */
 const pendingDoctrine = signal<PendingCard | null>(null);
 let pendingLoaded = false;
-view.subscribe((v) => { if (!v) { pendingLoaded = false; pendingDoctrine.value = null; } }); // logged out: the next Colony loads its own
+view.subscribe((v) => { if (!v) { pendingLoaded = false; pendingDoctrine.value = null; awaitingDoctrine.value = false; } }); // logged out: the next Colony loads its own
 function loadPendingDoctrine(force = false): void {
   if (pendingLoaded && !force) return;
   pendingLoaded = true;
@@ -842,6 +848,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   const [busy, setBusy] = useState(false);
   const thread = useSig(talk);
   const card = useSig(pendingDoctrine);
+  const awaiting = useSig(awaitingDoctrine);
   const endRef = useRef<HTMLDivElement>(null);
   const p = v.me.policy;
   useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } loadPendingDoctrine(); }, []);
@@ -865,11 +872,11 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   const submit = async () => {
     const said = text.trim();
     if (!said) return;
-    setBusy(true); setText('');
+    setBusy(true); setText(''); awaitingDoctrine.value = false;
     talk.value = [...talk.value, { who: 'me', text: said, at: Date.now() }];
     const r = await sendTalk(said, lang.value);
     setBusy(false);
-    if (r) { talk.value = r.history; pendingDoctrine.value = cardAfterTalk(pendingDoctrine.value, r); if (r.policyChanged) toast.value = { text: t('compiled'), kind: 'ok' }; }
+    if (r) { talk.value = r.history; pendingDoctrine.value = cardAfterTalk(pendingDoctrine.value, r); awaitingDoctrine.value = awaitingAnswer(pendingDoctrine.value, r); if (r.policyChanged) toast.value = { text: t('compiled'), kind: 'ok' }; }
     else talk.value = [...talk.value, { who: 'general', text: t('generalOffline'), at: Date.now() }];
   };
   return (
@@ -883,6 +890,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         {thread.slice(-12).map((m, i) => <p key={`${m.at}-${i}`} class={`bubble ${m.who}`}>{m.text}</p>)}
         {busy && <p class="bubble general muted">{t('thinking')}</p>}
       </div>
+      {awaiting && !card && !busy && <p class="awaiting" role="status">{t('doctrineAwaiting')}</p>}
       <div ref={cardRef}>{card && <DoctrineCard v={v} card={card} />}</div>
       <div class={`say ${teachClass(tv, 'say')}`}>
         <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onFocus={(e) => setTimeout(() => (e.target as HTMLElement).scrollIntoView({ block: 'nearest' }), 250)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />

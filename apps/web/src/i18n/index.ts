@@ -81,7 +81,7 @@ const STRINGS = {
     pendingOriel: 'Voilà le contrat. Signe et je l\'exécute à la lettre ; sinon l\'ancien reste en vigueur.',
     pendingSolen: 'Relis-le avec moi, mon ami : c\'est toi qui décides. L\'ancienne doctrine veille en attendant.',
     pendingApplied: 'Doctrine appliquée : je m\'y tiens.', pendingDiscarded: 'Je garde la doctrine actuelle. Dis-le-moi autrement.', pendingGone: 'Cette doctrine n\'est plus d\'actualité : relis la dernière.',
-    counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', counselDone: 'Fait. Regarde.', counselDoneMark: 'Fait', cannotPay: 'l\'entrepôt ne peut pas encore payer',
+    counselTitle: 'Conseil du Général', showMe: 'Montre-moi', doIt: 'Fais-le', notNow: 'Pas maintenant', counselDone: 'Fait. Regarde.', counselDoneDraw: 'Fait ce Tirage :', counselDoneOne: '{n} fait', counselDoneMany: '{n} faits', counselTipsOne: '{n} conseil', counselTipsMany: '{n} conseils', doctrineAwaiting: 'En attente de ta réponse — doctrine actuelle inchangée', unreadN: '{n} non lus', cannotPay: 'l\'entrepôt ne peut pas encore payer',
     hereIsWhere: 'C\'est ici : {path}.', tapBlink: 'Touche le bouton qui clignote.', howTo: 'Fait ✓ La prochaine fois, toi : {path}.',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Relier', tier1: 'Produire', tier2: 'Marché', tier3: 'Tenir', tier4: 'Frapper', tier5: 'Parler', tier6: 'Les Phares',
@@ -183,7 +183,7 @@ const STRINGS = {
     pendingOriel: 'Here is the contract. Sign it and I execute it to the letter; otherwise the old one stands.',
     pendingSolen: 'Read it with me, friend: the choice is yours. The old doctrine keeps watch meanwhile.',
     pendingApplied: 'Doctrine applied: I will hold to it.', pendingDiscarded: 'I keep the current doctrine. Tell me another way.', pendingGone: 'That doctrine is no longer current: read the latest one.',
-    counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', counselDone: 'Done. Look.', counselDoneMark: 'Done', cannotPay: 'the warehouse cannot pay yet',
+    counselTitle: 'The General\'s counsel', showMe: 'Show me', doIt: 'Do it', notNow: 'Not now', counselDone: 'Done. Look.', counselDoneDraw: 'Done this Draw:', counselDoneOne: '{n} done', counselDoneMany: '{n} done', counselTipsOne: '{n} tip', counselTipsMany: '{n} tips', doctrineAwaiting: 'Waiting for your answer — current doctrine unchanged', unreadN: '{n} unread', cannotPay: 'the warehouse cannot pay yet',
     hereIsWhere: 'Here: {path}.', tapBlink: 'Tap the blinking button.', howTo: 'Done ✓ Next time, you: {path}.',
     // Onboarding tiers (docs/design/ONBOARDING-S0.md): the General guides, the rest waits its turn.
     tier0: 'Link', tier1: 'Produce', tier2: 'Market', tier3: 'Hold', tier4: 'Strike', tier5: 'Talk', tier6: 'The Beacons',

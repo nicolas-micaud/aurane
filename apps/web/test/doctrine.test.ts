@@ -1,6 +1,6 @@
 // The doctrine card's rules, without a browser: the server keeps one pending doctrine per Colony.
 import { describe, expect, it } from 'vitest';
-import { CARD_LINES, cardAfterDoctrine, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from '../src/ui/doctrine.js';
+import { CARD_LINES, awaitingAnswer, cardAfterDoctrine, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from '../src/ui/doctrine.js';
 
 const held: PendingCard = { id: 'd1', readable: ['Expansion : 90 %'], question: null };
 
@@ -38,5 +38,15 @@ describe('doctrine card', () => {
     expect(visibleLines(nine, true)).toEqual({ shown: nine, hidden: 0 });
     expect(visibleLines(nine.slice(0, CARD_LINES), false).hidden).toBe(0);
     expect(visibleLines(nine.slice(0, CARD_LINES + 1), false)).toEqual({ shown: nine.slice(0, CARD_LINES + 1), hidden: 0 }); // never « voir tout » for one line
+  });
+});
+
+describe('a doctrine answered with a question (issue #35)', () => {
+  it('waits for the answer when the General asked back and holds nothing', () => {
+    expect(awaitingAnswer(null, { pending: null, question: 'Which food-rich system first?' })).toBe(true);
+    expect(awaitingAnswer(null, { pending: null, question: '  ' })).toBe(false);
+    expect(awaitingAnswer(null, { pending: { id: 'd2' }, question: 'Et la capitale ?' })).toBe(false); // the card asks it
+    expect(awaitingAnswer(held, { pending: null, question: 'Which one?' })).toBe(false); // a doctrine waits for its yes
+    expect(awaitingAnswer(null, { pending: null, question: 'x?', policyChanged: true })).toBe(false);
   });
 });
