@@ -36,6 +36,9 @@ export interface CounselOption {
   params: Record<string, string | number>;
 }
 
+/** Cards done by going somewhere: once taken (the player went there), they are not proposed again. */
+export const LOOK_KINDS: ReadonlySet<CounselKind> = new Set<CounselKind>(['touch_star', 'enter_system', 'read_recap']);
+
 const affordable = (stock: Stock, cost: Partial<Stock>): boolean => B.RESOURCE_LIST.every((r) => (cost[r] ?? 0) <= stock[r]);
 
 /** Cheapest relay the colony could build right now, from any connected system. */
@@ -62,7 +65,13 @@ export function counsel(w: World, c: Colony, max = 3): CounselOption[] {
   const owned = ownedSystems(w, c.id);
   const net = colonyNetwork(w, c);
   const name = (id: string): string => w.galaxy.systems[id]?.name ?? id;
-  const push = (o: CounselOption): void => { if (!o.command || commandTier(o.command) <= tier) out.push(o); };
+  // A card whose goal is a place to look (the star, the plateau, the recap) has no command to run: it is done once the
+  // player has been there, which the client says with `counsel_answer` (taken). It then leaves the Counsel for good.
+  const seenIds = new Set(c.journal.filter((j) => j.kind === 'counsel.taken' && j.note).map((j) => j.note!));
+  const push = (o: CounselOption): void => {
+    if (!o.command && LOOK_KINDS.has(o.kind) && seenIds.has(o.id)) return;
+    if (!o.command || commandTier(o.command) <= tier) out.push(o);
+  };
 
   // A hostile warfleet heading for one of our systems: a turret there, or the idle fleet.
   const inbound = Object.values(w.fleets).find((f) => f.destination && owned.includes(f.destination) && f.owner !== c.id && !isAlly(w, c.id, f.owner) && combatSize(f.units) > 0);
