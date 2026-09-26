@@ -46,6 +46,10 @@ describe('provider client', () => {
     const b = fakeFetch([() => ({})]);
     await new ProviderPool('voice', 'model-a', [provider('q', b.fetch, { jsonMode: 'object' })]).chat([{ role: 'user', content: 'hi' }], { task: 'doctrine', schema: { name: 'policy', schema: {} } });
     expect((b.calls[0]!.body.response_format as { type: string }).type).toBe('json_object');
+    // A schema provider asked for JSON without a schema (the Gazette) sends no response_format: Infomaniak 400s json_object.
+    const c = fakeFetch([() => ({})]);
+    await new ProviderPool('narrative', 'model-a', [provider('ik', c.fetch, { jsonMode: 'schema' })]).chat([{ role: 'user', content: 'hi' }], { task: 'gazette' });
+    expect(c.calls[0]!.body.response_format).toBeUndefined();
   });
 
   it('opens the breaker after consecutive failures, half-opens after the window, closes on a good probe', async () => {
@@ -155,6 +159,32 @@ describe('configuration', () => {
     expect(s.warnings.join('\n')).toMatch(/ghost listed but/);
   });
 
+  it('builds the recommended stack: a smart voice on two providers, a routine class on its own pinned model', () => {
+    const env = {
+      LLM_VOICE_MODEL: 'qwen3.5-397b-a17b', LLM_VOICE_PROVIDERS: 'scaleway,infomaniak',
+      LLM_PROVIDER_SCALEWAY_BASE_URL: 'https://api.scaleway.ai/v1', LLM_PROVIDER_SCALEWAY_MODEL: 'qwen3.5-397b-a17b', LLM_PROVIDER_SCALEWAY_DISABLE_REASONING: '1', LLM_PROVIDER_SCALEWAY_JSON_MODE: 'schema', LLM_PROVIDER_SCALEWAY_TIMEOUT_MS: '9000',
+      LLM_PROVIDER_INFOMANIAK_BASE_URL: 'https://api.infomaniak.com/2/ai/110008/openai/v1', LLM_PROVIDER_INFOMANIAK_MODEL: 'Qwen/Qwen3.5-397B-A17B-FP8', LLM_PROVIDER_INFOMANIAK_MODEL_ID: 'qwen3.5-397b-a17b', LLM_PROVIDER_INFOMANIAK_DISABLE_REASONING: '1', LLM_PROVIDER_INFOMANIAK_JSON_MODE: 'schema',
+      LLM_ROUTINE_MODEL: 'mistral-small-3.2-24b-instruct-2506', LLM_ROUTINE_PROVIDERS: 'scaleway-small',
+      LLM_PROVIDER_SCALEWAY_SMALL_BASE_URL: 'https://api.scaleway.ai/v1', LLM_PROVIDER_SCALEWAY_SMALL_MODEL: 'mistral-small-3.2-24b-instruct-2506',
+    } as NodeJS.ProcessEnv;
+    const s = stackFromEnv(env);
+    expect(s.voice!.providers.map((p) => p.name)).toEqual(['scaleway', 'infomaniak']);
+    expect(s.voice!.providers[0]!.cfg.timeoutMs).toBe(9000);
+    expect(s.forTask('talk')).toBe(s.voice);
+    expect(s.forTask('doctrine')).toBe(s.voice);
+    for (const t of ['counsel', 'briefing', 'episode', 'reaction'] as const) expect(s.forTask(t)!.model).toBe('mistral-small-3.2-24b-instruct-2506');
+    expect(s.forTask('gazette')).toBeNull();
+    // Without a routine class, routine tasks ride the voice pool (legacy layout unchanged).
+    const legacy = stackFromEnv({ LLM_PRIMARY_BASE_URL: 'https://a/v1', LLM_PRIMARY_MODEL: 'm-a' });
+    expect(legacy.routine).toBeNull();
+    expect(legacy.forTask('counsel')).toBe(legacy.voice);
+    expect(legacy.warnings.join('\n')).toMatch(/primary has no _PRICE_IN/);
+    expect(s.warnings.join('\n')).toMatch(/scaleway has no _PRICE_IN/);
+    const priced = stackFromEnv({ LLM_PRIMARY_BASE_URL: 'https://a/v1', LLM_PRIMARY_MODEL: 'm-a', LLM_PRIMARY_PRICE_IN: '0.15', LLM_PRIMARY_PRICE_OUT: '0.35' });
+    expect(priced.voice!.providers[0]!.cfg.priceIn).toBe(0.15);
+    expect(priced.warnings.join('\n')).not.toMatch(/PRICE_IN/);
+  });
+
   it('maps the legacy PRIMARY/FALLBACK variables: same model joins voice, another model becomes narrative', () => {
     const base = { LLM_PRIMARY_BASE_URL: 'https://a/v1', LLM_PRIMARY_MODEL: 'm-a', LLM_PRIMARY_CONCURRENCY: '8', LLM_FALLBACK_BASE_URL: 'https://b/v1' } as NodeJS.ProcessEnv;
     const same = stackFromEnv({ ...base, LLM_FALLBACK_MODEL: 'm-a' });
@@ -189,5 +219,99 @@ describe('monthly budget', () => {
     expect(m.spend().eur).toBe(0);
     expect(m.overBudget()).toBe(false);
     expect(m.prometheus()).toContain('aurane_llm_over_budget 0');
+  });
+});
+
+describe('call budget and breaker hygiene', () => {
+  /** A provider that never answers until its request is aborted (a hung upstream). */
+  const hanging: FetchLike = (_input, init) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
+  });
+  const hi = [{ role: 'user' as const, content: 'hi' }];
+
+  it('caps each attempt by the provider TIMEOUT_MS so the next provider still gets the rest of the budget', async () => {
+    const up = fakeFetch([() => ({})]);
+    const slow = provider('scaleway', hanging, { timeoutMs: 60, retries: 0 });
+    const fast = provider('infomaniak', up.fetch);
+    const t0 = Date.now();
+    const r = await new ProviderPool('voice', 'model-a', [slow, fast]).chat(hi, { timeoutMs: 2000 });
+    expect(r.provider).toBe('infomaniak');
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it('a call cut by its own tight budget (counsel) neither retries nor opens the breaker', async () => {
+    const p = provider('scaleway', hanging, { timeoutMs: 20000, retries: 2, breaker: { failures: 2, openMs: 60000 } });
+    const pool = new ProviderPool('voice', 'model-a', [p]);
+    for (let i = 0; i < 3; i++) {
+      const t0 = Date.now();
+      await expect(pool.chat(hi, { timeoutMs: 450 })).rejects.toThrow(LlmUnavailable);
+      expect(Date.now() - t0).toBeLessThan(1200);
+    }
+    expect(p.breaker.state).toBe('closed');
+  });
+
+  it('a real provider timeout still counts, and is retried only while the budget allows', async () => {
+    let n = 0;
+    const counting: FetchLike = (input, init) => { n++; return hanging(input, init); };
+    const p = provider('scaleway', counting, { timeoutMs: 50, retries: 3, breaker: { failures: 5, openMs: 60000 } });
+    await expect(p.chat(hi, { timeoutMs: 700 })).rejects.toThrow(/timeout/);
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect(n).toBeLessThanOrEqual(3); // 50 ms attempts, 300/600 ms backoffs: the budget stops the fourth
+    const q = provider('q', hanging, { timeoutMs: 30, retries: 0, breaker: { failures: 2, openMs: 60000 } });
+    await expect(q.chat(hi, { timeoutMs: 5000 })).rejects.toThrow(/timeout/);
+    await expect(q.chat(hi, { timeoutMs: 5000 })).rejects.toThrow(/timeout/);
+    expect(q.breaker.state).toBe('open');
+  });
+
+  it('an answer truncated by max_tokens (reasoning burnt the budget) fails over at once, without retry or breaker', async () => {
+    const cut = fakeFetch([() => ({ body: { choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { prompt_tokens: 10, completion_tokens: 500 } } })]);
+    const ok = fakeFetch([() => ({})]);
+    const a = provider('a', cut.fetch, { retries: 2 });
+    const r = await new ProviderPool('voice', 'model-a', [a, provider('b', ok.fetch)]).chat(hi, { timeoutMs: 5000 });
+    expect(r.provider).toBe('b');
+    expect(cut.calls.length).toBe(1);
+    expect(a.breaker.state).toBe('closed');
+  });
+
+  it('a 400 about this request does not open the breaker; a 401 does', async () => {
+    const bad = provider('a', fakeFetch([() => ({ status: 400, body: 'context too long' })]).fetch);
+    for (let i = 0; i < 3; i++) await expect(bad.chat(hi)).rejects.toThrow(/HTTP 400/);
+    expect(bad.breaker.state).toBe('closed');
+    const unauth = provider('b', fakeFetch([() => ({ status: 401, body: 'Invalid Authentication' })]).fetch);
+    for (let i = 0; i < 2; i++) await expect(unauth.chat(hi)).rejects.toThrow(/HTTP 401/);
+    expect(unauth.breaker.state).toBe('open');
+  });
+
+  it('frees the half-open probe when the probe ends on a neutral outcome', async () => {
+    let t = 0;
+    const script = [() => ({ status: 503, body: 'x' }), () => ({ status: 503, body: 'x' }), () => ({ status: 400, body: 'bad' }), () => ({})];
+    const p = provider('a', fakeFetch(script).fetch, { retries: 0 }, () => t);
+    await expect(p.chat(hi)).rejects.toThrow(); await expect(p.chat(hi)).rejects.toThrow();
+    expect(p.breaker.state).toBe('open');
+    t = 1000;
+    expect(p.breaker.allow()).toBe(true);
+    await expect(p.chat(hi)).rejects.toThrow(/HTTP 400/); // neutral: says nothing about health
+    expect(p.breaker.allow()).toBe(true);                 // the probe slot is free again
+    await p.chat(hi);
+    expect(p.breaker.state).toBe('closed');
+  });
+
+  it('waiting for a slot counts against the budget', async () => {
+    const p = provider('a', hanging, { concurrency: 1, timeoutMs: 5000, retries: 0 });
+    const first = p.chat(hi, { timeoutMs: 1500 }).catch(() => undefined);
+    const t0 = Date.now();
+    await expect(p.chat(hi, { timeoutMs: 600 })).rejects.toThrow(/budget|slot/);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(p.queued).toBe(0);
+    await first;
+  });
+});
+
+describe('breaker and tight budgets without a provider TIMEOUT_MS', () => {
+  it('a short task budget on a provider with no TIMEOUT_MS is our budget, not a provider failure', async () => {
+    const hang: FetchLike = (_i, init) => new Promise((_r, reject) => { init?.signal?.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); }); });
+    const p = new OpenAICompatibleClient({ name: 'p', baseUrl: 'http://x/v1', model: 'model-a', concurrency: 2, retries: 0, breaker: { failures: 1, openMs: 60000 } }, { fetch: hang });
+    await expect(p.chat([{ role: 'user', content: 'hi' }], { timeoutMs: 450 })).rejects.toThrow(/budget/);
+    expect(p.breaker.state).toBe('closed');
   });
 });
