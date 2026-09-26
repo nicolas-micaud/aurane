@@ -218,3 +218,15 @@ Nick a dit oui à l'ensemble et laissé les prix à la recommandation de la sess
 
 Ce qui suit de ces décisions, dans l'ordre : le choix du marchand officiel (Nick), la table `entitlements` et son test
 d'étanchéité (session cloud), le bouton « Soutenir Aurane » dans l'onglet Compte (session cloud), le Chroniqueur en S1.
+
+## Marchand officiel retenu (Nick, 26.09.2026)
+
+**Stripe Managed Payments**, sur le compte Stripe de Ninabot Sàrl (CH, lieu d'établissement éligible ; « video games »
+dans les catégories acceptées). Stripe est le vendeur officiel : il encaisse, applique et reverse la TVA du pays de
+l'acheteur, émet le reçu et répond au client. Vérifié le jour même par l'API : une session Checkout
+`managed_payments[enabled]=true` est acceptée sur ce compte (aucun compte Connect rattaché). Paddle et Lemon Squeezy
+écartés : ils n'apportent pas de joueurs (ce ne sont pas des portails), et le code passe par une interface unique
+(`apps/world/src/payments/provider.ts`) si un jour il faut changer. Mise en place : produit `aurane_support_founder`
+(tax code `txcd_10201003`), prix 5 CHF TTC, webhook vers `https://play.playaurane.com/api/pay/webhook`, secrets dans
+Vaultwarden `aurane/aurane-stripe`. La visibilité passe par d'autres canaux (page itch.io, portails web), pas par le
+prestataire de paiement.
