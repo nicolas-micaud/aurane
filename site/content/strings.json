@@ -48,7 +48,7 @@
       {
         "id": "general",
         "title": "Le Général",
-        "quote": "Un <strong>partenaire</strong>, pas un pilote automatique : il te montre où agir, propose trois coups avant chaque Tirage, exécute ta doctrine quand tu dors, et se souvient de tout, tout le temps. Sa mémoire s'appelle <strong>Corthexis</strong> : tes choix, tes batailles, tes alliés, ceux qui t'ont trahi, d'une saison à l'autre.",
+        "quote": "Il n'est pas là pour jouer à ta place. Il te montre où agir, propose trois coups avant chaque Tirage, exécute ta doctrine quand tu dors et te briefe à ton retour, dans sa voix : ce qui s'est passé, ce qu'il a fait, ce qu'il recommande. Et il se souvient de tout, tout le temps : tes choix, tes refus, tes batailles, tes alliés et ceux qui t'ont trahi, d'une saison à l'autre. Cette mémoire s'appelle <strong>Corthexis</strong> ; elle t'appartient, tu peux la lire, l'exporter et l'effacer.",
         "icon": "/images/game/structure-antenna.png",
         "alt": "Antenne"
       }
@@ -176,7 +176,7 @@
       {
         "id": "general",
         "title": "The General",
-        "quote": "A <strong>partner</strong>, not an autopilot: it shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep, and remembers everything, all the time. Its memory is called <strong>Corthexis</strong>: your choices, your battles, your allies, those who betrayed you, from one season to the next.",
+        "quote": "It is not there to play in your place. It shows you where to act, offers three moves before every Draw, carries out your doctrine while you sleep and briefs you when you come back, in its own voice: what happened, what it did, what it recommends. And it remembers everything, all the time: your choices, your refusals, your battles, your allies and those who betrayed you, from one season to the next. That memory is called <strong>Corthexis</strong>; it is yours to read, export and erase.",
         "icon": "/images/game/structure-antenna.png",
         "alt": "Antenna"
       }

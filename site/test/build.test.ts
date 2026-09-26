@@ -53,8 +53,8 @@ describe('landing build', () => {
     expect(root).toContain('<link rel="canonical" href="https://playaurane.com/fr/">');
     expect(root).toContain("location.replace('/en/'");
     expect(fr).not.toContain("location.replace('/en/'");
-    expect(en).toContain('Your AI General plays while you sleep.');
-    expect(fr).toContain('Ton Général IA joue pendant que tu dors.');
+    expect(en).toContain('A real partner, not an autopilot. Your General thinks with you, plays while you sleep, and remembers everything, all the time.');
+    expect(fr).toContain('Un vrai partenaire, pas un pilote automatique. Ton Général pense avec toi, joue quand tu dors, et se souvient de tout, tout le temps.');
     // The tagline stays as it is.
     expect(text(fr)).toContain("can't stop the signal");
   });
