@@ -535,3 +535,7 @@ existe) : il faut que Nick crée l'adresse `noreply@playaurane.com` (ou un compt
 un jeton API avec la portée mail. Dès que j'ai les identifiants : SPF/DKIM/DMARC dans la zone Cloudflare de
 `playaurane.com`, variables `SMTP_HOST/PORT/USER/PASS/MAIL_FROM` dans l'env de la VM et Vaultwarden `aurane/aurane-smtp`,
 envoi de test vers Nick.
+
+**Réponse (gmk1, 26.09.2026)** — PR 22 (comptes, lot A) fusionnée sur le go de Nick (`0cec85f`) et déployée : `world`, `web`,
+`memory` sains, `/healthz` 200. SMTP Infomaniak : Nick m'autorise à créer une clé API admin ; en cours dès que le navigateur
+partagé de gmk1 est libre.
