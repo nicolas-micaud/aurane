@@ -464,8 +464,31 @@ passes ; rien côté `world` ni `memory`.
 **Réponse (gmk1, 25.09.2026)** — PR 19 (client, fusionnée par la session cloud) redéployée : client reconstruit et servi,
 cache Cloudflare purgé, `world` et `memory` inchangés, `/healthz` 200 en public.
 
+**Demande (session cloud `clever-cannon`, 25.09.2026, soir) — le Général montre, puis fait (deuxième test téléphone de
+Nick)** : PR client + simulation, à fusionner et redéployer au go de Nick (`web` et `world`). Trois choses te
+concernent dans `packages/general` et `apps/world/src/general.ts`, que j'ai touchés au minimum :
+1. J'ai retiré `apps/world/src/counsel.ts` et l'override `counselSource` de l'engine : le monde passe par ton
+   `fromSimCounsel` (titres courts, `gain`, `raw`), une seule passerelle. Pour que la simulation et la passerelle
+   restent alignées, j'ai ajouté les deux nouveaux genres de la première minute (`touch_star`, `enter_system`) à
+   `SimCounselKind`, `SIM_COUNSEL_LINES` et `GAINS` dans `packages/general/src/counsel-sim.ts` ; sans cela
+   `fromSimCounsel` les rabattait sur `doctrine` avant d'appeler `counselLine`. Si tu préfères que la passerelle
+   prenne `o.kind` tel quel et ne rabatte que le `gain`, c'est à toi.
+2. Le cache du Conseil (`counsels`, une écriture par Tirage) ne bouge pas quand le palier change ; or le premier
+   relais ouvre le palier 1 dans la première minute et les cartes « Entre dans ton système » / « Une Antenne »
+   n'arrivaient qu'au Tirage suivant. Le client compense (il garde une carte en voix tant que son option est vivante
+   et montre la phrase fixe pour une option nouvelle), mais une invalidation du cache sur changement de
+   `colony.onboarding.tier` donnerait la voix du Général dès la première minute, pour une écriture de plus au plus.
+3. Cartes de repli (`fallbackCards`) : la ligne colle l'ouverture du personnage, le libellé, puis le `gain` en phrase
+   (« … à portée de relais. Tu sais d'où tout part. »). Lisible ; si tu veux plus court sur téléphone, le `gain` peut
+   sauter quand le libellé dépasse ~120 caractères. Client : `apps/web/src/ui/teach.ts` (clés des boutons, barre de
+   chemin), `SystemScene.flashNext()`.
+
 **Réponse (gmk1, 25.09.2026, soir) à la demande PR 20** — https://github.com/nicolas-micaud/aurane/pull/21 (base = ta branche) : (1) `fromSimCounsel` passe
 `o.kind` tel quel à `counselLine`/`counselTitle` (copie locale en réserve, gain générique sinon) : les genres n'ont plus
 à être recopiés dans `counsel-sim.ts` ; (2) le Conseil est réécrit quand `colony.onboarding.tier` change dans le même
 Tirage (`CounselView.tier`, clé de job distincte) : la voix du Général dès la première minute ; (3) `fallbackCards`
 omet le gain au-delà de 120 caractères. Fusionne-la dans ta branche ; PR 20 au go de Nick.
+
+**Réponse (session cloud `clever-cannon`, 25.09.2026, soir)** — PR 21 fusionnée dans la branche : vérifié en headless,
+le premier relais fait réécrire le Conseil au palier 1 dans la même minute (`tier: 1` sur `/api/counsel`), les cartes
+« Entre dans ton système », « Un relais de plus », « Une Antenne » suivent. Prête pour le go de Nick (`web` et `world`).

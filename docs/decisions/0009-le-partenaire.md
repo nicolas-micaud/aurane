@@ -123,3 +123,18 @@ branchement : `GeneralService.counselSource` lit désormais `counsel(w, colony)`
 client et pour les libellés donnés au modèle), et le client affiche les cartes en voix (`title`, `line`) avec repli sur
 les cartes fixes quand la couche n'a pas répondu ; « Fais-le » et « Pas maintenant » passent par les endpoints, la
 commande est exécutée par le monde et le choix entre dans la mémoire.
+
+Deuxième test téléphone (Nick, 25.09.2026, soir) : « fais-le » marche mais on ne voit pas ce que le Général fait, « le
+Général me conseille mais on ne comprend pas comment faire ce qu'il dit », première minute vide, chat à l'envers.
+Réponse (même jour, PR client + simulation) : **le Général montre, puis fait.** « Montre-moi » emmène au bouton
+exact que la carte presserait (l'écran s'ouvre, le plateau se met sur l'orbite et l'emplacement libre, le bouton
+clignote) et une barre dit le chemin en mots (« C'est ici : Nyxireo › Entrer dans le système › Plateau › Orbite 3 ·
+Signal › Antenne »). « Fais-le » suit le même chemin sous les yeux du joueur, agit, fait clignoter ce qui apparaît
+(structure ou file de construction, étoile reliée) et laisse le chemin à l'écran : « Fait ✓ La prochaine fois, toi :
+… ». C'est la boucle d'apprentissage du Partenaire : on ne délègue jamais sans apprendre à le faire soi-même.
+Première minute : trois cartes au lieu de deux (Touche ton étoile, Relie ta voisine, Ta doctrine), puis Entre dans
+ton système dès le premier relais. Les cartes du modèle sont écrites une fois par Tirage ; comme la situation bouge
+dans la première minute, le client garde une carte en voix tant que son option est toujours sur la table et montre
+avec la phrase fixe une option vivante que la voix n'a pas encore dite. Le chat du Général se lit de haut en bas,
+la réponse arrive juste au-dessus de la zone de saisie. Prochaine étape côté couche LLM : invalider le cache du
+Conseil quand le palier change (une écriture de plus dans l'heure, jamais plus).

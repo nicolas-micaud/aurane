@@ -34,7 +34,7 @@ interface GazetteJob { day: number; lang: 'fr' | 'en' }
 interface CounselJob { colonyId: string; lang: 'fr' | 'en'; drawIndex: number }
 interface EpisodeJob { colonyId: string; lang: 'fr' | 'en'; day: number }
 
-export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
+export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number; /** Onboarding tier the counsel was written for: a new tier invalidates it (the first minute opens tier 1). */ tier: number }
 
 /** Where the simulation's counsel comes from; `buildOptions` of the analysis until `counsel(w, colony, tier)` lands in packages/sim. */
 export type CounselSource = (w: World, c: Colony) => { tier: number; options: CounselOption[] };
@@ -352,7 +352,7 @@ export class GeneralService {
     const a = this.analysisOf(c);
     const r: CounselResult = await writeCounsel({ persona: c.persona, lang: p.lang, tier: src.tier, options: src.options, analysis: renderAnalysisSafe(a, p.lang), memory: mem.text, crisis: a.crisis, minutesToDraw: this.minutesToDraw(), seed: `${c.id}:${p.drawIndex}`, skipped: choicesOf(mem.record).skipped.slice(-6) }, this.stack.voice);
     if (r.source === 'degraded' && r.degradeReason) this.metrics.degradation('voice', 'counsel', r.degradeReason);
-    const view: CounselView = { drawIndex: p.drawIndex, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: w.time };
+    const view: CounselView = { drawIndex: p.drawIndex, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: w.time, tier: src.tier };
     this.counsels.set(`${c.id}:${p.lang}`, view);
     return view;
   }
@@ -379,14 +379,14 @@ export class GeneralService {
     if (!c) return null;
     this.langs.set(c.id, lang);
     const next = this.drawIndexNow() + 1;
-    const hit = this.counsels.get(`${c.id}:${lang}`);
-    if (hit && hit.drawIndex === next) return { ...hit, minutesToDraw: this.minutesToDraw() };
     const src = this.counselSource(this.deps.world(), c);
-    const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time }; };
+    const hit = this.counsels.get(`${c.id}:${lang}`);
+    if (hit && hit.drawIndex === next && hit.tier === src.tier) return { ...hit, minutesToDraw: this.minutesToDraw() };
+    const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time, tier: src.tier }; };
     if (!this.stack.voice || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
     if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
     const template = await fallback();
-    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, ttlMs: 3600000 });
+    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}:t${src.tier}`, ttlMs: 3600000 });
     if (out.timedOut) this.counsels.set(`${c.id}:${lang}`, out.result);
     return out.result;
   }

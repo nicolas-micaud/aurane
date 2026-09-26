@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
-import { AGENT_COST_INFLUENCE, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type SystemView } from '@aurane/sim';
+import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
 import { act, answerCounsel, fetchBriefing, fetchCounsel, fetchTalk, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type Turn } from '../net.js';
 import { lang, t, tError } from '../i18n/index.js';
@@ -11,6 +11,7 @@ import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
 import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
+import { marketPrefill, pendingDemo, pointAt, sceneFlashReq, stopTeaching, teach, teachClass, teachKey } from './teach.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log';
 type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplSanctuary' | 'tplLair' | 'tplBurnt';
@@ -60,14 +61,23 @@ export function Game() {
   const brief = useSig(briefing);
   useEffect(() => { map.current?.setSelection(selV); }, [selV]);
   useEffect(() => { map.current?.setLinkFrom(linkV); }, [linkV]);
+  // The General points at a button: bring it into view; the lesson ends when the player taps it.
+  const teachV = useSig(teach);
+  useEffect(() => {
+    if (!teachV || teachV.done || !teachV.key) return;
+    const id = setTimeout(() => document.querySelector('.teach')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 400);
+    return () => clearTimeout(id);
+  }, [teachV]);
+  const onTap = (e: MouseEvent): void => { if ((e.target as HTMLElement | null)?.closest?.('.teach')) setTimeout(stopTeaching, 150); };
 
   return (
-    <div class="game">
+    <div class="game" onClickCapture={onTap}>
       <div class="map" ref={host} />
       <Hud v={v} map={map} />
       {st !== 'online' && <div class="banner">{t('offline')}</div>}
       {toastV && <div class={`toast ${toastV.kind}`}>{toastV.text}</div>}
-      {linkV && <div class="hint">{t('tapToLink')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
+      {linkV && !teachV && <div class="hint">{t('tapToLink')} <button onClick={() => { linkFrom.value = null; }}>{t('cancel')}</button></div>}
+      {teachV && <div class={`hint teachbar ${teachV.done ? 'done' : ''}`}><span>{teachV.hint}</span><button onClick={stopTeaching}>✕</button></div>}
       {brief && (
         <div class="briefing">
           <h3>{t('briefing')} · {t(v.me.persona as 'vane')}</h3>
@@ -168,25 +178,74 @@ let counselFetching = false;
 
 type UiCard = { id: string; title: string; line: string; hasCommand: boolean; urgency: 0 | 1 | 2; voice: boolean; go: () => void; run: () => Promise<boolean> };
 
-function showTarget(show: PlayerView['me']['counsel'][number]['show'], map: GalaxyMap | null): void {
-  if (show.kind === 'star') { selected.value = show.system; tab.value = 'system'; map?.centerOn(show.system); map?.flash(show.system); }
-  else if (show.kind === 'link') { selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; map?.centerOn(show.from); map?.flash(show.from); }
-  else if (show.kind === 'plateau') { systemMode.value = show.system; }
-  else tab.value = show.tab;
+type TKey = Parameters<typeof t>[0];
+const T = (k: string): string => String(t(k as TKey));
+const SEP = ' › ';
+
+/** The voice layer's `show` (packages/general) as the simulation's target, so one function shows both; the
+ *  simulation's own target rides along as `raw` when the card came from its Counsel. */
+function fromVoiceShow(sh: CounselCard['show'], raw?: unknown): ShowTarget | null {
+  const r = raw as { kind?: unknown } | undefined;
+  if (r && (r.kind === 'star' || r.kind === 'link' || r.kind === 'plateau' || r.kind === 'tab')) return r as ShowTarget;
+  if (!sh) return null;
+  if (sh.screen === 'system' && sh.system) {
+    if (sh.slot === 'link') return { kind: 'link', from: sh.system, to: null };
+    if (sh.slot || sh.poi) { const o = Number(sh.slot); return { kind: 'plateau', system: sh.system, orbit: o === 1 || o === 2 || o === 3 ? o : null }; }
+    return { kind: 'star', system: sh.system };
+  }
+  if (sh.screen === 'journal') return { kind: 'tab', tab: 'log' };
+  if (sh.screen === 'colony' || sh.screen === 'market' || sh.screen === 'general') return { kind: 'tab', tab: sh.screen };
+  return null; // the galaxy
+}
+
+/** Where a card without a ready command takes the player, with the path said out loud. */
+function showTarget(show: ShowTarget | null, v: PlayerView, map: GalaxyMap | null): void {
+  const sys = (id: string): string => v.systems.find((x) => x.id === id)?.name ?? id;
+  const here = (key: string | null, path: string[]): void => pointAt(key, t('hereIsWhere').replace('{path}', path.join(SEP)) + (key ? ` ${t('tapBlink')}` : ''));
+  if (!show) { systemMode.value = null; tab.value = 'colony'; }
+  else if (show.kind === 'star') { systemMode.value = null; selected.value = show.system; tab.value = 'system'; map?.centerOn(show.system); map?.flash(show.system); here(`enter:${show.system}`, [sys(show.system), t('tabSystem'), t('enterSystem')]); }
+  else if (show.kind === 'link') { systemMode.value = null; selected.value = show.from; tab.value = 'system'; linkFrom.value = show.from; map?.centerOn(show.from); map?.flash(show.from); here(show.to ? `link:${show.to}` : null, [sys(show.from), t('tabSystem'), t('linkMode'), ...(show.to ? [sys(show.to)] : [])]); }
+  else if (show.kind === 'plateau') { pendingDemo.value = { system: show.system, dock: 'plateau', orbit: show.orbit }; systemMode.value = show.system; here(null, [sys(show.system), t('enterSystem'), t('plateau'), ...(show.orbit ? [T(`orbit${show.orbit}`)] : [])]); }
+  else { systemMode.value = null; tab.value = show.tab; here(show.tab === 'general' ? 'say' : show.tab === 'log' ? 'recap' : null, [T(`tab${show.tab[0]!.toUpperCase()}${show.tab.slice(1)}`)]); }
   openPanel.value++;
 }
 
-function showVoiceTarget(show: CounselCard['show'], map: GalaxyMap | null): void {
-  if (!show) return;
-  if (show.screen === 'system' && show.system) {
-    if (show.slot === 'link') { selected.value = show.system; tab.value = 'system'; linkFrom.value = show.system; }
-    else if (show.slot || show.poi) systemMode.value = show.system;
-    else { selected.value = show.system; tab.value = 'system'; }
-    if (systemMode.value !== show.system) { map?.centerOn(show.system); map?.flash(show.system); }
-  } else if (show.screen === 'journal') tab.value = 'log';
-  else if (show.screen === 'colony' || show.screen === 'market' || show.screen === 'general') tab.value = show.screen;
-  else { systemMode.value = null; tab.value = 'colony'; }
-  openPanel.value++;
+/** The path to the button that sends this command, in the words of the screens. */
+function pathOf(cmd: Command, v: PlayerView): string {
+  const sys = (id: string): string => v.systems.find((x) => x.id === id)?.name ?? id;
+  const who = (id: string): string => v.colonies.find((c) => c.id === id)?.name ?? id;
+  switch (cmd.type) {
+    case 'build_relay': return [sys(cmd.a), t('tabSystem'), t('linkMode'), sys(cmd.b)].join(SEP);
+    case 'build': return [sys(cmd.system), t('enterSystem'), t('plateau'), T(`orbit${BUILDING_ORBIT[cmd.building]}`), T(cmd.building)].join(SEP);
+    case 'train': return [sys(cmd.system), t('enterSystem'), t('plateau'), t('train'), T(cmd.unit)].join(SEP);
+    case 'fleet_order': return [sys(cmd.target.split(':')[0]!), t('enterSystem'), t('tabFleets'), T(cmd.order)].join(SEP);
+    case 'market_order': return [t('tabMarket'), `${T(cmd.side)} ${T(cmd.resource)}`, t('place')].join(SEP);
+    case 'treaty': return [t('tabDiplomacy'), who(cmd.with), T(cmd.kind)].join(SEP);
+    case 'decree': return [t('tabColony'), t('decrees'), decreeLabel(cmd.kind)].join(SEP);
+    default: return '';
+  }
+}
+
+/** Take the player to the button a command would press and make it blink ("Show me"), or leave the path after the
+ *  General pressed it ("Do it", done = true). */
+function demonstrate(cmd: Command, v: PlayerView, map: GalaxyMap | null, done = false): void {
+  const key = teachKey(cmd);
+  const path = pathOf(cmd, v);
+  if (!done) {
+    switch (cmd.type) {
+      case 'build_relay': systemMode.value = null; selected.value = cmd.a; tab.value = 'system'; linkFrom.value = cmd.a; map?.centerOn(cmd.a); map?.flash(cmd.a); openPanel.value++; break;
+      case 'build': pendingDemo.value = { system: cmd.system, dock: 'plateau', orbit: BUILDING_ORBIT[cmd.building] }; systemMode.value = cmd.system; break;
+      case 'train': pendingDemo.value = { system: cmd.system, dock: 'plateau', orbit: null }; systemMode.value = cmd.system; break;
+      case 'fleet_order': { const at = cmd.target.split(':')[0]!; pendingDemo.value = { system: at, dock: 'fleets', orbit: null }; systemMode.value = at; break; }
+      case 'market_order': systemMode.value = null; marketPrefill.value = { region: cmd.region, resource: cmd.resource, side: cmd.side, qty: cmd.qty, price: cmd.price }; tab.value = 'market'; openPanel.value++; break;
+      case 'treaty': systemMode.value = null; tab.value = 'diplomacy'; openPanel.value++; break;
+      case 'decree': systemMode.value = null; tab.value = 'colony'; openPanel.value++; break;
+      default: break;
+    }
+  }
+  if (!path) return;
+  if (done) pointAt(null, t('howTo').replace('{path}', path), true, 12000);
+  else pointAt(key, t('hereIsWhere').replace('{path}', path) + (key ? ` ${t('tapBlink')}` : ''));
 }
 
 /** The star a command acts on, to show where the General just did something. */
@@ -195,10 +254,12 @@ function commandTarget(cmd: Command | null): string | null {
   switch (cmd.type) {
     case 'build_relay': return cmd.b;
     case 'build': case 'train': return cmd.system;
-    case 'fleet_order': return cmd.target;
+    case 'fleet_order': return cmd.target.split(':')[0]!;
     default: return null;
   }
 }
+
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const skipped = useSig(skippedCounsel);
@@ -214,20 +275,39 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
     skippedCounsel.value = new Set([...skippedCounsel.value, id]);
     if (viaVoice) void answerCounsel(id, taken); else void act({ type: 'counsel_answer', id, taken });
   };
-  // After "Do it": the star flashes and is selected, and the General's acknowledgement shows as a toast.
-  const acted = (target: string | null, reply: string | null) => {
-    if (target) { selected.value = target; map.current?.centerOn(target); map.current?.flash(target); foldPanel.value++; }
-    if (reply) { toast.value = { text: reply, kind: 'ok' }; setTimeout(() => { if (toast.value?.text === reply) toast.value = null; }, 3500); }
+  // "Do it" teaches: go where the button is, let the player see it, act, then show what appeared and leave the path.
+  const doIt = async (cmd: Command, send: () => Promise<{ ok: boolean; reply: string | null }>): Promise<boolean> => {
+    demonstrate(cmd, v, map.current);
+    await wait(cmd.type === 'build_relay' ? 700 : 1100);
+    if (systemMode.value) sceneFlashReq.value++;
+    const r = await send();
+    if (!r.ok) { stopTeaching(); return false; }
+    demonstrate(cmd, v, map.current, true);
+    const target = commandTarget(cmd);
+    if (target && !systemMode.value) { selected.value = target; map.current?.centerOn(target); map.current?.flash(target); foldPanel.value++; }
+    const reply = r.reply ?? t('counselDone');
+    toast.value = { text: reply, kind: 'ok' }; setTimeout(() => { if (toast.value?.text === reply) toast.value = null; }, 4000);
+    return true;
   };
-  const cards: UiCard[] = voice && voice.drawIndex === nextDraw && voice.cards.length
-    ? voice.cards.map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showVoiceTarget(c.show, map.current),
-      run: async () => { const r = await answerCounsel(c.id, true); if (r.ok) acted(commandTarget(c.command), r.reply ?? t('counselDone')); return r.ok; } }))
-    : v.me.counsel.map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showTarget(c.show, map.current),
-      run: async () => { const ok = await act(c.command!); if (ok) acted(commandTarget(c.command), t('counselDone')); return ok; } }));
+  // "Show me": the button itself when the card carries a command, else the screen the card is about.
+  const showMe = (cmd: Command | null, show: ShowTarget | null): void => { if (cmd) demonstrate(cmd, v, map.current); else showTarget(show, v, map.current); };
+  // The voice cards are written once per Draw. The simulation's options move with the game (a relay opens tier 1
+  // within the first minute), so a voice card stays while its option is still on the table, and a live option the
+  // voice has not phrased shows with the fixed line: the General's words when it has them, never stale advice.
+  const voiceCards = voice && voice.drawIndex === nextDraw ? voice.cards : [];
+  const liveIds = new Set(v.me.counsel.map((c) => c.id));
+  const spoken = new Set(voiceCards.map((c) => c.id));
+  const firstWords = voiceCards.length > 0 && voiceCards.every((c) => c.id.startsWith('first-'));
+  const fromVoice: UiCard[] = voiceCards.filter((c) => firstWords || liveIds.has(c.id)).map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showMe(c.command, fromVoiceShow(c.show, c.raw)),
+    run: () => doIt(c.command!, () => answerCounsel(c.id, true)) }));
+  const fromSim: UiCard[] = v.me.counsel.filter((c) => !spoken.has(c.id)).map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showMe(c.command, c.show),
+    run: () => doIt(c.command!, async () => ({ ok: await act(c.command!), reply: null })) }));
+  const order = new Map(v.me.counsel.map((c, i) => [c.id, i]));
+  const cards = [...fromVoice, ...fromSim].sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
   const shown = cards.filter((c) => !skipped.has(c.id));
   if (shown.length === 0) return null;
   return (
-    <div class="counsel">
+    <div class={`counsel ${(v.me.onboarding?.tier ?? 6) <= 1 ? 'first' : ''}`}>
       <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
       {shown.map((c) => (
         <div key={c.id} class={`card u${c.urgency}`}>
@@ -354,6 +434,7 @@ function ColonyPanel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | nu
 function Decrees({ v }: { v: PlayerView }) {
   const now = v.time;
   const desc = { range: t('decreeRangeDesc'), freefees: t('decreeFreefeesDesc'), longwatch: t('decreeLongwatchDesc') } as const;
+  const tv = useSig(teach);
   return (
     <div class="decrees">
       <h3>{t('decrees')} <small>{Math.floor(v.me.credits)} {t('credits')}</small></h3>
@@ -363,7 +444,7 @@ function Decrees({ v }: { v: PlayerView }) {
           const active = v.me.decrees.find((d) => d.kind === k && d.until > now);
           const cost = DECREE_COST_CREDITS[k];
           return (
-            <button key={k} class={`card-btn ${active ? 'has' : ''}`} disabled={!!active || v.me.credits < cost} onClick={() => void act({ type: 'decree', kind: k })}>
+            <button key={k} class={`card-btn ${active ? 'has' : ''} ${teachClass(tv, `decree:${k}`)}`} disabled={!!active || v.me.credits < cost} onClick={() => void act({ type: 'decree', kind: k })}>
               <b>{decreeLabel(k)}</b><small>{desc[k]}</small>
               {active ? <small class="ok">{t('inForce')} · {hms(active.until - now)} {t('remaining')}</small> : <small class="r-credits">{cost} {t('credits')} · {DECREE_HOURS[k]} h</small>}
             </button>
@@ -376,6 +457,7 @@ function Decrees({ v }: { v: PlayerView }) {
 
 function SystemPanel({ v }: { v: PlayerView }) {
   const sel = useSig(selected);
+  const tv = useSig(teach);
   const s = v.systems.find((x) => x.id === sel);
   if (!s) return <p class="muted">{t('selectHint')}</p>;
   const mine = s.owner === v.me.id;
@@ -398,7 +480,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
         {s.stock && <span>{t('localStock')} : {RES.map((r) => <b key={r} class={`r-${r}`}> {Math.round(s.stock![r])}</b>)} <small>/ {s.capacity}</small></span>}
       </div>
       <div class="actions">
-        <button class={`enter ${s.engaged ? 'hot' : ''}`} onClick={() => { systemMode.value = s.id; }}>◎ {t('enterSystem')}</button>
+        <button class={`enter ${s.engaged ? 'hot' : ''} ${teachClass(tv, `enter:${s.id}`)}`} onClick={() => { systemMode.value = s.id; }}>◎ {t('enterSystem')}</button>
         <button class="primary" onClick={() => { linkFrom.value = linking ? null : s.id; }} disabled={!s.connected || targets === 0}>{t('linkMode')} {s.connected ? `(${targets} ${t('inRange')})` : ''}</button>
         {s.kind === 'beacon' && mine && !s.lit && <button onClick={() => void act({ type: 'light_beacon', system: s.id })}>{t('lightBeacon')}</button>}
         {!mine && <button disabled={v.me.influence < AGENT_COST_INFLUENCE.probe} onClick={() => void act({ type: 'agent_mission', mission: 'probe', target: s.id })}>{t('probe')} ★{AGENT_COST_INFLUENCE.probe}</button>}
@@ -416,6 +498,7 @@ function SystemPanel({ v }: { v: PlayerView }) {
 function LinkTargets({ v, from }: { v: PlayerView; from: string }) {
   const cands = (v.linkTargets[from] ?? []).map((c) => ({ ...c, sys: v.systems.find((x) => x.id === c.to) })).filter((c) => c.sys);
   const stock = v.systems.find((x) => x.id === from)?.stock ?? v.me.stock;
+  const tv = useSig(teach);
   return (
     <div class="linktargets">
       <h3>{t('targetsInRange')} <small>{cands.length}</small></h3>
@@ -427,7 +510,7 @@ function LinkTargets({ v, from }: { v: PlayerView; from: string }) {
             <li key={c.to}>
               <span class={`dot r-${c.sys!.resource}`} /> <b>{c.sys!.name}</b> <small>{t(c.sys!.resource)} · {t('band')} {c.sys!.band}</small>
               <span class="cost"><span class="r-metal"><Icon name="metal" size={12} />{c.metal}</span><span class="r-energy"><Icon name="energy" size={12} />{c.energy}</span></span>
-              <button class="primary" disabled={!afford} onClick={() => { linkFrom.value = null; void act({ type: 'build_relay', a: from, b: c.to }).then((ok) => { if (!ok && toast.value) toast.value = { text: tError(toast.value.text), kind: 'err' }; }); }}>{t('linkTo')}</button>
+              <button class={`primary ${teachClass(tv, `link:${c.to}`)}`} disabled={!afford} onClick={() => { linkFrom.value = null; void act({ type: 'build_relay', a: from, b: c.to }).then((ok) => { if (!ok && toast.value) toast.value = { text: tError(toast.value.text), kind: 'err' }; }); }}>{t('linkTo')}</button>
             </li>
           );
         })}
@@ -494,6 +577,9 @@ function MarketPanel({ v }: { v: PlayerView }) {
   const [side, setSide] = useState<'buy' | 'sell'>('sell');
   const [qty, setQty] = useState(20);
   const [price, setPrice] = useState(1);
+  const tv = useSig(teach);
+  const pre = useSig(marketPrefill);
+  useEffect(() => { if (!pre) return; setRegion(pre.region); setRes(pre.resource); setSide(pre.side); setQty(pre.qty); setPrice(pre.price); marketPrefill.value = null; }, [pre]);
   if (!v.me.regions.length) return <p class="muted">{t('noMarket')}</p>;
   const last = v.clearing.find((c) => c.region === region && c.resource === res);
   return (
@@ -509,7 +595,7 @@ function MarketPanel({ v }: { v: PlayerView }) {
       <div class="row">
         <label>{t('qty')}<input type="number" min={1} value={qty} onInput={(e) => setQty(Number((e.target as HTMLInputElement).value))} /></label>
         <label>{t('price')}<input type="number" min={0.1} step={0.1} value={price} onInput={(e) => setPrice(Number((e.target as HTMLInputElement).value))} /></label>
-        <button class="primary" onClick={() => void act({ type: 'market_order', region, resource: res, side, qty, price })}>{t('place')}</button>
+        <button class={`primary ${teachClass(tv, 'market:place')}`} onClick={() => void act({ type: 'market_order', region, resource: res, side, qty, price })}>{t('place')}</button>
       </div>
       {last && <p class="muted">{t('lastPrice')}: {last.price} ({last.qty})</p>}
       <h3>{t('myOrders')}</h3>
@@ -556,6 +642,7 @@ function Barter({ v }: { v: PlayerView }) {
 function DiplomacyPanel({ v }: { v: PlayerView }) {
   const [name, setName] = useState('');
   const others = v.colonies.filter((c) => c.id !== v.me.id).sort((a, b) => b.score - a.score).slice(0, 30);
+  const tv = useSig(teach);
   return (
     <div>
       <h3>{t('alliance')}</h3>
@@ -570,7 +657,7 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
           <li key={c.id}>
             <span class={`f-${c.faction}`}>{c.name}</span> <small>{c.score} {c.npc ? '· PNJ' : ''} {c.ally ? '· ✓' : ''}</small>
             <span class="actions inline">
-              {(['nap', 'trade', 'transit'] as const).map((k) => <button key={k} onClick={() => void act({ type: 'treaty', with: c.id, kind: k })}>{t(k)}</button>)}
+              {(['nap', 'trade', 'transit'] as const).map((k) => <button key={k} class={teachClass(tv, `treaty:${k}:${c.id}`)} onClick={() => void act({ type: 'treaty', with: c.id, kind: k })}>{t(k)}</button>)}
               {v.me.alliance && <button onClick={() => void act({ type: 'alliance_invite', colony: c.id })}>+</button>}
             </span>
           </li>
@@ -594,6 +681,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   const inboundCount = v.events.filter((e) => e.kind === 'fleet.inbound' && e.actors[1] === v.me.id).length;
   useEffect(() => { if (talkLoaded && inboundCount > 0) void fetchTalk().then((h) => { if (h.length > talk.value.length) talk.value = h; }); }, [inboundCount]);
   const journal = [...v.me.journal].reverse().slice(0, 12);
+  const tv = useSig(teach);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
   const submit = async () => {
     const said = text.trim();
@@ -611,16 +699,16 @@ function GeneralPanel({ v }: { v: PlayerView }) {
       {(v.me.onboarding?.tier ?? 6) < 6 && (
         <p class="tag">{t('tierOpened').replace('{k}', t(`tier${v.me.onboarding.tier}` as 'tier1'))} · <button class="link" onClick={() => void act({ type: 'onboarding_unlock' }, t('showMeAllDone'))}>{t('showMeAll')}</button></p>
       )}
-      <div class="say">
-        <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
-        <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>
-      </div>
       <div class="talk">
         {thread.length === 0 && <p class="bubble general">{t('generalHello')}</p>}
         {thread.slice(-12).map((m, i) => <p key={`${m.at}-${i}`} class={`bubble ${m.who}`}>{m.text}</p>)}
         {busy && <p class="bubble general muted">{t('thinking')}</p>}
-        <div ref={endRef} />
       </div>
+      <div class={`say ${teachClass(tv, 'say')}`}>
+        <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onFocus={(e) => setTimeout(() => (e.target as HTMLElement).scrollIntoView({ block: 'nearest' }), 250)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
+        <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>
+      </div>
+      <div ref={endRef} />
       {p.notes && <p class="muted small">{t('doctrine')} : {p.notes}</p>}
       <h3>{t('journalGeneral')}</h3>
       {journal.length === 0 ? <p class="muted small">{t('journalEmpty')}</p> : (
@@ -668,13 +756,15 @@ function markLogRead(v: PlayerView): void {
 /** The living log: one readable line per event, the hourly recap as a card, newest first. */
 function LogPanel({ v }: { v: PlayerView }) {
   const lines = v.events.map((e, i) => describeEvent(e, v, i)).filter((x): x is NonNullable<typeof x> => x !== null).reverse();
+  const tv = useSig(teach);
+  const firstRecap = lines.find((l) => l.recap)?.key;
   if (!lines.length) return <p class="muted">{t('noEvents')}</p>;
   return (
     <ul class="list feed">
       {lines.map((l) => (
         <li key={l.key} class={`tone-${l.tone} ${l.system ? 'has-sys' : ''}`} onClick={l.system ? () => { selected.value = l.system; } : undefined}>
           {l.recap ? (
-            <div class="recap">
+            <div class={`recap ${l.key === firstRecap ? teachClass(tv, 'recap') : ''}`}>
               <div class="head"><b>{l.text}</b> <small>{stamp(l.at)}</small></div>
               <div class="chips">
                 {RES.map((r) => <span key={r} class={`chip r-${r}`}><Icon name={r} size={12} /> <b>+{fmt(l.recap!.produced[r] ?? 0)}</b></span>)}

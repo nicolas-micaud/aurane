@@ -10,14 +10,17 @@ describe('the Draw Counsel', () => {
     const w = createWorld('counsel1', { radius: 4 });
     const me = spawnColony(w, { name: 'Me', faction: 'guild', persona: 'oriel' });
     const cards = counsel(w, me);
-    expect(cards.length).toBeGreaterThan(0);
-    expect(cards[0]!.kind).toBe('link_first');
-    expect(cards[0]!.command?.type).toBe('build_relay');
-    expect(cards[0]!.show.kind).toBe('link');
+    expect(cards.map((c) => c.kind)).toEqual(['touch_star', 'link_first', 'doctrine']);
+    const link = cards[1]!;
+    expect(link.command?.type).toBe('build_relay');
+    expect(link.show.kind).toBe('link');
     for (const c of cards) if (c.command) expect(commandTier(c.command)).toBeLessThanOrEqual(me.onboarding.tier);
-    // The card's command is accepted as is.
-    expect(apply(w, me.id, cards[0]!.command!).ok).toBe(true);
-    expect(counsel(w, me).some((c) => c.kind === 'link_first')).toBe(false);
+    // The card's command is accepted as is; the first relay opens tier 1 and the plateau card takes over.
+    expect(apply(w, me.id, link.command!).ok).toBe(true);
+    const after = counsel(w, me);
+    expect(after.some((c) => c.kind === 'link_first' || c.kind === 'touch_star')).toBe(false);
+    expect(after[0]!.kind).toBe('enter_system');
+    expect(after[0]!.show).toEqual({ kind: 'plateau', system: me.capital, orbit: null });
   });
 
   it('puts a threat first, sells a surplus once the Market is open, and shows up in the view', () => {

@@ -127,7 +127,7 @@ export async function talk(text: string, lang: 'fr' | 'en'): Promise<{ reply: st
   } catch { return null; }
 }
 /** A card of the Draw Counsel in the General's voice (LLM layer, decision 0009). */
-export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: { screen: 'galaxy' | 'system' | 'colony' | 'market' | 'general' | 'journal'; system?: string; poi?: string; slot?: string } | null }
+export interface CounselCard { id: string; title: string; line: string; command: Command | null; show: { screen: 'galaxy' | 'system' | 'colony' | 'market' | 'general' | 'journal'; system?: string; poi?: string; slot?: string } | null; /** The simulation's own target when the card came from its Counsel. */ raw?: unknown }
 export interface CounselView { drawIndex: number; minutesToDraw: number; cards: CounselCard[]; source: string; writtenAt: number }
 
 export async function fetchCounsel(lang: 'fr' | 'en'): Promise<CounselView | null> {

@@ -6,7 +6,7 @@ import type { Command, Stock } from '@aurane/protocol';
 import { counselLine, counselTitle } from '@aurane/sim';
 import type { CounselOption, ShowTarget } from './counsel.js';
 
-export type SimCounselKind = 'link_first' | 'link_more' | 'warehouse' | 'antenna' | 'turret' | 'defend' | 'buy_energy' | 'sell_surplus' | 'train' | 'treaty' | 'doctrine' | 'read_recap';
+export type SimCounselKind = 'touch_star' | 'enter_system' | 'link_first' | 'link_more' | 'warehouse' | 'antenna' | 'turret' | 'defend' | 'buy_energy' | 'sell_surplus' | 'train' | 'treaty' | 'doctrine' | 'read_recap';
 export interface SimCounselOption {
   id: string;
   kind: SimCounselKind | string;
@@ -19,6 +19,8 @@ export interface SimCounselOption {
 
 export const SIM_COUNSEL_LINES: Record<'fr' | 'en', Record<SimCounselKind, string>> = {
   fr: {
+    touch_star: '{system}, ta capitale. Touche-la : tout part d\'ici. Les étoiles autour sont à portée de relais.',
+    enter_system: 'Entre dans {system} : le plateau, c\'est là qu\'on construit. Trois orbites, trois métiers : Industrie, Défense, Signal.',
     link_first: 'Relie {to} depuis {from} : {metal} Métal, {energy} Énergie. Un système relié, c\'est ton premier revenu.',
     link_more: 'Le Métal est là : relie {to} depuis {from} ({metal} Métal). Chaque système relié compte au Tirage.',
     warehouse: '{lost} ressources perdues au dernier Tirage, entrepôts pleins. Un Entrepôt à {system} et on garde tout.',
@@ -33,6 +35,8 @@ export const SIM_COUNSEL_LINES: Record<'fr' | 'en', Record<SimCounselKind, strin
     read_recap: 'Le Tirage {draw} est passé : lis ce qu\'il a produit, c\'est ta feuille de route pour l\'heure.',
   },
   en: {
+    touch_star: '{system}, your capital. Touch it: everything starts here. The stars around are within relay range.',
+    enter_system: 'Enter {system}: the plateau is where we build. Three orbits, three trades: Industry, Defence, Signal.',
     link_first: 'Link {to} from {from}: {metal} Metal, {energy} Energy. A connected system is your first income.',
     link_more: 'The Metal is there: link {to} from {from} ({metal} Metal). Every connected system counts at the Draw.',
     warehouse: '{lost} resources lost at the last Draw, warehouses full. A Warehouse at {system} and we keep it all.',
@@ -49,8 +53,8 @@ export const SIM_COUNSEL_LINES: Record<'fr' | 'en', Record<SimCounselKind, strin
 };
 
 const GAINS: Record<'fr' | 'en', Record<SimCounselKind, string>> = {
-  fr: { link_first: 'un premier système relié, +1 point par Tirage', link_more: '+1 système relié, +1 point par Tirage', warehouse: 'plus rien ne se perd au Tirage', antenna: 'les secteurs voisins deviennent visibles', turret: 'le raid se heurte à un mur', defend: 'des coques face aux leurs', buy_energy: 'les relais restent allumés', sell_surplus: 'des Crédits au Tirage', train: 'une première escorte', treaty: 'sept jours de paix garantis', doctrine: 'le Général joue tes règles, même absent', read_recap: 'ta feuille de route pour l\'heure' },
-  en: { link_first: 'a first connected system, +1 point per Draw', link_more: '+1 connected system, +1 point per Draw', warehouse: 'nothing is lost at the Draw any more', antenna: 'the neighbouring sectors become visible', turret: 'the raid hits a wall', defend: 'hulls against theirs', buy_energy: 'the relays stay lit', sell_surplus: 'Credits at the Draw', train: 'a first escort', treaty: 'seven days of guaranteed peace', doctrine: 'the General plays your rules, even when you are away', read_recap: 'your road map for the hour' },
+  fr: { touch_star: 'tu sais d\'où tout part', enter_system: 'tu sais où l\'on construit', link_first: 'un premier système relié, +1 point par Tirage', link_more: '+1 système relié, +1 point par Tirage', warehouse: 'plus rien ne se perd au Tirage', antenna: 'les secteurs voisins deviennent visibles', turret: 'le raid se heurte à un mur', defend: 'des coques face aux leurs', buy_energy: 'les relais restent allumés', sell_surplus: 'des Crédits au Tirage', train: 'une première escorte', treaty: 'sept jours de paix garantis', doctrine: 'le Général joue tes règles, même absent', read_recap: 'ta feuille de route pour l\'heure' },
+  en: { touch_star: 'you know where everything starts', enter_system: 'you know where we build', link_first: 'a first connected system, +1 point per Draw', link_more: '+1 connected system, +1 point per Draw', warehouse: 'nothing is lost at the Draw any more', antenna: 'the neighbouring sectors become visible', turret: 'the raid hits a wall', defend: 'hulls against theirs', buy_energy: 'the relays stay lit', sell_surplus: 'Credits at the Draw', train: 'a first escort', treaty: 'seven days of guaranteed peace', doctrine: 'the General plays your rules, even when you are away', read_recap: 'your road map for the hour' },
 };
 
 export function fillLine(template: string, params: Record<string, string | number>): string {
@@ -70,27 +74,30 @@ export function showOf(s: SimCounselOption['show']): ShowTarget {
 
 const RISK: Record<number, CounselOption['risk']> = { 0: 'low', 1: 'low', 2: 'mid' };
 
-/** The simulation's own line and short title for a kind it knows; our copy of the phrases otherwise. */
-function simText(kind: SimCounselKind, params: Record<string, string | number>): { label: { fr: string; en: string }; title: { fr: string; en: string } | undefined } {
+/** The simulation's own line and short title, whatever the kind (the sim knows its kinds); our copy of the phrases in reserve. */
+function simText(kind: string, params: Record<string, string | number>): { label: { fr: string; en: string }; title: { fr: string; en: string } | undefined } {
   try {
-    const o = { kind, params } as Parameters<typeof counselLine>[0];
-    return { label: { fr: counselLine(o, 'fr'), en: counselLine(o, 'en') }, title: { fr: counselTitle(o, 'fr'), en: counselTitle(o, 'en') } };
-  } catch {
-    return { label: { fr: fillLine(SIM_COUNSEL_LINES.fr[kind], params), en: fillLine(SIM_COUNSEL_LINES.en[kind], params) }, title: undefined };
-  }
+    const o = { kind, params } as unknown as Parameters<typeof counselLine>[0];
+    const label = { fr: counselLine(o, 'fr'), en: counselLine(o, 'en') };
+    if (label.fr && label.en) return { label, title: { fr: counselTitle(o, 'fr'), en: counselTitle(o, 'en') } };
+  } catch { /* a kind this sim does not know: our copy below */ }
+  const known = (kind in SIM_COUNSEL_LINES.fr ? kind : 'doctrine') as SimCounselKind;
+  return { label: { fr: fillLine(SIM_COUNSEL_LINES.fr[known], params), en: fillLine(SIM_COUNSEL_LINES.en[known], params) }, title: undefined };
 }
 
-/** The simulation's options, ready for `writeCounsel`: label = the simulation's line filled in, title = its short title, gain per kind. */
+const GENERIC_GAIN = { fr: 'une étape de plus pour la Colonie', en: 'one more step for the Colony' };
+
+/** The simulation's options, ready for `writeCounsel`: label and title from the simulation, gain per kind (generic for a kind we have no gain for). */
 export function fromSimCounsel(options: readonly SimCounselOption[]): CounselOption[] {
   return options.map((o) => {
-    const kind = (o.kind in SIM_COUNSEL_LINES.fr ? o.kind : 'doctrine') as SimCounselKind;
-    const text = simText(kind, o.params);
+    const text = simText(o.kind, o.params);
+    const gainKind = (o.kind in GAINS.fr ? o.kind : null) as SimCounselKind | null;
     return {
       id: o.id,
       label: text.label,
       ...(text.title ? { title: text.title } : {}),
       cost: o.cost, delayMin: 0,
-      gain: { fr: GAINS.fr[kind], en: GAINS.en[kind] },
+      gain: gainKind ? { fr: GAINS.fr[gainKind], en: GAINS.en[gainKind] } : { ...GENERIC_GAIN },
       risk: RISK[Math.max(0, Math.min(2, Math.round(o.urgency)))] ?? 'low',
       command: o.command,
       show: showOf(o.show),

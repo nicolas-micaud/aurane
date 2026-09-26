@@ -98,6 +98,10 @@ describe('the simulation\'s Counsel, bridged', () => {
     expect(opts[1]!.show).toEqual({ screen: 'galaxy', system: 'S1' });
     expect(opts[2]!.show).toEqual({ screen: 'journal' });
     expect(opts[3]!.label.en).toContain('Tell me what you want'); // unknown kind: the doctrine line, never a crash
+    expect(opts[3]!.gain.en).toBe('one more step for the Colony');
+    const first = fromSimCounsel([{ id: 'touch', kind: 'touch_star', urgency: 2, command: null, show: { kind: 'star', system: 'S1' }, cost: {}, params: { system: 'Isno' } }]);
+    expect(first[0]!.label.fr).toContain('Isno, ta capitale');
+    expect(first[0]!.title?.fr).toBe('Touche ton étoile');
     expect(showOf({ kind: 'star', system: 'S1' })).toEqual({ screen: 'galaxy', system: 'S1' });
     expect(fillLine('{a} and {b}', { a: 1 })).toBe('1 and {b}');
     const r = await writeCounsel({ persona: 'vane', lang: 'fr', tier: 1, options: opts, minutesToDraw: 20 }, null);
@@ -107,5 +111,7 @@ describe('the simulation\'s Counsel, bridged', () => {
     expect(r.cards[1]!.title).toBe('Relie ta voisine'); // the simulation's short title, not the first words of the line
     expect(r.cards[2]!.line).not.toMatch(/\.\./); // no double period after a label that already ends with one
     expect(r.cards[2]!.line).not.toContain("heure.. ");
+    const long = fallbackCards({ persona: 'vane', lang: 'fr', tier: 1, minutesToDraw: 20, options: [{ id: 'l', label: { fr: 'x'.repeat(130), en: 'y'.repeat(130) }, cost: {}, delayMin: 0, gain: { fr: 'GAIN', en: 'GAIN' }, risk: 'low', command: null }] });
+    expect(long[0]!.line).not.toContain('GAIN'); // a long label stands alone on a phone
   });
 });

@@ -19,7 +19,7 @@ export type ShowTarget =
   | { kind: 'tab'; tab: 'colony' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log' };
 
 export type CounselKind =
-  | 'link_first' | 'link_more' | 'warehouse' | 'antenna' | 'turret' | 'defend' | 'buy_energy' | 'sell_surplus'
+  | 'touch_star' | 'enter_system' | 'link_first' | 'link_more' | 'warehouse' | 'antenna' | 'turret' | 'defend' | 'buy_energy' | 'sell_surplus'
   | 'train' | 'treaty' | 'doctrine' | 'read_recap';
 
 export interface CounselOption {
@@ -90,14 +90,20 @@ export function counsel(w: World, c: Colony, max = 3): CounselOption[] {
       params: { qty, credits: Math.round(qty * price), draws: Math.max(0, Math.floor(stock.energy / upkeep)) } });
   }
 
-  // The first relay, then the next one while the Network is small and the metal is there.
+  // The first minute: look at your star, then the first relay, then the next one while the Network is small.
   const link = cheapestLink(w, c);
   const hasRelay = Object.values(w.relays).some((r) => r.owner === c.id);
+  if (tier === 0 && !hasRelay) push({ id: 'touch', kind: 'touch_star', urgency: 2, cost: {}, show: { kind: 'star', system: c.capital }, command: null, params: { system: name(c.capital) } });
   if (link && (!hasRelay || net.size < 6)) {
     push({ id: `link:${link.to}`, kind: hasRelay ? 'link_more' : 'link_first', urgency: hasRelay ? 1 : 2, cost: link.cost, show: { kind: 'link', from: link.from, to: link.to },
       command: affordable(w.systems[link.from]!.stock, link.cost) || affordable(capStock, link.cost) ? { type: 'build_relay', a: link.from, b: link.to } : null,
       params: { from: name(link.from), to: name(link.to), metal: Math.ceil(link.cost.metal), energy: Math.ceil(link.cost.energy) } });
   }
+
+  // The plateau opens with the first relay: go and see where things get built, before the first building
+  // (a capital starts with an extractor and a shipyard).
+  const capState = w.systems[c.capital]!;
+  if (tier === 1 && capState.structures.filter((s) => s.kind !== 'relay').length <= 2 && !capState.buildQueue.some((j) => j.building !== 'relay')) push({ id: 'enter', kind: 'enter_system', urgency: 2, cost: {}, show: { kind: 'plateau', system: c.capital, orbit: null }, command: null, params: { system: name(c.capital) } });
 
   // Warehouses full at the last Draw: a warehouse at the capital.
   const lost = B.RESOURCE_LIST.reduce((s, r) => s + c.lastOverflow[r], 0);
