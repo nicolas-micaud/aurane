@@ -120,6 +120,8 @@ describe('the Generals behind the queue', () => {
     expect(took.reply).toMatch(/Tirage|Draw/);
     const again = await (await fetch(`${base}/api/counsel?lang=fr`, { headers: auth() })).json() as { cards: { id: string }[] };
     expect(again.cards.some((c) => c.id === card.id)).toBe(false); // a taken card leaves the counsel
+    // …and is written in the colony's journal for this Draw: the « ✓ Done this Draw » line survives a reload (issue #35).
+    expect(engine.world.colonies[colonyId]!.journal.some((j) => j.kind === 'counsel.done' && j.note === card.id && j.at === engine.world.time)).toBe(true);
     const mem = await (await fetch(`${base}/api/memory`, { headers: auth() })).json() as { record: { notes: { kind: string; text: string }[] }; rendered: string };
     expect(mem.record.notes.some((n) => n.kind === 'counsel.taken' && n.text === card.id)).toBe(true);
     expect(mem.rendered).toContain('a suivi');
@@ -202,6 +204,8 @@ describe('the Counsel never outlives its goal', () => {
     expect(after.some((c) => c.id === link!.id)).toBe(false);
     const mem = await (await fetch(`${base}/api/memory`, { headers: h() })).json() as { record: { notes: { kind: string; text: string }[] } };
     expect(mem.record.notes.some((n) => n.kind === 'counsel.taken' && n.text === link!.id)).toBe(true);
+    const grok = Object.values(engine.world.colonies).find((c) => c.name === 'Grok')!;
+    expect(grok.journal.filter((j) => j.kind === 'counsel.done' && j.note === link!.id)).toHaveLength(1);
     const late = await fetch(`${base}/api/counsel/take`, { method: 'POST', headers: h(), body: JSON.stringify({ id: link!.id }) });
     expect(late.status).toBe(404);
   });

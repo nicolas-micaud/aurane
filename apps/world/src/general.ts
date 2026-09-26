@@ -2,7 +2,7 @@
 // the quotas, the memory, the pending doctrines and the caches; the engine only exposes the world. No
 // method here is called from the simulation step: the Draw never waits for a model.
 import type { Command, Policy } from '@aurane/protocol';
-import { apply, isAlly, viewFor, type Colony, type World } from '@aurane/sim';
+import { apply, isAlly, journal, viewFor, type Colony, type World } from '@aurane/sim';
 import {
   HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, isEmptyMemory, memoryRepairs, mergeMemory, normalizeMemory, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, liveCounselCards, sameGoal, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
   TASK_CLASS, type LlmClass, type LlmTask,
@@ -540,6 +540,7 @@ export class GeneralService {
       result = r;
     }
     await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordChoice(cur ?? emptyMemory(), take ? 'counsel.taken' : 'counsel.skipped', card.id, Date.now()));
+    if (take) this.markCounselDone(c, [card.id]);
     view.cards = view.cards.filter((x) => x.id !== card.id);
     const reply = counselAck(c.persona, lang, take, `${c.id}:${card.id}`);
     this.pushLine(c.id, reply);
@@ -564,6 +565,20 @@ export class GeneralService {
     if (!done.size) return;
     const key = await this.keyOf(c.id);
     await this.memoryStore.update(key, (cur) => { let r = cur ?? emptyMemory(); for (const id of done) r = recordChoice(r, 'counsel.taken', id, Date.now()); return r; });
+    this.markCounselDone(c, [...done]);
+  }
+
+  /**
+   * A voice card whose goal is reached this Draw ("Do it", or done by hand) goes into the colony's journal as
+   * `counsel.done` (note = card id), so the client's « ✓ Fait ce Tirage » line survives a reload and another device
+   * (issue #35). The simulation's own cards already land there as `counsel.taken`. Not a choice for the memory: the
+   * choice layer above has it, and `withJournalChoices` only reads taken/skipped.
+   */
+  private markCounselDone(c: Colony, ids: readonly string[]): void {
+    if (!ids.length) return;
+    const w = this.deps.world();
+    for (const id of ids) journal(w, c, { kind: 'counsel.done', note: id });
+    this.deps.dirty(c.id);
   }
 
   // --- episodes (memory, level 1) -------------------------------------------------
