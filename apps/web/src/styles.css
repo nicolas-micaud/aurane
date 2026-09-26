@@ -80,7 +80,9 @@ fieldset { border: none; padding: 0; margin: 0; } legend { color: var(--muted); 
 .seg { display: flex; } .seg button { flex: 1; border-radius: 0; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; }
 textarea { resize: vertical; }
 
-@media (max-width: 480px) { .chip em { display: none; } .chip { padding: 3px 7px; } }
+@media (max-width: 480px) { .chip em { display: none; } .chip { padding: 3px 7px; }
+  /* A fifth tab (Account, Market…) opened from ⋯ must not push Colony off the strip at 390 px. */
+  .tabs { gap: 0; padding: 6px 4px; } .tabs button { padding: 5px 7px; } }
 @media (min-width: 900px) {
   .panel { left: auto; top: 0; bottom: 0; width: 400px; max-height: none; border-radius: 0; border-left: 1px solid var(--line); border-top: none; }
   .panel:not(.open) { max-height: none; width: 400px; }

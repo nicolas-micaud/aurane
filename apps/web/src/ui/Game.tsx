@@ -822,7 +822,8 @@ function GeneralPanel({ v }: { v: PlayerView }) {
     const timer = setTimeout(() => void fetchTalk().then((h) => { const last = talk.value[talk.value.length - 1]; if (h.length && (h.length !== talk.value.length || h[h.length - 1]!.at !== last?.at)) talk.value = h; }), 300);
     return () => clearTimeout(timer);
   }, [spokeCount, inboundCount]);
-  const journal = [...v.me.journal].reverse().slice(0, 12);
+  // What the General did; the player's answers to the Counsel are the player's, they live in the memory.
+  const journal = v.me.journal.filter((n) => !n.kind.startsWith('counsel.')).reverse().slice(0, 12);
   const tv = useSig(teach);
   const cardRef = useRef<HTMLDivElement>(null);
   // A new doctrine card opens on its title (« Voici ce que je ferai… »), not on its last line; otherwise follow the thread.
