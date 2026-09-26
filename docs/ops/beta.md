@@ -110,8 +110,8 @@ LLM_PROVIDER_INFOMANIAK_MODEL=Qwen/Qwen3.5-397B-A17B-FP8
 LLM_PROVIDER_INFOMANIAK_MODEL_ID=qwen3.5-397b-a17b
 LLM_PROVIDER_INFOMANIAK_DISABLE_REASONING=1
 LLM_PROVIDER_INFOMANIAK_JSON_MODE=schema
-LLM_PROVIDER_INFOMANIAK_CONCURRENCY=4
-LLM_PROVIDER_INFOMANIAK_TIMEOUT_MS=9000
+LLM_PROVIDER_INFOMANIAK_CONCURRENCY=2
+LLM_PROVIDER_INFOMANIAK_TIMEOUT_MS=12000
 LLM_PROVIDER_INFOMANIAK_RETRIES=1
 LLM_PROVIDER_INFOMANIAK_PRICE_IN=0.86     # CHF 0.80 / M, converti en EUR
 LLM_PROVIDER_INFOMANIAK_PRICE_OUT=3.85    # CHF 3.60 / M
@@ -155,9 +155,10 @@ LLM_WORKERS=4
 Secrets, dans Vaultwarden collection `aurane` (un item par variable, champ `env`) :
 `LLM_PROVIDER_SCALEWAY_API_KEY` et `LLM_PROVIDER_SCALEWAY_SMALL_API_KEY` = la clé secrète Scaleway (aujourd'hui
 `LLM_PRIMARY_API_KEY`) ; `LLM_PROVIDER_INFOMANIAK_API_KEY` et `LLM_PROVIDER_APERTUS_API_KEY` = le jeton Infomaniak
-AI Tools (aujourd'hui `LLM_FALLBACK_API_KEY`). Avant la bascule, rejouer le banc sur Infomaniak (repli de la voix
-jamais mesuré le 26.09, jeton local en 401) :
-`LLM_VOICE_PROVIDERS=infomaniak node tools/persona-bench/dist/main.js --live --langs fr --out /tmp/ik.md`.
+AI Tools (aujourd'hui `LLM_FALLBACK_API_KEY`). Banc Infomaniak (26.09.2026, nouveau jeton `aurane-llm`, Vaultwarden `aurane/aurane-llm-infomaniak`) : à concurrence 4
+et 9 s de délai, 36 appels sur 40 en erreur (file saturée côté Infomaniak) ; à **concurrence 2 et 20 s**, 0 erreur sur 43,
+JSON 100 %, doctrine 100 %, p50 2,0 s, p90 3,2 s (talk 3,5 s, counsel 3,4 s), 3,17 EUR / 1 000 appels. D'où concurrence 2
+et 12 s pour ce repli ; relancer : `LLM_VOICE_PROVIDERS=infomaniak node tools/persona-bench/dist/main.js --live --langs fr`.
 
 ## Paiements : « Soutenir Aurane » (décision 0011)
 
