@@ -75,7 +75,7 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Journal', journalGeneral: 'Ce que j\'ai fait', journalEmpty: 'Rien encore : je note ici chaque décision prise en ton absence.', recap: 'Tirage', recapProduced: 'produit', recapLost: 'perdus (entrepôts pleins)', recapCredits: 'Crédits', recapSystems: 'systèmes reliés', recapDrawn: 'dans les bandes', recapUnpowered: 'relais sans Énergie',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
-    pendingTitle: 'Voici ce que je ferai en ton absence', pendingApply: 'Appliquer', pendingNotThat: 'Pas comme ça', pendingNothing: 'Rien ne change par rapport à aujourd\'hui.',
+    pendingTitle: 'Voici ce que je ferai en ton absence', pendingApply: 'Appliquer', pendingSeeAll: 'Voir tout (+{n})', pendingSeeLess: 'Replier', pendingNotThat: 'Pas comme ça', pendingNothing: 'Rien ne change par rapport à aujourd\'hui.',
     pendingVane: 'Rien ne bouge tant que tu n\'as pas dit oui. Ta doctrine actuelle tient jusque-là.',
     pendingKestrel: 'Dis oui et je m\'y mets ce soir. D\'ici là, on garde le plan d\'avant.',
     pendingOriel: 'Voilà le contrat. Signe et je l\'exécute à la lettre ; sinon l\'ancien reste en vigueur.',
@@ -177,7 +177,7 @@ const STRINGS = {
     // 0007 — the living log, alerts, the General's journal, decrees.
     tabLogShort: 'Log', journalGeneral: 'What I did', journalEmpty: 'Nothing yet: every decision I take while you are away goes here.', recap: 'Draw', recapProduced: 'produced', recapLost: 'lost (warehouses full)', recapCredits: 'Credits', recapSystems: 'connected systems', recapDrawn: 'in the bands', recapUnpowered: 'relays without Energy',
     // The Draw Counsel (0009): the Partner's three cards before the Draw; fixed lines until the General's voice takes over.
-    pendingTitle: 'Here is what I will do while you are away', pendingApply: 'Apply', pendingNotThat: 'Not like that', pendingNothing: 'Nothing changes from today.',
+    pendingTitle: 'Here is what I will do while you are away', pendingApply: 'Apply', pendingSeeAll: 'See all (+{n})', pendingSeeLess: 'Fold', pendingNotThat: 'Not like that', pendingNothing: 'Nothing changes from today.',
     pendingVane: 'Nothing moves until you say yes. Your current doctrine holds until then.',
     pendingKestrel: 'Say yes and I start tonight. Until then, we keep the old plan.',
     pendingOriel: 'Here is the contract. Sign it and I execute it to the letter; otherwise the old one stands.',

@@ -1,6 +1,6 @@
 // The doctrine card's rules, without a browser: the server keeps one pending doctrine per Colony.
 import { describe, expect, it } from 'vitest';
-import { cardAfterDoctrine, cardAfterTalk, cardFromPending, pendingLineKey, type PendingCard } from '../src/ui/doctrine.js';
+import { CARD_LINES, cardAfterDoctrine, cardAfterTalk, cardFromPending, pendingLineKey, visibleLines, type PendingCard } from '../src/ui/doctrine.js';
 
 const held: PendingCard = { id: 'd1', readable: ['Expansion : 90 %'], question: null };
 
@@ -30,5 +30,13 @@ describe('doctrine card', () => {
 
   it('gives each General its own line', () => {
     expect(['vane', 'kestrel', 'oriel', 'solen', 'unknown'].map(pendingLineKey)).toEqual(['pendingVane', 'pendingKestrel', 'pendingOriel', 'pendingSolen', 'pendingVane']);
+  });
+
+  it('folds a long list after a few lines so the buttons stay in view on a phone', () => {
+    const nine = Array.from({ length: 9 }, (_, i) => `ligne ${i + 1}`);
+    expect(visibleLines(nine, false)).toEqual({ shown: nine.slice(0, CARD_LINES), hidden: 9 - CARD_LINES });
+    expect(visibleLines(nine, true)).toEqual({ shown: nine, hidden: 0 });
+    expect(visibleLines(nine.slice(0, CARD_LINES), false).hidden).toBe(0);
+    expect(visibleLines(nine.slice(0, CARD_LINES + 1), false)).toEqual({ shown: nine.slice(0, CARD_LINES + 1), hidden: 0 }); // never « voir tout » for one line
   });
 });

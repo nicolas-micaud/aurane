@@ -37,4 +37,14 @@ export function pendingLineKey(persona: string): 'pendingVane' | 'pendingKestrel
   }
 }
 
+/** Lines shown before « voir tout »: the card must leave its buttons in view on a 390x844 phone. */
+export const CARD_LINES = 4;
+
+/** The lines the card shows: all when expanded or when only one would be hidden (a « voir tout » for one line costs as
+ *  much room as the line), else the first `max`; `hidden` is how many « voir tout » reveals. */
+export function visibleLines(lines: string[], expanded: boolean, max = CARD_LINES): { shown: string[]; hidden: number } {
+  if (expanded || lines.length <= max + 1) return { shown: lines, hidden: 0 };
+  return { shown: lines.slice(0, max), hidden: lines.length - max };
+}
+
 function clean(lines: string[] | undefined): string[] { return (lines ?? []).map((l) => l.trim()).filter(Boolean); }
