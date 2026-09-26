@@ -26,6 +26,11 @@ services:
       # infomaniak, vllm pour la voix ; apertus pour le narratif) ; valeurs dans .env (Vaultwarden collection aurane,
       # items env=LLM_*). Absentes = pas de Général LLM, le monde tourne quand même. Les anciennes LLM_PRIMARY_* /
       # LLM_FALLBACK_* restent lues en compatibilité.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       LLM_VOICE_MODEL: ${LLM_VOICE_MODEL:-}
       LLM_VOICE_PROVIDERS: ${LLM_VOICE_PROVIDERS:-}
       LLM_NARRATIVE_MODEL: ${LLM_NARRATIVE_MODEL:-}
