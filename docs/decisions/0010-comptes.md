@@ -179,9 +179,9 @@ e-mails ; le calendrier lié au domaine ; le sort du lien d'appareil.
   sur iOS), « Se connecter par e-mail » sur l'accueil, statut *Protégé* et déconnexion rassurante dès qu'un e-mail
   ou une passkey existe. Vérifié de bout en bout en Chromium (ajout, déconnexion, connexion depuis un second
   navigateur). Test serveur : cérémonie complète, mauvais code, code épuisé, adresse prise, cinq essais, throttle.
-- **Expéditeur** (session locale, `docs/ops/REQUESTS.md`) : Ninabot n'a pas d'hébergement mail Infomaniak ; en
-  attente de Nick entre le Service Mail Infomaniak (produit payant) et Resend (`smtp.resend.com:587`, déjà
-  expéditeur de la liste d'attente). Les cinq variables sont le contrat dans les deux cas.
+- **Expéditeur** (session locale, `docs/ops/REQUESTS.md`) : Ninabot n'a pas d'hébergement mail Infomaniak et Resend
+  est plein ; Nick monte un serveur de mail dans l'infrastructure ninabot. Les cinq variables restent le contrat ;
+  `world` tourne en mode logs d'ici là.
 - **Reste** : lot D (règles multi-comptes sur le compte, invitations par compte, « Recommencer »), lot E (retrait
   du lien d'appareil, une semaine après B en production).
 

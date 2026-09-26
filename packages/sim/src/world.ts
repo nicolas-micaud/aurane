@@ -4,7 +4,7 @@ import * as B from './balance.js';
 import { expandGalaxy, generateGalaxy, type GalaxyOptions, type StarSystem } from './galaxy.js';
 import { mergeRules, type SeasonRules } from './rules.js';
 import { advanceOnboarding, freshOnboarding, lockedReason, unlockAll } from './onboarding.js';
-import { hexNeighbors, hexKey } from './hex.js';
+import { hexDistance, hexNeighbors, hexKey } from './hex.js';
 import { dist } from './geometry.js';
 import { connectedFrom, evaluateLink, findBridges, linkOptions, relayActive, relayId, type RangeContext, type Relay } from './network.js';
 import { oracleHint, rollDraw, type Draw } from './draw.js';
@@ -390,7 +390,59 @@ export function spawnColony(w: World, opts: SpawnOptions): Colony {
   const cargos = emptyFleet(); cargos.cargo = B.STARTING_CARGOS;
   mergeFleet(w, id, best.id, cargos);
   logEvent(w, 'colony.founded', [id], { capital: best.id, faction: opts.faction });
+  if (!colony.npc && w.rules.firstContact.enabled) {
+    // The world must move before the first Draw: the nearest NPC is booked to light a relay towards the newcomer.
+    let rival: Colony | null = null, rd = Infinity;
+    for (const c of Object.values(w.colonies)) {
+      if (!c.npc) continue;
+      const d = dist(w.galaxy.systems[c.capital]!, best);
+      if (d < rd) { rd = d; rival = c; }
+    }
+    if (rival) colony.contact = { rival: rival.id, at: w.time + w.rules.firstContact.withinSeconds, system: null };
+  }
   return colony;
+}
+
+/**
+ * First contact (rule `firstContact`): once the booked moment comes, the newcomer's nearest NPC lights a relay towards
+ * a free star, by preference one the newcomer's own capital can reach too, so the two of them now look at the same
+ * star; the sectors at both ends are revealed to the newcomer for a while, and `contact.first` tells the Journal and
+ * the General. If the rival has nothing to reach, the event still names it (kind `seen`): a neighbour exists.
+ */
+function runContacts(w: World): void {
+  for (const colony of Object.values(w.colonies)) {
+    const ct = colony.contact;
+    if (!ct || ct.system !== null || w.time < ct.at) continue;
+    const rival = w.colonies[ct.rival];
+    if (!rival) { delete colony.contact; continue; }
+    const home = w.galaxy.systems[colony.capital]!;
+    const mine = new Set(linkOptions(w.galaxy, home, rangeContext(w, colony)).filter((o) => !w.systems[o.to.id]!.owner).map((o) => o.to.id));
+    const rctx = rangeContext(w, rival);
+    const rnet = colonyNetwork(w, rival);
+    let best: { a: string; b: string; score: number } | null = null;
+    for (const a of rnet.keys()) {
+      if (w.systems[a]!.owner !== rival.id) continue;
+      for (const opt of linkOptions(w.galaxy, w.galaxy.systems[a]!, rctx)) {
+        const b = opt.to.id;
+        if (rnet.has(b) || w.systems[b]!.owner) continue;
+        if (!stockHas(w.systems[a]!.stock, opt.verdict.cost) && !stockHas(w.systems[rival.capital]!.stock, opt.verdict.cost)) continue;
+        const score = (mine.has(b) ? 0 : 1e6) + dist(opt.to, home);
+        if (!best || score < best.score) best = { a, b, score };
+      }
+    }
+    const reveal = (systemId: string): void => { (w.reveals[colony.id] ??= {})[w.galaxy.systems[systemId]!.sector] = w.time + w.rules.firstContact.revealHours * 3600; };
+    const sectorsAway = (systemId: string): number => hexDistance(w.galaxy.sectors[w.galaxy.systems[systemId]!.sector]!.hex, w.galaxy.sectors[home.sector]!.hex);
+    if (best && apply(w, rival.id, { type: 'build_relay', a: best.a, b: best.b }).ok) {
+      ct.system = best.b;
+      reveal(best.a); reveal(best.b);
+      rival.journal.push({ at: w.time, kind: 'expand', system: best.b });
+      logEvent(w, 'contact.first', [colony.id, rival.id], { system: best.b, from: best.a, sectors: sectorsAway(best.b), shared: mine.has(best.b), kind: 'relay' });
+    } else {
+      ct.system = rival.capital;
+      reveal(rival.capital);
+      logEvent(w, 'contact.first', [colony.id, rival.id], { system: rival.capital, sectors: sectorsAway(rival.capital), shared: false, kind: 'seen' });
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +936,7 @@ export function tick(w: World, seconds: number, maxStep = 60): void {
     }
     remaining -= step;
     processTimers(w, step);
+    runContacts(w);
     const routeSlot = Math.floor(w.time / ROUTE_INTERVAL_S);
     if (routeSlot !== lastRoutes) { lastRoutes = routeSlot; processRoutes(w); processSalvage(w); processDepots(w); }
     if (w.time >= nextHour) { runDraw(w); pruneBattles(w); }

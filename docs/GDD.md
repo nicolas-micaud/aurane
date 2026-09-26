@@ -100,7 +100,7 @@ Sept systèmes fixes, placés vers le cœur de l'Aurane, portant un nom et une l
 
 ### 3.2 Placement des joueurs
 
-Les nouvelles Colonies apparaissent sur l'anneau extérieur, par faction, dans un secteur choisi par l'algorithme pour être calme (distance aux Colonies actives, richesse). Le cœur, où se trouvent les Phares, est vide de joueurs au départ et riche en Cristal : on y va parce que c'est là que tout se joue. Aucune capitale ne démarre dans un système « repaire » (règle de saison `spawnLairBias`, désactivée : le biais qui y poussait les Corsaires leur coûtait 25 points d'écart de score, revue S0 § 3).
+Les nouvelles Colonies apparaissent sur l'anneau extérieur, par faction, dans un secteur choisi par l'algorithme pour être calme (distance aux Colonies actives, richesse). Le cœur, où se trouvent les Phares, est vide de joueurs au départ et riche en Cristal : on y va parce que c'est là que tout se joue. Aucune capitale ne démarre dans un système « repaire » (règle de saison `spawnLairBias`, désactivée : le biais qui y poussait les Corsaires leur coûtait 25 points d'écart de score, revue S0 § 3). **Premier contact** (règle `firstContact`) : dans les deux minutes qui suivent la fondation, le voisin PNJ le plus proche allume un relais vers l'étoile libre la plus proche du nouveau venu, les secteurs concernés lui sont révélés six heures, et son Général le lui dit : le monde bouge avant le premier Tirage.
 
 ### 3.3 Brouillard
 

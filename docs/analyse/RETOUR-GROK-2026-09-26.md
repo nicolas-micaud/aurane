@@ -130,7 +130,7 @@ reproduites en § 1, telles que Nick les a transmises ; la lecture de la session
 
 ## 3. Plan proposé, dans l'ordre
 
-1. **Le monde est vivant** (lot court, sim + Général + client) : à la création d'une Colonie humaine, le voisin PNJ le
+1. **Le monde est vivant** (lot court, sim + Général + client) : **livré le 26.09** (règle `firstContact`, voir `ONBOARDING-S0.md`) : à la création d'une Colonie humaine, le voisin PNJ le
    plus proche exécute une action visible dans les deux minutes (relais vers une étoile à portée des deux) ; après le
    premier relais, la première parole du Général nomme le voisin et l'étoile disputée ; le Journal et une alerte le
    montrent ; règle de saison `firstContact`, mesurable en accéléré. Répond au point 1 de Grok et au « première

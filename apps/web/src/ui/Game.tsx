@@ -57,6 +57,15 @@ export function Game() {
   }, []);
 
   useEffect(() => { map.current?.update(v); }, [v]);
+  // First contact: when the neighbour's relay lights up, its star flashes on the galaxy once (the Journal and the General say the rest).
+  const lastContact = useRef<number>(0);
+  useEffect(() => {
+    const e = v.events.filter((x) => x.kind === 'contact.first' && x.actors[0] === v.me.id).pop();
+    if (!e || e.at <= lastContact.current) return;
+    lastContact.current = e.at;
+    const sys = (e.data as { system?: string } | undefined)?.system;
+    if (sys && map.current) setTimeout(() => map.current?.flash(sys), 400);
+  }, [v]);
   useEffect(() => { void fetchBriefing(lang.value).then((b) => { if (b && b.awaySeconds >= 600) briefing.value = b; }); }, []);
   const brief = useSig(briefing);
   useEffect(() => { map.current?.setSelection(selV); }, [selV]);
@@ -680,7 +689,14 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } }, []);
   // The General speaks first when a hostile fleet heads our way: pick up its line when such an event lands.
   const inboundCount = v.events.filter((e) => e.kind === 'fleet.inbound' && e.actors[1] === v.me.id).length;
-  useEffect(() => { if (talkLoaded && inboundCount > 0) void fetchTalk().then((h) => { if (h.length > talk.value.length) talk.value = h; }); }, [inboundCount]);
+  // Whenever the General may have spoken first (hostile fleet, new tier, first contact), the thread is refetched: the
+  // view push carries the event, not the words.
+  const spokeCount = v.events.filter((e) => (e.kind === 'fleet.inbound' && e.actors[1] === v.me.id) || ((e.kind === 'onboarding.unlocked' || e.kind === 'contact.first') && e.actors[0] === v.me.id)).length;
+  useEffect(() => {
+    if (!talkLoaded || (spokeCount === 0 && inboundCount === 0)) return;
+    const timer = setTimeout(() => void fetchTalk().then((h) => { const last = talk.value[talk.value.length - 1]; if (h.length && (h.length !== talk.value.length || h[h.length - 1]!.at !== last?.at)) talk.value = h; }), 300);
+    return () => clearTimeout(timer);
+  }, [spokeCount, inboundCount]);
   const journal = [...v.me.journal].reverse().slice(0, 12);
   const tv = useSig(teach);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);

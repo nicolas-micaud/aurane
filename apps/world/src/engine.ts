@@ -6,7 +6,7 @@ import {
   apply, battleList, battleReport, createWorld, decide, recordNotes, restoreWorld, seedNumber, snapshotWorld, spawnColony, systemViewFor, tick, viewFor,
   type ApplyResult, type BattleReport, type Colony, type PlayerView, type SystemDetailView, type World,
 } from '@aurane/sim';
-import { inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aurane/general';
+import { contactLine, firstRelayLine, inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
@@ -139,7 +139,26 @@ export class Engine {
         // A new screen opens: the General says its first word on it, in the player's language, no model.
         const c = w.colonies[e.actors[0] ?? ''];
         const d = e.data as { tier?: number; all?: boolean } | undefined;
-        if (c && !c.npc) this.general.pushLine(c.id, tierUnlocked(c.persona, this.general.langOf(c.id), d?.tier ?? 1, d?.all === true));
+        if (c && !c.npc) {
+          const lang = this.general.langOf(c.id);
+          // The first relay, with a neighbour already known: the star is ours, and someone else is looking too.
+          const rival = c.contact?.system ? w.colonies[c.contact.rival] : undefined;
+          const newest = Object.values(w.relays).filter((r) => r.owner === c.id).sort((x, y) => y.readyAt - x.readyAt)[0];
+          if ((d?.tier ?? 1) === 1 && !d?.all && rival && newest) {
+            const far = newest.a === c.capital ? newest.b : newest.a;
+            this.general.pushLine(c.id, firstRelayLine(c.persona, lang, { mine: w.galaxy.systems[far]?.name ?? far, rival: rival.name, system: w.galaxy.systems[c.contact!.system!]?.name ?? c.contact!.system! }));
+          }
+          this.general.pushLine(c.id, tierUnlocked(c.persona, lang, d?.tier ?? 1, d?.all === true));
+        }
+        continue;
+      }
+      if (e.kind === 'contact.first') {
+        // The world moved: the nearest neighbour lit a relay (or is simply there). The General says so, no model.
+        const c = w.colonies[e.actors[0] ?? ''];
+        const rival = w.colonies[e.actors[1] ?? ''];
+        const d = e.data as { system?: string; sectors?: number; kind?: string } | undefined;
+        if (c && !c.npc && rival) this.general.pushLine(c.id, contactLine(c.persona, this.general.langOf(c.id), { rival: rival.name, system: w.galaxy.systems[d?.system ?? '']?.name ?? d?.system ?? '?', sectors: d?.sectors ?? 0, relay: d?.kind === 'relay' }));
+        if (c && !c.npc && this.listeners.has(c.id)) this.dirtyColonies.add(c.id);
         continue;
       }
       if (e.kind !== 'fleet.inbound') continue;

@@ -71,6 +71,14 @@ jour 2 (aligné sur la pression corsaire : on apprend à tenir avant d'être fra
   prochaine fois, toi : … ». Cartes de la première minute : Touche ton étoile (palier 0), Relie ta voisine, Ta
   doctrine, puis Entre dans ton système (palier 1, tant que rien n'est construit) ; trois cartes visibles sur téléphone
   aux paliers 0 et 1.
+- Le monde est vivant (26.09, réponse au retour de Grok et au « première minute vide » de Nick) : règle de saison `firstContact`
+  (90 s, révélation 6 h). À la fondation d'une Colonie humaine, son voisin PNJ le plus proche est réservé ; quatre-vingt-dix
+  secondes plus tard il allume un relais vers l'étoile libre la plus proche de la capitale du nouveau (la même que lui s'il
+  y en a une à portée des deux), les secteurs des deux bouts sont révélés, l'événement `contact.first` nourrit le Journal
+  (« Vantor allume un relais vers Irzen, à deux secteurs d'ici : tu n'es pas seul »), l'étoile clignote sur la carte et le
+  Général le dit dans sa voix, sans modèle. Au premier relais du joueur, le Général nomme le rival et l'étoile convoitée
+  (« Nois est à nous. Mais regarde Irzen : Vantor le regarde aussi ») avant sa parole de palier 1. Si le voisin n'a rien à
+  relier, l'événement le nomme quand même (« tient Irzen, à trois secteurs »). Test : `packages/sim/test/contact.test.ts`.
 - Reste : la première parole par personnage à chaque palier (`packages/general`, données FR/EN) et l'intention de
   chat « tout ouvrir » → `onboarding_unlock` (session locale, couche LLM) ; le masquage fin des boutons de
   construction par palier ; la validation sur un testeur qui ne connaît pas le jeu (M6).

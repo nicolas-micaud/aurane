@@ -16,11 +16,17 @@ export class FileJobStore extends MemoryJobStore {
     await mkdir(this.dir, { recursive: true });
     try { for (const j of JSON.parse(await readFile(join(this.dir, 'llm-jobs.json'), 'utf8')) as Job[]) this.jobs.set(j.id, j); } catch { /* first run */ }
   }
-  protected override async flush(): Promise<void> {
-    await mkdir(this.dir, { recursive: true });
-    const tmp = join(this.dir, 'llm-jobs.json.tmp');
-    await writeFile(tmp, JSON.stringify([...this.jobs.values()]));
-    await rename(tmp, join(this.dir, 'llm-jobs.json'));
+  /** Flushes are chained: two jobs enqueued in the same tick used to race on the same temp file (ENOENT on rename). */
+  private chain: Promise<void> = Promise.resolve();
+  protected override flush(): Promise<void> {
+    const run = async (): Promise<void> => {
+      await mkdir(this.dir, { recursive: true });
+      const tmp = join(this.dir, 'llm-jobs.json.tmp');
+      await writeFile(tmp, JSON.stringify([...this.jobs.values()]));
+      await rename(tmp, join(this.dir, 'llm-jobs.json'));
+    };
+    this.chain = this.chain.then(run, run);
+    return this.chain;
   }
   override async put(job: Job): Promise<void> { await this.ensure(); await super.put(job); }
   override async update(job: Job): Promise<void> { await this.ensure(); await super.update(job); }

@@ -31,6 +31,67 @@ export function inboundWarning(persona: Persona, lang: 'fr' | 'en', f: InboundFa
   }
 }
 
+// --- first contact: the world moves in the newcomer's first minutes ---------------------------------------------
+
+export interface ContactFacts { rival: string; system: string; sectors: number; relay: boolean }
+
+const away = (n: number, lang: 'fr' | 'en'): string => (n <= 0 ? (lang === 'fr' ? 'dans ton secteur' : 'in your sector') : n === 1 ? (lang === 'fr' ? 'à un secteur d\'ici' : 'one sector away') : lang === 'fr' ? `à ${n} secteurs d'ici` : `${n} sectors away`);
+
+/** The nearest neighbour just lit a relay (or is simply there): the General says the world is not empty, in character. */
+export function contactLine(persona: Persona, lang: 'fr' | 'en', f: ContactFacts): string {
+  const d = away(f.sectors, lang);
+  if (lang === 'fr') {
+    if (!f.relay) {
+      switch (persona) {
+        case 'vane': return `Repérage : ${f.rival} tient ${f.system}, ${d}. On n'est pas seuls. Je note leurs mouvements.`;
+        case 'kestrel': return `On a un voisin : ${f.rival}, à ${f.system}, ${d}. Je le garde à l'œil. Toi, relie.`;
+        case 'oriel': return `Voisinage : ${f.rival} à ${f.system}, ${d}. Un concurrent, ou un client. Les deux se chiffrent.`;
+        case 'solen': return `Le Signal porte une autre voix : ${f.rival}, à ${f.system}, ${d}. Nous ne sommes pas seuls à nous réveiller.`;
+      }
+    }
+    switch (persona) {
+      case 'vane': return `Un relais vient de s'allumer ${d} : ${f.rival} avance sur ${f.system}. On n'est pas seuls. Relie ta première étoile, je surveille la leur.`;
+      case 'kestrel': return `Tiens : ${f.rival} vient d'allumer un relais vers ${f.system}, ${d}. Ils s'étendent. Nous aussi, plus vite.`;
+      case 'oriel': return `${f.rival} → ${f.system}, ${d} : un relais neuf. Le voisinage se remplit ; chaque étoile prise là-bas n'est plus à prendre ici. Relions.`;
+      case 'solen': return `Regarde, ${d} : ${f.rival} rallume ${f.system}. D'autres se réveillent avec nous. Tendons notre premier fil avant qu'ils ne tendent le leur jusqu'ici.`;
+    }
+  }
+  if (!f.relay) {
+    switch (persona) {
+      case 'vane': return `Sighting: ${f.rival} holds ${f.system}, ${d}. We are not alone. I am logging their moves.`;
+      case 'kestrel': return `We have a neighbour: ${f.rival}, at ${f.system}, ${d}. I keep an eye on them. You, link.`;
+      case 'oriel': return `Neighbourhood: ${f.rival} at ${f.system}, ${d}. A rival, or a customer. Both have a price.`;
+      case 'solen': return `The Signal carries another voice: ${f.rival}, at ${f.system}, ${d}. We are not the only ones waking.`;
+    }
+  }
+  switch (persona) {
+    case 'vane': return `A relay just lit ${d}: ${f.rival} is moving on ${f.system}. We are not alone. Link your first star; I watch theirs.`;
+    case 'kestrel': return `Look: ${f.rival} just lit a relay towards ${f.system}, ${d}. They are spreading. So are we, faster.`;
+    case 'oriel': return `${f.rival} → ${f.system}, ${d}: a new relay. The neighbourhood is filling up; every star taken there is one less to take here. Let us link.`;
+    case 'solen': return `Look, ${d}: ${f.rival} relights ${f.system}. Others wake with us. Let us stretch our first thread before they stretch theirs this far.`;
+  }
+}
+
+export interface FirstRelayFacts { mine: string; rival: string; system: string }
+
+/** The newcomer's first relay is up and a neighbour is known: the star is ours, and someone else is looking too. */
+export function firstRelayLine(persona: Persona, lang: 'fr' | 'en', f: FirstRelayFacts): string {
+  if (lang === 'fr') {
+    switch (persona) {
+      case 'vane': return `${f.mine} est à nous. Mais regarde ${f.system} : ${f.rival} le regarde aussi. Un pont, puis un second ; on ne laisse pas un voisin choisir nos frontières.`;
+      case 'kestrel': return `${f.mine}, à nous. Et ${f.system} ? ${f.rival} lorgne dessus. Si tu veux une étoile, prends-la avant qu'on te la raconte.`;
+      case 'oriel': return `${f.mine} acquis. ${f.system} est convoité par ${f.rival} : ce qu'il relie, tu ne le relies plus. Le prix de l'attente vient de monter.`;
+      case 'solen': return `${f.mine} nous répond. Vois ${f.system} : ${f.rival} le contemple aussi. Deux mains vers la même étoile, c'est ainsi que commencent les histoires.`;
+    }
+  }
+  switch (persona) {
+    case 'vane': return `${f.mine} is ours. But look at ${f.system}: ${f.rival} is looking at it too. One bridge, then a second; we do not let a neighbour draw our borders.`;
+    case 'kestrel': return `${f.mine}, ours. And ${f.system}? ${f.rival} is eyeing it. If you want a star, take it before someone tells you about it.`;
+    case 'oriel': return `${f.mine} acquired. ${f.system} is coveted by ${f.rival}: what they link, you no longer can. The price of waiting just went up.`;
+    case 'solen': return `${f.mine} answers us. See ${f.system}: ${f.rival} contemplates it too. Two hands towards the same star: that is how stories begin.`;
+  }
+}
+
 // --- onboarding: the General's first word on each new screen ------------------------------------------------
 
 /** Tiers of docs/design/ONBOARDING-S0.md: 1 produce, 2 market, 3 hold, 4 strike, 5 talk, 6 beacons. */
