@@ -272,26 +272,63 @@ function commandTarget(cmd: Command | null): string | null {
 
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** Cards the player set aside with "Not now" (hidden for the Draw, no "done" mark), and the look-only cards already
+ *  answered as seen (sent once). */
+const dismissedCounsel = signal<Set<string>>(new Set());
+const lookedAt = new Set<string>();
+/** Cards that just left the Counsel because their goal is reached: shown "✓ Done" for a moment, then gone. */
+const doneCounsel = signal<Map<string, { title: string; index: number }>>(new Map());
+const DONE_MS = 2400;
+let lastShown: { id: string; title: string }[] = [];
+let lastShownDraw = -1;
+
+function markDone(cards: { id: string; title: string; index: number }[]): void {
+  if (!cards.length) return;
+  const next = new Map(doneCounsel.value);
+  for (const c of cards) next.set(c.id, { title: c.title, index: c.index });
+  doneCounsel.value = next;
+  setTimeout(() => { const m = new Map(doneCounsel.value); for (const c of cards) m.delete(c.id); doneCounsel.value = m; }, DONE_MS);
+}
+
 function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }) {
   const skipped = useSig(skippedCounsel);
+  const dismissed = useSig(dismissedCounsel);
+  const done = useSig(doneCounsel);
   const voice = useSig(voiceCounsel);
+  const sel = useSig(selected);
+  const sysMode = useSig(systemMode);
+  const curTab = useSig(tab);
   const nextDraw = Math.floor(v.time / 3600) + 1;
-  // One fetch per Draw: the voice cards are cached server-side until the Draw.
-  useEffect(() => {
-    if (counselFetching || (voice && voice.drawIndex === nextDraw)) return;
+  const tier = v.me.onboarding?.tier ?? 6;
+  // One fetch per Draw and per onboarding tier: the voice cards are cached server-side until the Draw, rewritten
+  // when a tier opens, and re-checked against the world on every read.
+  const refetch = (): void => {
+    if (counselFetching) return;
     counselFetching = true;
-    void fetchCounsel(lang.value).then((c) => { if (c && c.cards.length) voiceCounsel.value = c; }).finally(() => { counselFetching = false; });
-  }, [nextDraw]);
+    void fetchCounsel(lang.value).then((c) => { if (c) voiceCounsel.value = c; }).finally(() => { counselFetching = false; });
+  };
+  useEffect(() => { if (!voice || voice.drawIndex !== nextDraw || (voice.tier !== undefined && voice.tier !== tier)) refetch(); }, [nextDraw, tier]);
+  // A card whose goal is a place to look is done once the player is there, however they got there.
+  useEffect(() => {
+    for (const c of v.me.counsel) {
+      if (c.command || lookedAt.has(c.id)) continue;
+      const there = (c.kind === 'touch_star' && sel === v.me.capital) || (c.kind === 'enter_system' && sysMode === v.me.capital) || (c.kind === 'read_recap' && curTab === 'log');
+      if (there) { lookedAt.add(c.id); void act({ type: 'counsel_answer', id: c.id, taken: true }); }
+    }
+  }, [sel, sysMode, curTab, v.me.counsel.map((c) => c.id).join()]);
   const answer = (id: string, taken: boolean, viaVoice: boolean) => {
+    if (!taken) dismissedCounsel.value = new Set([...dismissedCounsel.value, id]);
     skippedCounsel.value = new Set([...skippedCounsel.value, id]);
     if (viaVoice) void answerCounsel(id, taken); else void act({ type: 'counsel_answer', id, taken });
   };
   // "Do it" teaches: go where the button is, let the player see it, act, then show what appeared and leave the path.
-  const doIt = async (cmd: Command, send: () => Promise<{ ok: boolean; reply: string | null }>): Promise<boolean> => {
+  const doIt = async (cmd: Command, send: () => Promise<{ ok: boolean; reply: string | null; gone?: boolean }>): Promise<boolean> => {
     demonstrate(cmd, v, map.current);
     await wait(cmd.type === 'build_relay' ? 700 : 1100);
     if (systemMode.value) sceneFlashReq.value++;
     const r = await send();
+    // Already done (by hand, meanwhile) or no longer on the table: the card leaves, nothing to press.
+    if (r.gone) { stopTeaching(); refetch(); return true; }
     if (!r.ok) { stopTeaching(); return false; }
     demonstrate(cmd, v, map.current, true);
     const target = commandTarget(cmd);
@@ -308,7 +345,7 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
   const voiceCards = voice && voice.drawIndex === nextDraw ? voice.cards : [];
   const liveIds = new Set(v.me.counsel.map((c) => c.id));
   const spoken = new Set(voiceCards.map((c) => c.id));
-  const firstWords = voiceCards.length > 0 && voiceCards.every((c) => c.id.startsWith('first-'));
+  const firstWords = voiceCards.length > 0 && voiceCards.every((c) => c.id.startsWith('first-')) && tier <= 0;
   const fromVoice: UiCard[] = voiceCards.filter((c) => firstWords || liveIds.has(c.id)).map((c) => ({ id: c.id, title: c.title, line: c.line, hasCommand: !!c.command, urgency: 1 as const, voice: true, go: () => showMe(c.command, fromVoiceShow(c.show, c.raw)),
     run: () => doIt(c.command!, () => answerCounsel(c.id, true)) }));
   const fromSim: UiCard[] = v.me.counsel.filter((c) => !spoken.has(c.id)).map((c) => ({ id: c.id, title: counselTitle(c, lang.value), line: counselLine(c, lang.value), hasCommand: !!c.command, urgency: c.urgency, voice: false, go: () => showMe(c.command, c.show),
@@ -316,17 +353,30 @@ function Counsel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null }
   const order = new Map(v.me.counsel.map((c, i) => [c.id, i]));
   const cards = [...fromVoice, ...fromSim].sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
   const shown = cards.filter((c) => !skipped.has(c.id));
-  if (shown.length === 0) return null;
+  // A card that was on screen and left without "Not now" reached its goal (taken, or done by hand): it says so.
+  useEffect(() => {
+    const ids = new Set(shown.map((c) => c.id));
+    // A new Draw renews the whole Counsel: nothing was "done", the hour turned.
+    if (lastShownDraw === nextDraw) markDone(lastShown.map((c, index) => ({ ...c, index })).filter((c) => !ids.has(c.id) && !dismissed.has(c.id) && !done.has(c.id)));
+    lastShown = shown.map((c) => ({ id: c.id, title: c.title }));
+    lastShownDraw = nextDraw;
+  });
+  // The "✓ Done" cards keep their place for a moment, so the stack does not jump under the finger.
+  const rows: ({ kind: 'card'; c: UiCard } | { kind: 'done'; id: string; title: string })[] = shown.map((c) => ({ kind: 'card' as const, c }));
+  for (const [id, d] of [...done].sort((a, b) => a[1].index - b[1].index)) if (!shown.some((c) => c.id === id)) rows.splice(Math.min(rows.length, d.index), 0, { kind: 'done', id, title: d.title });
+  if (rows.length === 0) return null;
   return (
-    <div class={`counsel ${(v.me.onboarding?.tier ?? 6) <= 1 ? 'first' : ''}`}>
+    <div class={`counsel ${tier <= 1 ? 'first' : ''}`}>
       <small class="who">{t(v.me.persona as 'vane')} · {t('counselTitle')}</small>
-      {shown.map((c) => (
-        <div key={c.id} class={`card u${c.urgency}`}>
-          <p><b>{c.title}</b> · {c.line}</p>
+      {rows.map((r) => r.kind === 'done' ? (
+        <div key={r.id} class="card done" aria-live="polite"><p><b>✓ {t('counselDoneMark')}</b> · {r.title}</p></div>
+      ) : (
+        <div key={r.c.id} class={`card u${r.c.urgency}`}>
+          <p><b>{r.c.title}</b> · {r.c.line}</p>
           <div class="acts">
-            <button onClick={c.go}>{t('showMe')}</button>
-            {c.hasCommand && <button class="primary" onClick={() => { void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
-            <button class="link" onClick={() => answer(c.id, false, c.voice)}>{t('notNow')}</button>
+            <button onClick={r.c.go}>{t('showMe')}</button>
+            {r.c.hasCommand && <button class="primary" onClick={() => { const c = r.c; void c.run().then((ok) => { if (ok) { skippedCounsel.value = new Set([...skippedCounsel.value, c.id]); if (!c.voice) void act({ type: 'counsel_answer', id: c.id, taken: true }); } }); }}>{t('doIt')}</button>}
+            <button class="link" onClick={() => answer(r.c.id, false, r.c.voice)}>{t('notNow')}</button>
           </div>
         </div>
       ))}

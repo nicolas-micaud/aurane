@@ -217,6 +217,9 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .counsel .card p { margin: 0 0 6px; font-size: 14px; line-height: 1.35; }
 .counsel .acts { display: flex; gap: 6px; flex-wrap: wrap; } .counsel .acts button { font-size: 13px; padding: 5px 10px; }
 .counsel .acts button.primary { padding: 5px 12px; }
+.counsel .card.done { border-left-color: var(--ok); opacity: .85; animation: counsel-done 2.4s ease forwards; }
+.counsel .card.done p { margin: 0; } .counsel .card.done b { color: var(--ok); }
+@keyframes counsel-done { 0%, 70% { opacity: .95; } 100% { opacity: 0; } }
 .counsel .acts button.link { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 5px 4px; }
 @media (max-width: 899px) { .counsel { margin: 4px 8px 0; } .counsel:not(.first) .card:nth-of-type(n+3) { display: none; } .counsel .card:nth-of-type(n+4) { display: none; } }
 
