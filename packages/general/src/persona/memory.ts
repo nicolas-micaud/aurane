@@ -184,3 +184,36 @@ export function rememberPhrases(m: MemoryRecord, phrases: readonly string[], cap
   const recent = [...m.recentPhrases.filter((p) => !phrases.includes(p)), ...phrases].slice(-cap);
   return { ...m, recentPhrases: recent };
 }
+
+const RES_NAME: Record<Lang, Record<string, string>> = {
+  fr: { metal: 'Métal', energy: 'Énergie', food: 'Vivres', crystal: 'Cristal', rium: 'Rium' },
+  en: { metal: 'Metal', energy: 'Energy', food: 'Food', crystal: 'Crystal', rium: 'Rium' },
+};
+
+/** A choice id (a Counsel card) in words, for the briefing and the episodes; `name` resolves system and colony ids. */
+export function describeChoice(id: string, lang: Lang, name: (id: string) => string = (x) => x): string {
+  const i = id.indexOf(':');
+  const kind = i < 0 ? id : id.slice(0, i);
+  const arg = i < 0 ? '' : id.slice(i + 1);
+  const res = RES_NAME[lang][arg] ?? arg;
+  const fr: Record<string, string> = {
+    touch: 'regarder ta capitale', enter: 'entrer dans ta capitale', buy_energy: 'acheter de l\'Énergie', warehouse: 'bâtir un Entrepôt', antenna: 'bâtir une Antenne',
+    train: 'former deux corvettes', doctrine: 'écrire ta doctrine', link: `relier ${name(arg)}`, turret: `une tourelle à ${name(arg)}`, defend: `défendre ${name(arg)}`,
+    sell: `vendre le surplus de ${res}`, treaty: `un pacte avec ${name(arg)}`, recap: `lire le compte rendu du Tirage ${arg}`,
+  };
+  const en: Record<string, string> = {
+    touch: 'look at your capital', enter: 'enter your capital', buy_energy: 'buy Energy', warehouse: 'build a Warehouse', antenna: 'build an Antenna',
+    train: 'train two corvettes', doctrine: 'write your doctrine', link: `link ${name(arg)}`, turret: `a turret at ${name(arg)}`, defend: `defend ${name(arg)}`,
+    sell: `sell the ${res} surplus`, treaty: `a pact with ${name(arg)}`, recap: `read the recap of Draw ${arg}`,
+  };
+  return (lang === 'fr' ? fr : en)[kind] ?? id;
+}
+
+/** The player's most recent Counsel decision, or null. */
+export function lastChoice(m: MemoryRecord): { kind: 'counsel.taken' | 'counsel.skipped'; id: string; at: number } | null {
+  for (let i = m.notes.length - 1; i >= 0; i--) {
+    const n = m.notes[i]!;
+    if (n.kind === 'counsel.taken' || n.kind === 'counsel.skipped') return { kind: n.kind, id: n.text, at: n.at };
+  }
+  return null;
+}

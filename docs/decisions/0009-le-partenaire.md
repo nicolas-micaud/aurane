@@ -108,6 +108,21 @@ cartes de repli en personnage) et la tentation de laisser l'IA jouer à la place
 
 ## Statut
 
+**Corthexis est le nom public de la mémoire** (Nick, 26.09.2026) : la landing le cite, le GDD (§ 9.1) l'inscrit, le
+jeu l'emploiera pour la page « Ce que mon Général sait de moi ». L'instance technique reste la sokkan-memory dédiée.
+
+Lot « le briefing qui se souvient » (26.09.2026, suite au retour de Grok, `docs/analyse/RETOUR-GROK-2026-09-26.md`) :
+le gabarit du briefing porte deux phrases de mémoire, déterministes (`recallLines`, `packages/general/src/briefing.ts`) :
+la dernière décision du joueur au Conseil, en mots (`describeChoice` traduit l'identifiant de carte : « relier Irzen »,
+« acheter de l'Énergie ») avec ce qui a suivi pendant l'absence, puis le nom qu'il n'oublie pas (trahison ou attaquant
+récidiviste, depuis la couche *faits*). Le modèle reçoit la consigne de garder cette phrase. Les épisodes citent les
+choix en mots plutôt qu'en identifiants. Et le Général **refuse** une doctrine qui coulerait la Colonie
+(`refusalIn` / `refusalFor`, `packages/general/src/doctrine/validate.ts`) : tout vendre, se passer d'Énergie, abandonner
+la capitale, frapper un allié ou un partenaire de traité (le contexte de doctrine porte désormais `allies`) ; le refus
+est en personnage, explique la raison et propose la règle acceptable, dans l'écran Doctrine comme dans le fil, avant
+tout appel au modèle (donc sans quota). Une formulation prudente (« vends le surplus au-dessus de 200 », « romps le
+traité puis attaque ») n'est pas refusée.
+
 Décidé sur le principe (Nick, 25.09.2026). Premier incrément : le Conseil du Tirage, simulation et client par la
 session cloud, tâches LLM et file par la session locale (demande dans `docs/ops/REQUESTS.md`).
 

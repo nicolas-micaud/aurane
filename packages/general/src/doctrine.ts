@@ -7,7 +7,7 @@ import { PolicySchema, RESOURCES, type Persona, type Policy, type Resource } fro
 import { PERSONA_VOICES } from './personas.js';
 import { LlmUnavailable, type LlmClient } from './llm/index.js';
 import { DOCTRINE_JSON_SCHEMA, DoctrineOutputSchema, ORDERS_SHAPE_DOC, mergeOrders } from './doctrine/schema.js';
-import { clarificationFor, semanticCheck, type Issue } from './doctrine/validate.js';
+import { clarificationFor, refusalFor, refusalIn, semanticCheck, type Issue } from './doctrine/validate.js';
 import { readablePolicy } from './doctrine/readable.js';
 import { degradedReply, systemPrompt, type DegradeReason } from './persona/index.js';
 import { asData } from './security.js';
@@ -21,6 +21,8 @@ export interface DoctrineContext {
   /** Known colonies: id → name. */
   colonies: Record<string, string>;
   alliances: Record<string, string>;
+  /** Colonies and alliances we hold a treaty or an alliance with: a doctrine that strikes one of them is refused. */
+  allies?: string[] | undefined;
   /** The General answering, for the voice of the reply. */
   persona?: Persona;
 }
@@ -42,6 +44,8 @@ export interface CompiledDoctrine {
   readable: string[];
   /** Set when the doctrine is ambiguous or contradictory: the policy is then the current one, unchanged. */
   question: string | null;
+  /** Set when the General refused the doctrine outright (it would sink the colony): the policy is the current one, the reply says why. */
+  refused: boolean;
   issues: Issue[];
   source: 'llm' | 'heuristic' | 'degraded';
   warnings: string[];
@@ -88,6 +92,11 @@ function cannedReply(ctx: DoctrineContext, policy: Policy): string {
 
 /** Deterministic fallback: reads intent from keywords in French or English. */
 export function heuristicPolicy(text: string, ctx: DoctrineContext): CompiledDoctrine {
+  const refusal = refusalIn(text, ctx);
+  if (refusal) {
+    const reply = refusalFor(refusal, ctx, ctx.persona ?? 'vane');
+    return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: null, refused: true, issues: [], source: 'heuristic', warnings: [], reply };
+  }
   const t = text.toLowerCase();
   const p: Policy = { ...ctx.current, notes: text.slice(0, 2000) };
   const warnings: string[] = [];
@@ -127,7 +136,7 @@ export function heuristicPolicy(text: string, ctx: DoctrineContext): CompiledDoc
   const blocking = checked.issues.find((i) => i.blocking);
   const question = blocking ? clarificationFor(blocking, ctx, ctx.persona ?? 'vane') : null;
   if (question) policy = ctx.current;
-  return { policy, summary: summarize(policy, ctx.lang), readable: readablePolicy(policy, ctx), question, issues: checked.issues, source: 'heuristic', warnings, reply: question ?? cannedReply(ctx, policy) };
+  return { policy, summary: summarize(policy, ctx.lang), readable: readablePolicy(policy, ctx), question, refused: false, issues: checked.issues, source: 'heuristic', warnings, reply: question ?? cannedReply(ctx, policy) };
 }
 
 export function summarize(p: Policy, lang: 'fr' | 'en'): string {
@@ -162,6 +171,7 @@ const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavai
 export async function compileDoctrine(text: string, ctx: DoctrineContext, client: LlmClient | null, extras: DoctrineExtras = {}): Promise<CompiledDoctrine> {
   const fallback = heuristicPolicy(text, ctx);
   const persona = ctx.persona ?? 'vane';
+  if (fallback.refused) return fallback; // a refusal is deterministic: no model, no quota
   if (extras.overQuota) return { ...fallback, source: 'degraded', reply: fallback.question ?? `${degradedReply(persona, ctx.lang, 'quota', extras.seed ?? text)} ${fallback.reply}` };
   if (!client || !text.trim()) return fallback;
   const system = systemPrompt({
@@ -180,7 +190,7 @@ export async function compileDoctrine(text: string, ctx: DoctrineContext, client
     const warnings: string[] = ans.repaired ? ['model answer repaired once'] : [];
     if (!out.question && out.orders && /\?\s*$/.test(out.reply.trim())) { out.question = out.reply.trim(); out.orders = null; }
     if (out.question && !out.orders) {
-      return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: out.question.trim().slice(0, 300), issues: [], source: 'llm', warnings, reply: out.question.trim().slice(0, 300) };
+      return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: out.question.trim().slice(0, 300), refused: false, issues: [], source: 'llm', warnings, reply: out.question.trim().slice(0, 300) };
     }
     let policy = out.orders ? mergeOrders(ctx.current, out.orders, ctx) : { ...ctx.current };
     if (!policy.notes || policy.notes === ctx.current.notes) policy.notes = text.slice(0, 2000);
@@ -189,10 +199,10 @@ export async function compileDoctrine(text: string, ctx: DoctrineContext, client
     const blocking = checked.issues.find((i) => i.blocking);
     if (blocking) {
       const q = clarificationFor(blocking, ctx, persona);
-      return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: q, issues: checked.issues, source: 'llm', warnings, reply: q };
+      return { policy: ctx.current, summary: summarize(ctx.current, ctx.lang), readable: readablePolicy(ctx.current, ctx), question: q, refused: false, issues: checked.issues, source: 'llm', warnings, reply: q };
     }
     const reply = out.reply.trim().slice(0, 400) || cannedReply(ctx, policy);
-    return { policy, summary: summarize(policy, ctx.lang), readable: readablePolicy(policy, ctx), question: null, issues: checked.issues, source: 'llm', warnings, reply };
+    return { policy, summary: summarize(policy, ctx.lang), readable: readablePolicy(policy, ctx), question: null, refused: false, issues: checked.issues, source: 'llm', warnings, reply };
   } catch (err) {
     if (err instanceof LlmUnavailable) return { ...fallback, source: 'degraded', warnings: [...fallback.warnings, err.message], reply: fallback.question ?? `${degradedReply(persona, ctx.lang, degradeReason(err), extras.seed ?? text)} ${fallback.reply}` };
     return { ...fallback, warnings: [...fallback.warnings, `model unavailable: ${(err as Error).message}`] };

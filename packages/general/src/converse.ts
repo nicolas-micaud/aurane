@@ -44,6 +44,8 @@ export interface ConverseResult {
   readable: string[] | null;
   /** The General asks before acting: the doctrine was ambiguous. */
   question: string | null;
+  /** The General refused the order outright (it would sink the colony); the reply says why. */
+  refused?: boolean;
   source: 'llm' | 'heuristic' | 'degraded';
   /** A command the conversation asks the world to run (e.g. onboarding_unlock), validated by the engine. */
   command?: Command;
@@ -84,7 +86,7 @@ const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavai
 /** Small talk, questions and orders, answered in one model call; the persona fallback when no model is available. */
 export async function converse(input: ConverseInput, client: LlmClient | null, _names: Record<string, string> = {}): Promise<ConverseResult> {
   const fallback = heuristicConverse(input);
-  if (fallback.command) return fallback; // "show me everything": deterministic, no model needed
+  if (fallback.command || fallback.refused) return fallback; // "show me everything" and refusals: deterministic, no model needed
   const L = input.lang;
   const seed = input.seed ?? `${input.text}:${input.history.length}`;
   if (input.overQuota) return { ...fallback, source: 'degraded', degradeReason: 'quota', reply: fallback.question ?? `${degradedReply(input.persona, L, 'quota', seed)} ${fallback.policy ? fallback.reply : ''}`.trim() };
@@ -184,6 +186,7 @@ export function heuristicConverse(input: ConverseInput): ConverseResult {
   if (wantsEverything(input.text)) return { ...base, reply: tierUnlocked(input.persona, L, 6, true), policy: null, command: { type: 'onboarding_unlock' } };
   const compiled = heuristicPolicy(input.text, input.ctx);
   if (compiled.question) return { ...base, reply: compiled.question, policy: null, question: compiled.question };
+  if (compiled.refused) return { ...base, reply: compiled.reply, policy: null, refused: true };
   const changed = compiled.summary !== summarize(input.ctx.current, L) || compiled.policy.defendFirst.join() !== input.ctx.current.defendFirst.join();
   if (changed) return { ...base, reply: compiled.reply, policy: compiled.policy, readable: compiled.readable };
   const has = (...w: string[]): boolean => w.some((x) => t.includes(x));

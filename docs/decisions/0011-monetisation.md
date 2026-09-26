@@ -3,7 +3,9 @@
 Date : 26 septembre 2026. Proposition de la session cloud à la demande de Nick : « le jeu est free mais il faut être
 capable d'en retirer un peu d'argent quand même ; une Colonie free, plusieurs ça doit coûter ; option tokens pour le
 Général ou un compagnon supplémentaire ; pense à des idées pour ça. »
-Statut : **proposition**, questions à Nick en fin de document.
+Statut : **décidé** (Nick, 26.09.2026 : « oui pour tout ; pour les prix on suit tes recos »). Les réponses aux six
+questions sont dans la section « Décision » en fin de document ; le corps garde la proposition telle qu'elle a été
+lue.
 
 ## Le cadre qu'on ne bouge pas
 
@@ -181,3 +183,38 @@ ouvre en S1 si les chiffres le disent. Si Nick veut l'ouvrir plus tôt, alors av
 5. **Les prix** : Mécène 25 CHF la saison, Éclats 3 CHF les 300, Compagnon 3 CHF la saison, seconde Colonie 8 CHF
    la saison. Trop bas, trop haut ? En CHF affichés, ou en euros pour les joueurs de l'UE ?
 6. **S0** : on pose le bouton « Soutenir Aurane » (page d'intention, e-mails) dès la bêta, oui ou non ?
+
+## Décision (Nick, 26.09.2026)
+
+Nick a dit oui à l'ensemble et laissé les prix à la recommandation de la session cloud. Ce qui est tranché :
+
+1. **Le principe** : on vend du temps avec les personnages, de la mémoire et de la présence, jamais de l'avantage.
+   Le test reste : *un joueur qui ne paie rien peut-il gagner la saison contre un joueur qui paie tout ?* Un test du
+   dépôt garantit que `packages/sim` n'importe rien qui vienne des comptes ni des entitlements.
+2. **La seconde Colonie** : pas avant **S2**, après mesure (Grok confirme la réserve de 0010) ; si elle ouvre, avec
+   les trois garde-fous (isolée, autre région, comptes établis) et au tarif ci-dessous.
+3. **Le Compagnon** : le **Chroniqueur** en premier (il produit le contenu partageable, donc le trafic) ; Émissaire
+   et Archiviste ensuite, selon la demande.
+4. **Le paiement** : **marchand officiel** (Paddle ou Lemon Squeezy, à choisir par Nick avec la fiduciaire) dès la
+   première vente : il est le vendeur légal, collecte la TVA du pays du client, affiche le prix dans la monnaie
+   locale. Stripe direct seulement si le volume justifie un jour la paperasse OSS. Jamais de carte chez nous.
+5. **Les prix** (amendés après la lecture de Grok, `docs/analyse/RETOUR-GROK-2026-09-26.md`) :
+
+   | Objet | Prix | Note |
+   |---|---|---|
+   | Mécène | **12 CHF la saison** (ou 5 CHF le mois) | 25 était trop haut pour un jeu qui vient de naître ; 12 se dit « le prix d'un livre de poche » |
+   | Éclats de Signal | **3 CHF les 300 messages** | périment **30 jours après l'achat**, pas à la saison : on n'achète pas pour perdre |
+   | Compagnon | **3 CHF la saison** par Compagnon, inclus dans Mécène | |
+   | Seconde Colonie (S2 au plus tôt) | **8 CHF la saison** | deux Colonies par compte au maximum |
+   | Livre de la saison (plus tard) | 25 à 35 CHF | impression à la demande |
+
+   Affichage : CHF en Suisse, euros dans l'UE, via la conversion du marchand officiel ; un seul prix de référence en CHF
+   dans le code et la documentation.
+6. **S0** : le bouton **« Soutenir Aurane »** est un **vrai achat unique** dès la bêta (5 CHF, sans entitlement de jeu :
+   un titre de fondateur cosmétique, porté dans la Gazette et le Palmarès, et l'entrée sur la liste des Mécènes de la
+   première heure), pas seulement une page d'intention. Réserve maintenue : c'est une vente de service numérique, donc
+   marchand officiel et TVA dès S0 ; la plomberie de paiement est déclenchée plus tôt, ce qui est aussi le moyen de la
+   tester sur dix personnes avant mille.
+
+Ce qui suit de ces décisions, dans l'ordre : le choix du marchand officiel (Nick), la table `entitlements` et son test
+d'étanchéité (session cloud), le bouton « Soutenir Aurane » dans l'onglet Compte (session cloud), le Chroniqueur en S1.
