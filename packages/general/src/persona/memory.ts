@@ -225,6 +225,7 @@ export class MirroredMemoryStore implements MemoryStore {
   private flushing: Promise<number> | null = null;
   private timers: ReturnType<typeof setInterval>[] = [];
   private retry: ReturnType<typeof setTimeout> | null = null;
+  private readonly misses = new Map<string, number>();
 
   constructor(private readonly primary: MemoryStore, private readonly mirror: HttpMemoryStore, private readonly onError: (err: Error) => void = () => undefined, opts: MirroredOptions = {}) {
     this.outbox = opts.outbox ?? new InMemoryOutbox();
@@ -242,7 +243,19 @@ export class MirroredMemoryStore implements MemoryStore {
   private succeeded(): void { this.stats.ok++; this.stats.consecutiveFailures = 0; this.stats.lastOkAt = this.now(); }
   /** The instance's copy, `undefined` when it could not answer (then Postgres cannot tell a newcomer from an outage). */
   private async remote(key: string): Promise<MemoryRecord | null | undefined> {
-    try { const r = await this.mirror.load(key); this.succeeded(); return r; } catch (err) { this.failed(err as Error); return undefined; }
+    const now = this.now();
+    // Breaker: after three failures in a row, no cold read for 30 s (a player's request never waits on a dead instance;
+    // a write made meanwhile is queued as a merge).
+    if (this.stats.consecutiveFailures >= 3 && (this.stats.lastErrorAt ?? 0) > now - 30000) return undefined;
+    const miss = this.misses.get(key);
+    if (miss && miss > now - 300000) return null; // a newcomer is not asked for again for five minutes
+    try {
+      const r = await this.mirror.load(key);
+      this.succeeded();
+      if (r) this.misses.delete(key); else this.misses.set(key, now);
+      if (this.misses.size > 10000) this.misses.clear();
+      return r;
+    } catch (err) { this.failed(err as Error); return undefined; }
   }
   private kick(): void {
     // After repeated failures the timer retries on its own schedule: a dead instance does not cost every save a timeout.

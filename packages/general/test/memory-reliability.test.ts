@@ -94,6 +94,23 @@ describe('memory mirror: durable outbox', () => {
   });
 });
 
+describe('memory mirror: cold reads', () => {
+  it('does not ask a dead instance on every read, nor a newcomer twice in five minutes', async () => {
+    const inst = fakeInstance();
+    let now = 1_000_000;
+    const s = new MirroredMemoryStore(new InMemoryMemoryStore(), inst.http, () => undefined, { now: () => now });
+    expect(await s.load('new')).toBeNull();
+    expect(await s.load('new')).toBeNull();
+    expect(inst.state.calls.filter((c) => c === 'GET /memory/new')).toHaveLength(1);
+    inst.state.down = true;
+    for (const k of ['a', 'b', 'c', 'd', 'e']) await s.load(k);
+    expect(inst.state.calls.filter((c) => c.startsWith('GET /memory/') && c !== 'GET /memory/new')).toHaveLength(3); // then the breaker
+    now += 31_000; inst.state.down = false;
+    await inst.http.save('d', { ...recordChoice(emptyMemory(), 'counsel.taken', 'x', 1), rev: 1 });
+    expect((await s.load('d'))!.notes).toHaveLength(1);
+  });
+});
+
 describe('memory mirror: erasure (LPD/RGPD)', () => {
   it('says when the instance did not confirm, retries, and a late write cannot resurrect the erased record', async () => {
     const inst = fakeInstance();
