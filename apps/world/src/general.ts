@@ -5,6 +5,7 @@ import type { Policy } from '@aurane/protocol';
 import { apply, isAlly, viewFor, type Colony, type World } from '@aurane/sim';
 import {
   HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, isEmptyMemory, memoryRepairs, mergeMemory, normalizeMemory, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
+  TASK_CLASS, type LlmClass, type LlmTask,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
   type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type MirrorOutbox, type MirrorStats, type Turn,
 } from '@aurane/general';
@@ -133,6 +134,9 @@ export class GeneralService {
   }
 
   /** The month's cap is reached: no model for anyone, in-character lines everywhere (decision 0009: never a silence). */
+  /** The class a task is served by here (a routine task rides the voice pool when no routine class is configured), for metric labels. */
+  private classOf(task: LlmTask): LlmClass { return this.stack.forTask(task)?.cls ?? TASK_CLASS[task]; }
+
   private capped(task: 'talk' | 'doctrine' | 'briefing' | 'counsel' | 'episode' | 'gazette'): boolean {
     if (!this.metrics.overBudget()) return false;
     this.metrics.degradation(task === 'gazette' ? 'narrative' : 'voice', task, 'budget');
@@ -209,7 +213,7 @@ export class GeneralService {
     for (const a of Object.values(w.alliances)) alliances[a.id] = a.name;
     const treatyWith = (o: string): boolean => Object.values(w.treaties).some((t) => (t.until === null || t.until > w.time) && ((t.a === c.id && t.b === o) || (t.b === c.id && t.a === o)));
     const allies = Object.values(w.colonies).filter((o) => o.id !== c.id && (isAlly(w, c.id, o.id) || treatyWith(o.id))).map((o) => o.id);
-    return { lang, current: c.policy, systems, colonies, alliances, allies, persona: c.persona };
+    return { lang, current: c.policy, systems, colonies, alliances, allies, persona: c.persona, capital: c.capital };
   }
 
   private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string; facts: ReturnType<typeof factsFrom> }> {
@@ -383,7 +387,7 @@ export class GeneralService {
   private async runBriefing(p: BriefingJob): Promise<{ text: string; source: string }> {
     const c = this.colony(p.colonyId);
     if (!c) throw new Error('colony gone');
-    const r = await writeBriefing(await this.briefingInput(c, p.lang, p.since, p.awaySeconds), this.stack.voice);
+    const r = await writeBriefing(await this.briefingInput(c, p.lang, p.since, p.awaySeconds), this.stack.forTask('briefing'));
     this.briefings.set(`${c.id}:${p.lang}`, { text: r.text, source: r.source, eventMark: this.eventMark(c, p.since), awaySeconds: p.awaySeconds });
     return r;
   }
@@ -405,13 +409,13 @@ export class GeneralService {
     const worth = awaySeconds >= ABSENT_AFTER_S;
     const overQuota = worth && (this.capped('briefing') || !this.quota.take(c.id, 'briefing'));
     let out: { text: string; source: string };
-    if (worth && !overQuota && this.stack.voice && !this.scheduler.active) out = await this.runBriefing({ colonyId: c.id, lang, since, awaySeconds });
-    else if (!worth || overQuota || !this.stack.voice) {
+    if (worth && !overQuota && this.stack.forTask('briefing') && !this.scheduler.active) out = await this.runBriefing({ colonyId: c.id, lang, since, awaySeconds });
+    else if (!worth || overQuota || !this.stack.forTask('briefing')) {
       out = await writeBriefing({ ...(await this.briefingInput(c, lang, since, awaySeconds)), overQuota }, null);
-      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'briefing', 'quota');
+      if (overQuota && !this.metrics.overBudget()) this.metrics.degradation(this.classOf('briefing'), 'briefing', 'quota');
     } else {
       const input = await this.briefingInput(c, lang, since, awaySeconds);
-      const template = (): { text: string; source: string } => { this.metrics.degradation('voice', 'briefing', 'deadline'); return writeBriefingSync(input); };
+      const template = (): { text: string; source: string } => { this.metrics.degradation(this.classOf('briefing'), 'briefing', 'deadline'); return writeBriefingSync(input); };
       out = (await this.scheduler.enqueueWithDeadline<BriefingJob, { text: string; source: string }>('briefing', 'briefing', { colonyId: c.id, lang, since, awaySeconds }, this.cfg.briefingDeadlineMs, template, { colony: c.id, key: `briefing:${c.id}:${lang}:${since}`, ttlMs: 900000 })).result;
     }
     this.lastBriefedAt.set(c.id, w.time);
@@ -463,8 +467,8 @@ export class GeneralService {
     const mem = await this.memoryOf(c, p.lang);
     const src = this.counselSource(w, c);
     const a = this.analysisOf(c);
-    const r: CounselResult = await writeCounsel({ persona: c.persona, lang: p.lang, tier: src.tier, options: src.options, analysis: renderAnalysisSafe(a, p.lang), memory: mem.text, crisis: a.crisis, minutesToDraw: this.minutesToDraw(), seed: `${c.id}:${p.drawIndex}`, skipped: choicesOf(mem.record).skipped.slice(-6) }, this.stack.voice);
-    if (r.source === 'degraded' && r.degradeReason) this.metrics.degradation('voice', 'counsel', r.degradeReason);
+    const r: CounselResult = await writeCounsel({ persona: c.persona, lang: p.lang, tier: src.tier, options: src.options, analysis: renderAnalysisSafe(a, p.lang), memory: mem.text, crisis: a.crisis, minutesToDraw: this.minutesToDraw(), seed: `${c.id}:${p.drawIndex}`, skipped: choicesOf(mem.record).skipped.slice(-6) }, this.stack.forTask('counsel'));
+    if (r.source === 'degraded' && r.degradeReason) this.metrics.degradation(this.classOf('counsel'), 'counsel', r.degradeReason);
     const view: CounselView = { drawIndex: p.drawIndex, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: w.time, tier: src.tier };
     this.counsels.set(`${c.id}:${p.lang}`, view);
     return view;
@@ -479,7 +483,7 @@ export class GeneralService {
     if (this.capped('counsel')) return; // the live request serves the fallback cards
     for (const c of Object.values(w.colonies)) {
       if (c.npc || w.time - c.lastSeenAt > 2 * 3600) continue;
-      if (!this.quota.take(c.id, 'counsel')) { this.metrics.degradation('voice', 'counsel', 'quota'); continue; }
+      if (!this.quota.take(c.id, 'counsel')) { this.metrics.degradation(this.classOf('counsel'), 'counsel', 'quota'); continue; }
       const lang = this.langOf(c.id);
       void this.scheduler.enqueue<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}`, spreadMs: Math.max(0, (this.cfg.counselLeadMin - 5) * 60000), ttlMs: this.cfg.counselLeadMin * 60000 })
         .then((j) => j.result.catch(() => undefined));
@@ -496,10 +500,10 @@ export class GeneralService {
     const hit = this.counsels.get(`${c.id}:${lang}`);
     if (hit && hit.drawIndex === next && hit.tier === src.tier) return { ...hit, minutesToDraw: this.minutesToDraw() };
     const fallback = async (): Promise<CounselView> => { const r = await writeCounsel({ persona: c.persona, lang, tier: src.tier, options: src.options, minutesToDraw: this.minutesToDraw() }, null); return { drawIndex: next, minutesToDraw: this.minutesToDraw(), cards: r.cards, source: r.source, writtenAt: this.deps.world().time, tier: src.tier }; };
-    if (!this.stack.voice || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
+    if (!this.stack.forTask('counsel') || this.capped('counsel') || !this.quota.take(c.id, 'counsel')) { const v = await fallback(); this.counsels.set(`${c.id}:${lang}`, v); return v; }
     if (!this.scheduler.active) return this.runCounsel({ colonyId: c.id, lang, drawIndex: next });
     const template = await fallback();
-    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation('voice', 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}:t${src.tier}`, ttlMs: 3600000 });
+    const out = await this.scheduler.enqueueWithDeadline<CounselJob, CounselView>('counsel', 'counsel', { colonyId: c.id, lang, drawIndex: next }, this.cfg.counselDeadlineMs, () => { this.metrics.degradation(this.classOf('counsel'), 'counsel', 'deadline'); return template; }, { colony: c.id, key: `counsel:${c.id}:${lang}:${next}:t${src.tier}`, ttlMs: 3600000 });
     if (out.timedOut) this.counsels.set(`${c.id}:${lang}`, out.result);
     return out.result;
   }
@@ -534,7 +538,7 @@ export class GeneralService {
     const choices = choicesOf(mem);
     const label = (id: string): string => describeChoice(id, p.lang, (x) => w.galaxy.systems[x]?.name ?? names[x] ?? x);
     const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).map(label).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).map(label).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).map(label).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).map(label).join(', ')}.`) : ''].filter(Boolean).join('\n');
-    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.voice);
+    const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.forTask('episode'));
     await this.memoryStore.update(await this.keyOf(c.id), (cur) => recordEpisode(cur ?? emptyMemory(), p.day, r.text, Date.now()));
     return r.text;
   }
@@ -581,8 +585,8 @@ export class GeneralService {
 
   // --- observability -----------------------------------------------------------
 
-  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; narrative: string | null }; memory: Awaited<ReturnType<GeneralService['memoryHealth']>> }> {
-    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: await this.memoryHealth() };
+  async snapshot(): Promise<{ llm: ReturnType<LlmMetrics['snapshot']>; jobs: Awaited<ReturnType<Scheduler['counts']>>; inFlight: number; pendingDoctrines: number; classes: { voice: string | null; routine: string | null; narrative: string | null }; memory: Awaited<ReturnType<GeneralService['memoryHealth']>> }> {
+    return { llm: this.metrics.snapshot(), jobs: await this.scheduler.counts(), inFlight: this.scheduler.inFlight, pendingDoctrines: this.pending.size, classes: { voice: this.stack.voice?.name ?? null, routine: this.stack.forClass('routine')?.name ?? null, narrative: this.stack.narrative?.name ?? null }, memory: await this.memoryHealth() };
   }
 
   private async readBackups(): Promise<BackupStatus[]> {

@@ -63,7 +63,7 @@ export const DOCTRINE_JSON_SCHEMA: JsonSchemaSpec = {
 export const ORDERS_SHAPE_DOC = `{
   "reserves"?: { "metal"?: n, "energy"?: n, "food"?: n, "crystal"?: n, "rium"?: n },   // keep at least this much
   "sellAbove"?: { "<resource>": minPrice }, "buyBelow"?: { "<resource>": maxPrice },
-  "defendFirst"?: ["<system id>"], "neverAttack"?: ["<colony or alliance id>"], "trustedTraders"?: ["<colony id>"],
+  "defendFirst"?: ["<system id>" or "__capital__" for the capital], "neverAttack"?: ["<colony or alliance id>"], "trustedTraders"?: ["<colony id>"],
   "expansion"?: 0..1, "aggression"?: 0..1, "retreatBelow"?: 0..1, "escortAbove"?: credits, "autoTurrets"?: 0..6,
   "fuel"?: "auto" | "refinery" | "synthesizer", "targetPriority"?: "ships" | "turrets" | "station" | "economy",
   "notes"?: "the doctrine in one sentence, in your own words"

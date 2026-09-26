@@ -3,7 +3,7 @@
 import { RESOURCES, type Policy } from '@aurane/protocol';
 import type { DoctrineContext } from '../doctrine.js';
 
-export type IssueKind = 'buy_above_sell' | 'pacifist_but_aggressive' | 'defend_unknown' | 'never_unknown' | 'reserve_out_of_range' | 'price_out_of_range' | 'defend_all' | 'sell_what' | 'expansion_frozen_but_grow';
+export type IssueKind = 'buy_above_sell' | 'pacifist_but_aggressive' | 'defend_unknown' | 'never_unknown' | 'reserve_out_of_range' | 'price_out_of_range' | 'defend_all' | 'sell_what' | 'expansion_frozen_but_grow' | 'energy_without_reserve';
 export interface Issue { kind: IssueKind; detail: string; /** Blocking issues need a question; others are fixed silently and reported. */ blocking: boolean }
 
 const RES_WORDS: Record<string, string[]> = { metal: ['métal', 'metal'], energy: ['énergie', 'energie', 'energy'], food: ['vivres', 'nourriture', 'food'], crystal: ['cristal', 'crystal'], rium: ['rium'] };
@@ -31,11 +31,17 @@ export function semanticCheck(policy: Policy, ctx: DoctrineContext, text = ''): 
   const warlike = /\b(raid|attaque|attack|harc[eè]le|harass|pille|plunder|conqu)/.test(t);
   if (pacifist && warlike && !/sauf|except|mais|but/.test(t)) issues.push({ kind: 'pacifist_but_aggressive', detail: '', blocking: true });
   if (pacifist && p.aggression > 0 && !warlike) { p.aggression = 0; }
+  // "Defend the capital" is the one target every doctrine names by role, not by id: models tend to drop it. Fix it here
+  // (when the capital's id is unknown, only if the model named no system at all: it may have used the capital's id).
+  if (/(d[ée]fend|prot[èe]ge|tiens|garde|defend|protect|hold|guard)[^.;!?]{0,40}\bcapital/.test(t) && !/(abandonne|sacrifie|give up|abandon)/.test(t) && !p.defendFirst.includes('__capital__') && (ctx.capital !== undefined ? !p.defendFirst.includes(ctx.capital) : p.defendFirst.length === 0)) p.defendFirst = ['__capital__', ...p.defendFirst];
   // "Defend everything" without a named system is ambiguous whatever the model filled in: the question is asked from the text.
   const namesInText = Object.values(ctx.systems).some((n) => n.length >= 3 && t.includes(n.toLowerCase()));
   if (/défends? tout|defend everything|protect everything|tiens tout/.test(t) && !namesInText && !/capitale|capital/.test(t)) issues.push({ kind: 'defend_all', detail: '', blocking: true });
   if (/vends? (le |du |mon |the )?surplus\b|sell (the |my )?surplus\b/.test(t) && !/métal|metal|énergie|energie|energy|vivres|food|cristal|crystal|rium/.test(t)) issues.push({ kind: 'sell_what', detail: '', blocking: true });
   if (/(étends|expan|grandis|grow|expand)/.test(t) && /(ne t'étends pas|stop expand|no expansion|pas d'expansion|consolid)/.test(t)) issues.push({ kind: 'expansion_frozen_but_grow', detail: '', blocking: true });
+  // Selling Energy with no Energy reserve lets the market drain what the relays burn at the Draw: whatever the
+  // wording (and whatever the model compiled), the General asks for the floor before signing.
+  if (p.sellAbove.energy !== undefined && !((p.reserves.energy ?? 0) > 0)) issues.push({ kind: 'energy_without_reserve', detail: 'energy', blocking: true });
   void RES_WORDS;
   return { policy: p, issues };
 }
@@ -54,6 +60,7 @@ export function clarificationFor(issue: Issue, ctx: DoctrineContext, persona: 'v
     defend_all: `Je ne tiens pas tout, personne ne tient tout. Lequel d'abord : la capitale, ou ${names || 'un avant-poste'} ?`,
     sell_what: 'Vendre le surplus, oui : de quelle ressource, et à quel plancher ? Sans plancher je vends au teneur de marché, à 40 % de la référence.',
     expansion_frozen_but_grow: 'Tu me demandes de m\'étendre et de consolider dans le même souffle. Lequel des deux, pour les six prochains Tirages ?',
+    energy_without_reserve: 'Vendre de l\'Énergie, soit : combien j\'en garde pour les relais ? Sans réserve, le Tirage les éteint.',
   };
   const en: Record<IssueKind, string> = {
     buy_above_sell: `You ask me to buy ${issue.detail} dearer than the floor I sell it at. Which one counts: the buying price or the selling price?`,
@@ -65,6 +72,7 @@ export function clarificationFor(issue: Issue, ctx: DoctrineContext, persona: 'v
     defend_all: `I cannot hold everything, nobody can. Which first: the capital, or ${names || 'an outpost'}?`,
     sell_what: 'Sell the surplus, yes: of which resource, and at what floor? Without a floor I sell to the market maker at 40 % of reference.',
     expansion_frozen_but_grow: 'You ask me to expand and to consolidate in the same breath. Which one, for the next six Draws?',
+    energy_without_reserve: 'Sell Energy, fine: how much do I keep for the relays? Without a reserve the Draw puts them out.',
   };
   const q = (L === 'fr' ? fr : en)[issue.kind];
   const voice: Record<typeof persona, { fr: string; en: string }> = { vane: { fr: 'Un chiffre, un nom. ', en: 'One number, one name. ' }, kestrel: { fr: 'Dis-moi juste : ', en: 'Just tell me: ' }, oriel: { fr: 'Précision requise. ', en: 'Precision required. ' }, solen: { fr: 'Aide-moi à te comprendre, mon ami. ', en: 'Help me understand you, my friend. ' } };

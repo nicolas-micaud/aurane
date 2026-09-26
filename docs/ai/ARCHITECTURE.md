@@ -9,7 +9,7 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
 1. **Le moteur analyse, le Général raconte.** Le modèle ne voit jamais l'état brut du monde. Il reçoit
    l'analyse déterministe du moteur (ponts critiques, menaces, Énergie, économie, Phares, 3 à 5 options
    chiffrées) et raconte, choisit ou recommande. Chaque chiffre qu'il cite est vérifié après coup.
-2. **Une voix = un modèle épinglé.** La classe `voice` (dialogue, doctrine, briefing) est servie par une
+2. **Une voix = un modèle épinglé.** La classe `voice` (dialogue, doctrine) est servie par une
    liste ordonnée de fournisseurs qui servent **le même modèle, même version**. Quand tous sont indisponibles,
    le Général répond en personnage sans modèle : il ne change jamais de voix en cours de conversation.
 3. **Rien de synchrone dans la simulation.** `tick()`, le Tirage, les combats et `decide()` n'appellent
@@ -37,12 +37,12 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
                  │ dédup par clé · expiration · reprise des jobs "running" au redémarrage · N workers      │
                  └──────────────┬──────────────────────────────────────────────┬───────────────────────┘
                                 ▼                                              ▼
-        converse / compileDoctrine / writeBriefing (classe voice)      writeGazette (classe narrative)
+        converse / compileDoctrine (voice) · counsel / briefing / episode (routine)   writeGazette (narrative)
         systemPrompt(fiche, exemples, ton, mémento, mémoire, analyse, données ⟦…⟧, contrat JSON)
                                 │
                                 ▼
                  ┌───────────── ProviderPool voice : modèle épinglé ──────────────┐   ┌── ProviderPool narrative ──┐
-                 │ scaleway ─► infomaniak ─► vllm  (ordre, mêmes TASK_PARAMS)       │   │ apertus (Infomaniak)      │
+                 │ scaleway ─► infomaniak  (qwen3.5-397b, mêmes TASK_PARAMS)        │   │ apertus (Infomaniak)      │
                  │ chaque fournisseur : sémaphore · timeout · retries+jitter ·       │   └───────────────────────────┘
                  │ disjoncteur fermé/ouvert/demi-ouvert · json_schema si supporté   │
                  │ tous KO ou saturés → LlmUnavailable (jamais un autre modèle)      │
@@ -57,41 +57,77 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
 
 ## Classes, tâches, fournisseurs
 
-| Classe | Tâches | Modèle (bêta) | Fournisseurs (ordre) | Paramètres (code, `TASK_PARAMS`) |
+Choix du 26.09.2026 (banc `tools/persona-bench --live`, détail et bloc d'environnement dans
+[docs/ops/beta.md](../ops/beta.md#généraux-et-modèles-décision-0008)) :
+
+| Classe | Tâches | Modèle | Fournisseurs (ordre) | Paramètres (code, `TASK_PARAMS`) |
 |---|---|---|---|---|
-| `voice` | `talk`, `doctrine`, `briefing`, `reaction` | `mistral-small-3.2-24b-instruct-2506` | Scaleway (Paris) → Infomaniak (si son catalogue le sert, voir ci-dessous) → vLLM auto-hébergé | talk 0,7/0,9/500 j ; doctrine 0,2/0,9/700 ; briefing 0,6/0,9/400 ; reaction 0,7/0,9/200 (température / top_p / max_tokens) |
-| `narrative` | `gazette`, `memoir` | `swiss-ai/Apertus-v1.5-70B` (proposé) | Infomaniak | gazette 0,6/0,95/900 ; memoir 0,8/0,95/1200 |
+| `voice` | `talk`, `doctrine` | `qwen3.5-397b-a17b` (MoE 397B / 17B actifs, raisonnement coupé) | Scaleway (Paris) → Infomaniak (Suisse, `Qwen/Qwen3.5-397B-A17B-FP8`) | talk 0,7/0,9/500, budget 20 s ; doctrine 0,2/0,9/700, 20 s (température / top_p / max_tokens) |
+| `routine` | `counsel`, `briefing`, `episode`, `reaction` | `mistral-small-3.2-24b-instruct-2506` | Scaleway | counsel 0,6/0,9/450, 10 s ; briefing 0,6/0,9/400, 20 s ; episode 0,6/0,9/220 ; reaction 0,7/0,9/200 |
+| `narrative` | `gazette`, `memoir` | `swiss-ai/Apertus-v1.5-70B` | Infomaniak | gazette 0,6/0,95/900 ; memoir 0,8/0,95/1200 |
 
-Un fournisseur n'entre dans une classe que si son `MODEL_ID` (nom canonique, par défaut son `MODEL`) est
-celui de la classe ; sinon il est **refusé au démarrage** avec une ligne de log. Jamais d'alias `latest`.
+- **Pourquoi Qwen3.5-397B pour la voix** : c'est le **seul** modèle instruct servi à la fois par Scaleway et
+  par Infomaniak (catalogues du 26.09 : aucun Mistral, Llama, gpt-oss ni Gemma commun) ; c'est donc la seule
+  voix qui ait un vrai repli sur le même modèle. Au banc il fait 100 % de JSON valide, 100 % de chiffres
+  fidèles, 100 % des doctrines justes (dont le refus de la doctrine suicidaire que le filtre déterministe ne
+  voit pas) et pose la question attendue sur la doctrine ambiguë, pour un p90 de 2,5 s.
+- **Pourquoi une classe `routine`** : le Conseil (8 par jour et par joueur vu, écrit d'avance), le briefing
+  et l'épisode sont des lignes courtes sur gabarit ; au prix de Qwen3.5 (0,60 / 3,60 EUR par million, ~2,2 EUR
+  les mille appels) toute la charge coûterait ~190 EUR par mois à 200 joueurs. Mistral Small 3.2 (~0,45 EUR
+  les mille appels) les tient. Sans `LLM_ROUTINE_PROVIDERS`, ces tâches passent par la classe `voice`
+  (disposition historique, rien ne change). La voix d'une conversation reste un seul modèle ; la fiche du
+  Général (principe 4) porte la personnalité des lignes de routine. Chaque tâche de routine a son repli
+  déterministe en personnage (cartes de repli, gabarit du briefing, gabarit de l'épisode) : un seul
+  fournisseur y est acceptable.
+- Un fournisseur n'entre dans une classe que si son `MODEL_ID` (nom canonique, par défaut son `MODEL`) est
+  celui de la classe ; sinon il est **refusé au démarrage** avec une ligne de log. Jamais d'alias `latest`.
+  Le choix classe ↔ pool est fait une fois, à la configuration : jamais de repli d'une classe sur une autre
+  à l'exécution.
+- **Raisonnement** : Qwen3.5 raisonne par défaut et brûle `max_tokens` (`finish_reason=length`, contenu
+  vide) ; `_DISABLE_REASONING=1` envoie `reasoning_effort: "none"`, accepté par Scaleway et Infomaniak
+  (`chat_template_kwargs` est ignoré par Scaleway). Ne pas le poser sur un modèle non raisonnant de Scaleway
+  (`qwen3-235b-…-2507` répond 400 à `"none"`).
+- **JSON** : `_JSON_MODE=schema` = décodage guidé `json_schema` quand la tâche a un schéma, rien sinon (la
+  Gazette demande son JSON dans le prompt) ; `object` = `json_object` (400 chez Infomaniak).
 
-**Vérifier qu'Infomaniak sert Mistral Small 3.2** (ne pas inventer de nom) : `GET
-https://api.infomaniak.com/2/ai/<product_id>/openai/v1/models` avec le jeton ; le nom exact retourné va
-dans `LLM_PROVIDER_INFOMANIAK_MODEL`, et `LLM_PROVIDER_INFOMANIAK_MODEL_ID=mistral-small-3.2-24b-instruct-2506`
-le rattache à la classe. S'il n'y est pas, Infomaniak reste hors de la classe `voice` (il sert Apertus en
-`narrative`). Le fournisseur vLLM (GPU Exoscale à la demande ou machine locale) se déclare de la même
-façon : `LLM_PROVIDER_VLLM_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506`, `MODEL_ID` canonique,
-`JSON_MODE=schema` (vLLM supporte le décodage guidé).
+## Budget d'appel, délais et disjoncteur
+
+- Le `timeoutMs` d'une tâche est le **budget total de l'appel** (essais et bascule compris), partagé par tous
+  les fournisseurs essayés ; chaque essai est plafonné par le `_TIMEOUT_MS` de son fournisseur (9 s proposé),
+  ce qui laisse au suivant le reste du budget quand le premier ne répond pas. L'attente d'une place dans le
+  sémaphore compte dans le budget ; un nouvel essai ou un fournisseur de plus n'est lancé que s'il reste
+  au moins 400 ms.
+- Le disjoncteur ne compte que ce qui dit la santé du fournisseur : timeout sur son propre `_TIMEOUT_MS`
+  (≥ 10 s sans réglage), réseau, 5xx, 408, 429, 401/403/404. Un appel coupé par le budget de sa tâche (le
+  Conseil), un 400/413/422 propre à la requête ou une réponse tronquée par `max_tokens` ne l'ouvrent pas, et
+  libèrent la sonde du demi-ouvert. Une réponse tronquée (`length`) bascule tout de suite au fournisseur
+  suivant, sans nouvel essai.
+- Le Conseil : les 3 s vues par le joueur sont l'échéance de la file (`LLM_COUNSEL_DEADLINE_MS`, cartes de
+  repli au-delà) ; l'appel au modèle garde 10 s pour que ses cartes arrivent au cache, et les jobs planifiés
+  à T−20 min ne sont pas pressés.
 
 ## Variables d'environnement
 
 ```
-LLM_VOICE_MODEL=mistral-small-3.2-24b-instruct-2506
-LLM_VOICE_PROVIDERS=scaleway,infomaniak,vllm
-LLM_NARRATIVE_MODEL=swiss-ai/Apertus-v1.5-70B
-LLM_NARRATIVE_PROVIDERS=apertus
-LLM_PROVIDER_<NOM>_BASE_URL | _API_KEY | _MODEL | _MODEL_ID | _CONCURRENCY | _TIMEOUT_MS
+LLM_VOICE_MODEL=qwen3.5-397b-a17b          LLM_VOICE_PROVIDERS=scaleway,infomaniak
+LLM_ROUTINE_MODEL=mistral-small-3.2-24b-instruct-2506   LLM_ROUTINE_PROVIDERS=scaleway-small   (facultatif)
+LLM_NARRATIVE_MODEL=swiss-ai/Apertus-v1.5-70B            LLM_NARRATIVE_PROVIDERS=apertus
+LLM_PROVIDER_<NOM>_BASE_URL | _API_KEY | _MODEL | _MODEL_ID | _CONCURRENCY | _TIMEOUT_MS (par essai)
 LLM_PROVIDER_<NOM>_JSON_MODE=off|object|schema | _EXTRA_BODY (JSON) | _DISABLE_REASONING=1
 LLM_PROVIDER_<NOM>_MAX_QUEUED | _RETRIES | _PRICE_IN | _PRICE_OUT (EUR / M jetons) | _BREAKER_FAILURES | _BREAKER_OPEN_MS
-LLM_QUOTA_TALK_HOUR=20  LLM_QUOTA_TALK_DAY=60  LLM_QUOTA_DOCTRINE_DAY=12  LLM_QUOTA_BRIEFING_DAY=8
-LLM_TALK_DEADLINE_MS=25000  LLM_BRIEFING_DEADLINE_MS=8000  LLM_GAZETTE_SPREAD_MIN=40  LLM_WORKERS=4
-DOCTRINE_CONFIRM=1 (défaut ; 0 = appliquer sans confirmation)  DOCTRINE_PENDING_TTL_H=24
+LLM_QUOTA_TALK_HOUR  LLM_QUOTA_TALK_DAY  LLM_QUOTA_DOCTRINE_DAY  LLM_QUOTA_BRIEFING_DAY  LLM_QUOTA_COUNSEL_DAY
+LLM_BUDGET_EUR_MONTH=100  LLM_BUDGET_ALERT_RATIO=0.8
+LLM_TALK_DEADLINE_MS=25000  LLM_BRIEFING_DEADLINE_MS=8000  LLM_COUNSEL_DEADLINE_MS=3000  LLM_COUNSEL_LEAD_MIN=20
+LLM_GAZETTE_SPREAD_MIN=40  LLM_EPISODE_SPREAD_MIN=30  LLM_WORKERS=4  DOCTRINE_CONFIRM=1 (défaut ; 0 = appliquer sans confirmation)  DOCTRINE_PENDING_TTL_H=24
 ```
 
-`<NOM>` = nom du fournisseur en majuscules, `-` → `_`. Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*`
-restent lues : le primaire devient la classe `voice` ; le repli la rejoint s'il sert le même modèle, sinon
-il devient la classe `narrative` (et un avertissement dit qu'il n'est plus un repli de voix). Les valeurs
-vivent dans Vaultwarden (collection `aurane`, un item par variable, champ `env`), jamais dans le dépôt.
+`<NOM>` = nom du fournisseur en majuscules, `-` → `_` (`scaleway-small` → `LLM_PROVIDER_SCALEWAY_SMALL_*`).
+**Un fournisseur sans `_PRICE_IN`/`_PRICE_OUT` n'est pas compté dans le plafond mensuel** : avertissement au
+démarrage (`llm config`). Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*` restent lues (prix compris :
+`LLM_PRIMARY_PRICE_IN/_OUT`) : le primaire devient la classe `voice` ; le repli la rejoint s'il sert le même
+modèle, sinon il devient la classe `narrative` (et un avertissement dit qu'il n'est plus un repli de voix).
+Les valeurs vivent dans Vaultwarden (collection `aurane`, un item par variable, champ `env`), jamais dans le
+dépôt ; le bloc cible complet est dans [docs/ops/beta.md](../ops/beta.md).
 
 ## Dégradation en personnage
 
@@ -161,13 +197,19 @@ coût à partir de ces métriques (ou d'hypothèses).
   règle Grafana sur la jauge) ; **plafond** `LLM_BUDGET_EUR_MONTH` (100) : une ligne au passage, puis **toutes les
   tâches se dégradent en personnage** (raison `budget`, lignes du registre « quota » : « je reprends au Tirage »),
   jamais un silence, jusqu'au mois suivant. Le Conseil sert ses cartes de repli, la Gazette son gabarit.
-- **Quotas par joueur** réglés pour ~200 joueurs actifs par jour à ce plafond, aux tarifs Scaleway de Mistral
-  Small 3.2 (0,15 / 0,35 EUR par million, ~2 800 jetons entrants et ~160 sortants par appel, soit ~0,00048 EUR
-  l'appel) : Conseil 8 par jour (il n'est écrit que pour les joueurs vus dans les deux dernières heures),
-  dialogue 10 par jour et 6 par heure, doctrine 6, briefing 4, épisode 1. Au maximum des quotas :
-  200 × 29 appels × 30 jours ≈ 174 000 appels ≈ 84 EUR ; en usage réel (un joueur n'épuise pas ses quotas) la
-  moitié. `node tools/llm-capacity/project.mjs --players 200 --calls-per-player 29` donne la projection ;
-  `--budget 100` le nombre de joueurs tenable.
+- **Quotas par joueur** (révisés le 26.09 avec la voix Qwen3.5-397B et la classe `routine`), coûts mesurés au banc
+  (~2 750 jetons entrants par appel) : voix ~2,2 EUR les mille appels (0,60 / 3,60 EUR par million, ~145 jetons
+  sortants), routine ~0,45 EUR (0,15 / 0,35, ~100 sortants). Proposé : dialogue **6 par jour et 3 par heure**,
+  doctrine **2**, Conseil 8, briefing 4, épisode 1.
+  - Voix au maximum des quotas : 200 × 8 × 1,04 (tours correctifs) × 30 ≈ 50 000 appels ≈ **108 EUR** ; routine
+    au maximum : 200 × 13 × 30 ≈ 78 000 appels ≈ **36 EUR** ; Gazette < 1 EUR.
+  - En usage réel (un joueur n'épuise pas son dialogue ; le Conseil, lui, est écrit pour tout joueur vu) :
+    ~55 + ~30 ≈ **85 EUR** par mois à 200 joueurs actifs. Le plafond de 100 EUR reste la garantie : au-delà,
+    tout se dégrade en personnage jusqu'au mois suivant.
+  - Variante stricte (le maximum des quotas tient sous 100 EUR) : dialogue 4, doctrine 1.
+  - Projection : `node tools/llm-capacity/project.mjs --players 200 --calls-per-player 8.3 --tokens-in 2800
+    --tokens-out 145 --price-in 0.60 --price-out 3.60 --budget 100` (voix) et `--calls-per-player 13
+    --tokens-out 100 --price-in 0.15 --price-out 0.35` (routine).
 - **La mémoire longue** compte dans le plafond : une instance dédiée à Aurane (voir ci-dessous) est comptée
   au forfait de son hébergement, pas au jeton.
 

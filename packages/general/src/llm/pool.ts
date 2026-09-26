@@ -2,7 +2,7 @@
 // order, skips open breakers and saturated queues, and when nothing answers it throws LlmUnavailable.
 // It never falls back to a different model: the caller degrades in character instead.
 import type { LlmMetrics } from './metrics.js';
-import { OpenAICompatibleClient, ProviderError } from './provider.js';
+import { MIN_ATTEMPT_MS, OpenAICompatibleClient, ProviderError } from './provider.js';
 import { LlmUnavailable, TASK_PARAMS, type ChatMessage, type ChatOptions, type ChatResult, type LlmClass, type LlmClient, type LlmTask } from './types.js';
 
 export class ProviderPool implements LlmClient {
@@ -35,15 +35,20 @@ export class ProviderPool implements LlmClient {
     if (!this.providers.length) throw new LlmUnavailable(this.cls, 'unconfigured');
     const task = opts.task ?? 'talk';
     const params = opts.task ? ProviderPool.paramsFor(task, opts) : opts;
+    // One budget for the whole call, shared by every provider tried: a slow first provider leaves the rest of it
+    // to the next one (each attempt is capped by its provider's TIMEOUT_MS), and nothing outlives the task's budget.
+    const budget = params.timeoutMs ?? TASK_PARAMS[task].timeoutMs;
+    const deadline = params.deadline ?? Date.now() + budget;
     let attempts = 0;
     let lastError: ProviderError | null = null;
     let skippedOpen = 0, skippedSaturated = 0;
     for (const p of this.providers) {
+      if (deadline - Date.now() < MIN_ATTEMPT_MS) { lastError ??= new ProviderError(p.name, 'budget', `call budget of ${budget} ms exhausted`); break; }
       if (p.saturated) { skippedSaturated++; continue; }
       if (!p.breaker.allow()) { skippedOpen++; continue; }
       const started = Date.now();
       try {
-        const r = await p.chat(messages, params);
+        const r = await p.chat(messages, { ...params, deadline });
         attempts += r.attempts;
         this.metrics?.record({ cls: this.cls, provider: p.name, task, ok: true, ms: r.ms, inputTokens: r.inputTokens, outputTokens: r.outputTokens });
         return { ...r, attempts };

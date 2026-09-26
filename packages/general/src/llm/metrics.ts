@@ -4,7 +4,7 @@ import type { LlmClass, LlmTask } from './types.js';
 
 export interface CallRecord {
   cls: LlmClass; provider: string; task: LlmTask | 'unknown'; ok: boolean; ms: number;
-  inputTokens: number; outputTokens: number; error?: 'timeout' | 'http' | 'network' | 'empty' | 'other';
+  inputTokens: number; outputTokens: number; error?: import('./provider.js').ErrorKind;
 }
 
 interface Series {
@@ -88,7 +88,7 @@ export class LlmMetrics {
     for (const task of [r.task, '*'] as const) {
       const s = this.at(r.cls, r.provider, task);
       s.calls++;
-      if (!r.ok) { s.errors++; if (r.error === 'timeout') s.timeouts++; }
+      if (!r.ok) { s.errors++; if (r.error === 'timeout' || r.error === 'budget') s.timeouts++; }
       s.inputTokens += r.inputTokens; s.outputTokens += r.outputTokens;
       const p = this.pricing.get(r.provider);
       if (p) s.costEur += (r.inputTokens * p.inPerM + r.outputTokens * p.outPerM) / 1e6;
