@@ -4,7 +4,7 @@
 #   GROK_DEPLOY_WEBHOOK_URL     endpoint of the automation; absent = skip (logged), exit 0
 #   GROK_DEPLOY_WEBHOOK_SECRET  optional whsec_… secret: the request is then signed the Standard Webhooks way
 #                               (webhook-id, webhook-timestamp, webhook-signature: v1,base64(HMAC-SHA256(id.ts.body)))
-#   NOTIFY_ENV (prod), NOTIFY_URL (https://play.playaurane.com), NOTIFY_REPO (repo to read the commit from, default .)
+#   NOTIFY_SEASON (season seed prefixed to version), NOTIFY_ENV (prod), NOTIFY_URL (https://play.playaurane.com), NOTIFY_REPO (repo to read the commit from, default .)
 #   ADMIN_TOKEN                 optional: one fresh invite code (POST /api/admin/invites, count 1, note « grok deploy
 #                               <version> ») is minted and sent as `invite_code`, so the outside tester can open a new
 #                               colony and test the build by itself (Nick, 26.09.2026). The token never leaves this host.
@@ -17,7 +17,12 @@ URL=${GROK_DEPLOY_WEBHOOK_URL:-}
 REPO=${NOTIFY_REPO:-.}
 COMMIT=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION=$(git -C "$REPO" describe --tags --exact-match 2>/dev/null || git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)
+# « s0-xxx » as the tester expects: the season seed in front of the build (NOTIFY_SEASON, e.g. beta-2 → beta-2-e6d3aa2).
+[ -n "${NOTIFY_SEASON:-}" ] && VERSION="$NOTIFY_SEASON-$VERSION"
 SUBJECT=$(git -C "$REPO" log -1 --format=%s 2>/dev/null || echo "")
+# A GitHub merge commit says « Merge pull request #N from … »; the PR title, which describes the build, is its body.
+case "$SUBJECT" in "Merge pull request "*|"Merge branch "*)
+  B=$(git -C "$REPO" log -1 --format=%b 2>/dev/null | sed -n '/[^[:space:]]/{p;q;}'); [ -n "$B" ] && SUBJECT=$B ;; esac
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 json_str() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/ }; s=${s//$'\t'/ }; printf '"%s"' "$s"; }
 GAME=${NOTIFY_URL:-https://play.playaurane.com}
