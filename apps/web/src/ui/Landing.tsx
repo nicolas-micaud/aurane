@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { FACTIONS, PERSONAS, type Faction, type Persona } from '@aurane/protocol';
-import { connect, createGuest, fetchPublicConfig, redeem } from '../net.js';
+import { connect, createGuest, fetchPublicConfig, loginWithPasskey, passkeysSupported, redeem } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { InstallButton } from './bits.js';
@@ -22,6 +22,13 @@ export function Landing() {
     e.preventDefault();
     setBusy(true); setError(null);
     try { await createGuest(name.trim(), faction, persona, invite.trim() || undefined); connect(); } catch (err) { setError(tError((err as Error).message)); } finally { setBusy(false); }
+  };
+  const signIn = async () => {
+    setBusy(true); setError(null);
+    const r = await loginWithPasskey();
+    setBusy(false);
+    if (r.ok) connect();
+    else if (r.reason !== 'cancelled') setError(r.reason === 'no colony this season' ? t('noColonyThisSeason') : t('signInFailed').replace('{r}', tError(r.reason ?? '')));
   };
   const join = async (e: Event) => {
     e.preventDefault();
@@ -63,6 +70,7 @@ export function Landing() {
         </fieldset>
         {error && <p class="error">{error}</p>}
         <button class="primary" disabled={busy || name.trim().length < 2 || (requireInvite && invite.trim().length < 4)}>{t('play')}</button>
+        {passkeysSupported() && <button type="button" class="passkey" disabled={busy} onClick={() => void signIn()}>{t('signInPasskey')}</button>}
         <p class="muted small"><button type="button" class="link" onClick={() => setJoining(!joining)}>{t('haveColony')}</button></p>
         <InstallButton compact />
         {joining && (

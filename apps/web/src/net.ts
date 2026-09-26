@@ -201,3 +201,49 @@ export async function eraseMemory(): Promise<boolean> {
   try { return (await fetch('/api/memory', { method: 'DELETE', headers: authHeaders() })).ok; } catch { return false; }
 }
 
+// --- passkeys (decision 0010, lot B) ------------------------------------------------------------------------
+
+export interface AccountInfo { account: { id: string; createdAt: number; email: string | null } | null; passkeys: { id: string; label: string; createdAt: number; lastUsedAt: number | null }[] }
+
+export async function fetchAccount(): Promise<AccountInfo | null> {
+  try { const res = await fetch('/api/account', { headers: authHeaders() }); return res.ok ? await res.json() as AccountInfo : null; } catch { return null; }
+}
+
+export function passkeysSupported(): boolean {
+  return typeof window !== 'undefined' && 'PublicKeyCredential' in window && typeof navigator.credentials?.create === 'function';
+}
+
+/** Adds a passkey to this colony's account (created on the spot): one tap on the device's own unlock. */
+export async function addPasskey(lang: 'fr' | 'en'): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const { startRegistration } = await import('@simplewebauthn/browser');
+    const optRes = await fetch(`/api/auth/passkey/register/options?lang=${lang}`, { method: 'POST', headers: authHeaders() });
+    if (!optRes.ok) return { ok: false, reason: 'options' };
+    const optionsJSON = await optRes.json();
+    const response = await startRegistration({ optionsJSON });
+    const res = await fetch('/api/auth/passkey/register/verify', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ response }) });
+    if (!res.ok) return { ok: false, reason: ((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'verify' };
+    return { ok: true };
+  } catch (err) { return { ok: false, reason: (err as Error).name === 'NotAllowedError' ? 'cancelled' : (err as Error).message }; }
+}
+
+/** Signs in with a passkey from the landing page: the account's colony opens here with a fresh session. */
+export async function loginWithPasskey(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const { startAuthentication } = await import('@simplewebauthn/browser');
+    const optRes = await fetch('/api/auth/passkey/login/options', { method: 'POST' });
+    if (!optRes.ok) return { ok: false, reason: 'options' };
+    const { handle, options } = await optRes.json() as { handle: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] };
+    const response = await startAuthentication({ optionsJSON: options });
+    const res = await fetch('/api/auth/passkey/login/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ handle, response }) });
+    const body = await res.json().catch(() => ({})) as { token?: string; error?: string };
+    if (!res.ok || !body.token) return { ok: false, reason: body.error ?? 'verify' };
+    setToken(body.token);
+    return { ok: true };
+  } catch (err) { return { ok: false, reason: (err as Error).name === 'NotAllowedError' ? 'cancelled' : (err as Error).message }; }
+}
+
+export async function removePasskey(id: string): Promise<boolean> {
+  try { return (await fetch(`/api/account/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() })).ok; } catch { return false; }
+}
+

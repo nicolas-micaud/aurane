@@ -3,6 +3,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { z } from 'zod';
+import { PasskeyService } from './auth.js';
 import { CommandSchema, FACTIONS, PERSONAS } from '@aurane/protocol';
 import type { Engine } from './engine.js';
 import { renderColonyPage, renderGazettePage } from './pages.js';
@@ -61,6 +62,7 @@ function bearer(req: IncomingMessage): string | null {
 }
 
 export function createHttpServer(engine: Engine): Server {
+  const passkeys = new PasskeyService(engine.persistence, { rpName: 'Aurane', rpId: engine.cfg.rpId, origins: engine.cfg.rpOrigins });
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     try {
@@ -91,6 +93,18 @@ export function createHttpServer(engine: Engine): Server {
         const made = await engine.createGuest(parsed.data.name, parsed.data.faction, parsed.data.persona, parsed.data.invite, engine.originHash(clientIp(req)), deviceLabel(req.headers['user-agent']));
         if ('error' in made) return json(res, 403, { error: made.error });
         return json(res, 201, { token: made.token, colonyId: made.colony.id });
+      }
+      // Passkeys (decision 0010, lot B): sign in with a passkey from any device; the ceremony needs no session.
+      if (req.method === 'POST' && url.pathname === '/api/auth/passkey/login/options') return json(res, 200, await passkeys.loginOptions());
+      if (req.method === 'POST' && url.pathname === '/api/auth/passkey/login/verify') {
+        const parsed = z.object({ handle: z.string().min(8).max(64), response: z.object({ id: z.string().min(1) }).passthrough() }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid response' });
+        const r = await passkeys.loginVerify(parsed.data.handle, parsed.data.response as unknown as Parameters<typeof passkeys.loginVerify>[1]);
+        if (!r.ok) return json(res, 403, { error: r.reason });
+        const colony = await engine.colonyOfAccount(r.account.id);
+        if (!colony) return json(res, 404, { error: 'no colony this season' });
+        const made = await engine.openSession(colony, deviceLabel(req.headers['user-agent']), r.account.id);
+        return json(res, 200, { token: made.token, colonyId: colony.id });
       }
       if (req.method === 'POST' && url.pathname === '/api/redeem') {
         const parsed = z.object({ code: z.string().min(10).max(400) }).safeParse(await readBody(req));
@@ -124,6 +138,25 @@ export function createHttpServer(engine: Engine): Server {
       if (req.method === 'DELETE' && url.pathname.startsWith('/api/sessions/')) {
         const ok = await engine.revokeSession(colony.id, decodeURIComponent(url.pathname.slice('/api/sessions/'.length)));
         return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no such session' });
+      }
+      // The account behind this colony and its passkeys; adding one creates the account (decision 0010, lot B).
+      if (req.method === 'GET' && url.pathname === '/api/account') return json(res, 200, await passkeys.summary(colony));
+      if (req.method === 'POST' && url.pathname === '/api/auth/passkey/register/options') {
+        const lang = url.searchParams.get('lang') === 'en' ? 'en' : 'fr';
+        return json(res, 200, await passkeys.registrationOptions(colony, lang));
+      }
+      if (req.method === 'POST' && url.pathname === '/api/auth/passkey/register/verify') {
+        const parsed = z.object({ response: z.object({ id: z.string().min(1) }).passthrough(), label: z.string().max(60).optional() }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid response' });
+        const r = await passkeys.registrationVerify(colony, parsed.data.response as unknown as Parameters<typeof passkeys.registrationVerify>[1], parsed.data.label || deviceLabel(req.headers['user-agent']));
+        if (!r.ok) return json(res, 400, { error: r.reason });
+        const account = await passkeys.accountFor(colony, 'fr', false);
+        if (account) await engine.adoptSessions(colony.id, account.id);
+        return json(res, 200, { ok: true, id: r.id });
+      }
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/account/passkeys/')) {
+        const ok = await passkeys.removePasskey(colony, decodeURIComponent(url.pathname.slice('/api/account/passkeys/'.length)));
+        return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no such passkey' });
       }
       if (req.method === 'POST' && url.pathname === '/api/link') { const code = engine.linkCode(colony.id); return json(res, 200, { code, url: `${engine.cfg.publicOrigin}/#join=${encodeURIComponent(code)}` }); }
       if (req.method === 'GET' && url.pathname.startsWith('/api/system/')) {

@@ -224,4 +224,6 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .account .lang { align-self: flex-start; margin: 4px 0 8px; }
 .account .actions a.link { align-self: center; color: var(--muted); font-size: 13px; }
 .account .selbox p.bad { margin: 0 0 8px; }
+.landing button.passkey { width: 100%; margin: 6px 0 0; }
+.tag.ok { border-color: var(--ok); color: var(--ok); }
 

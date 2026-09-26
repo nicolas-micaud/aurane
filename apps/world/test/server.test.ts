@@ -235,4 +235,32 @@ describe('closed beta', () => {
     expect((await fetch(`${url}/api/session`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
     expect((await fetch(`${url}/api/me`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(401);
   });
+
+  it('opens an account with the first passkey ceremony and refuses forged answers (decision 0010, lot B)', async () => {
+    const minted = await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 1 }) })).json() as { codes: string[] };
+    const { token, colonyId } = await (await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Keyed', faction: 'concordat', persona: 'vane', invite: minted.codes[0] }) })).json() as { token: string; colonyId: string };
+    const auth = { authorization: `Bearer ${token}` };
+    // A guest has no account yet.
+    const before = await (await fetch(`${url}/api/account`, { headers: auth })).json() as { account: unknown; passkeys: unknown[] };
+    expect(before.account).toBeNull();
+    // Asking for registration options creates the account and binds the colony; the RP ID is the registrable domain.
+    const opts = await (await fetch(`${url}/api/auth/passkey/register/options?lang=fr`, { method: 'POST', headers: auth })).json() as { rp: { id: string; name: string }; user: { name: string }; challenge: string; authenticatorSelection: { residentKey: string } };
+    expect(opts.rp).toEqual({ id: 'example.test', name: 'Aurane' });
+    expect(opts.user.name).toBe('Keyed');
+    expect(opts.challenge.length).toBeGreaterThan(20);
+    expect(opts.authenticatorSelection.residentKey).toBe('required');
+    const after = await (await fetch(`${url}/api/account`, { headers: auth })).json() as { account: { id: string } | null; passkeys: unknown[] };
+    expect(after.account?.id.startsWith('A')).toBe(true);
+    expect(after.passkeys).toEqual([]);
+    expect(await eng.persistence.accountOfColony(colonyId)).toBe(after.account!.id);
+    // A forged attestation is refused, and so is a login with an unknown passkey or a stale handle.
+    const forged = { id: 'AAAA', rawId: 'AAAA', type: 'public-key', clientExtensionResults: {}, response: { clientDataJSON: 'e30', attestationObject: 'oA' } };
+    expect((await fetch(`${url}/api/auth/passkey/register/verify`, { method: 'POST', headers: auth, body: JSON.stringify({ response: forged }) })).status).toBe(400);
+    const login = await (await fetch(`${url}/api/auth/passkey/login/options`, { method: 'POST' })).json() as { handle: string; options: { challenge: string; rpId: string } };
+    expect(login.options.rpId).toBe('example.test');
+    const assertion = { id: 'AAAA', rawId: 'AAAA', type: 'public-key', clientExtensionResults: {}, response: { clientDataJSON: 'e30', authenticatorData: 'oA', signature: 'oA' } };
+    expect((await fetch(`${url}/api/auth/passkey/login/verify`, { method: 'POST', body: JSON.stringify({ handle: login.handle, response: assertion }) })).status).toBe(403);
+    expect((await fetch(`${url}/api/auth/passkey/login/verify`, { method: 'POST', body: JSON.stringify({ handle: login.handle, response: assertion }) })).status).toBe(403); // the handle was spent
+    expect((await fetch(`${url}/api/account/passkeys/nope`, { method: 'DELETE', headers: auth })).status).toBe(404);
+  });
 });

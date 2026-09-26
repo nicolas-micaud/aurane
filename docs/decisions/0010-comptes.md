@@ -3,7 +3,7 @@
 Date : 25 septembre 2026. Proposition de la session cloud à la demande de Nick (deuxième test téléphone, en PWA) :
 « il n'y a pas de menu compte pour se déconnecter ; je ne suis pas fan du lien pour brancher un appareil à une
 Colonie, je veux que ce soit *account based* ; et la possibilité d'avoir plusieurs Colonies doit être étudiée. »
-Statut : **tranché par Nick le 26.09.2026** (réponses en fin de document) ; lot A en cours.
+Statut : **tranché par Nick le 26.09.2026** (réponses en fin de document) ; lots A et B livrés le même jour, C attend le SMTP.
 
 ## Le constat
 
@@ -147,3 +147,24 @@ le domaine est là. C attend le SMTP Infomaniak (demande à la session locale da
 
 Les questions posées à l'origine, pour mémoire : passkey ou e-mail d'abord ; une Colonie par saison ; l'expéditeur des
 e-mails ; le calendrier lié au domaine ; le sort du lien d'appareil.
+
+## État de l'implémentation (26.09.2026)
+
+- **Lot A, livré (PR 22)** : chaque jeton est une session avec un nom d'appareil, une dernière activité et une
+  révocation (`GET /api/sessions`, `DELETE /api/session`, `DELETE /api/sessions/:id`, socket fermé en 4401) ; onglet
+  Compte avec appareils, mémoire du Général (export, effacement), langue, installation, déconnexion gardée.
+- **Lot B, livré (PR 23)** : tables `accounts`, `credentials`, `account_colonies`, colonne `players.account_id`
+  (en place, sans migration de données). **Le compte naît avec la première passkey** : un invité n'a pas de compte
+  tant qu'il n'en ajoute pas une ; à ce moment la Colonie et ses sessions vivantes lui sont rattachées. Cérémonies
+  WebAuthn par `@simplewebauthn/server` (`apps/world/src/auth.ts`) : `POST /api/auth/passkey/register/options|verify`
+  (session requise), `POST /api/auth/passkey/login/options|verify` (sans session : ouvre la Colonie du compte avec
+  une nouvelle session), `GET /api/account`, `DELETE /api/account/passkeys/:id`. RP ID = domaine enregistrable de
+  `PUBLIC_ORIGIN` (`playaurane.com`), surcharge `RP_ID`, origines supplémentaires `RP_ORIGINS`. Clés résidentes
+  exigées (découvrables : « Se connecter avec une passkey » sans rien saisir), vérification utilisateur préférée
+  mais non exigée (un trousseau sans biométrie passe). Client : `@simplewebauthn/browser` chargé à la demande ;
+  « Ajouter une passkey » dans l'onglet Compte, statut *Protégé*, liste et retrait ; « Se connecter avec une
+  passkey » sur l'accueil ; la déconnexion d'un compte protégé ne fait plus peur, celle d'un invité propose la
+  passkey avant. Vérifié de bout en bout avec l'authentificateur virtuel de Chromium.
+- **Reste** : lot C (code par e-mail, SMTP Infomaniak à monter), lot D (règles multi-comptes sur le compte,
+  invitations par compte, « Recommencer »), lot E (retrait du lien d'appareil, une semaine après B en production).
+

@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, answerCounsel, eraseMemory, exportMemory, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, revokeSession, status, talk as sendTalk, toast, view, requestLink, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { act, addPasskey, answerCounsel, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, passkeysSupported, removePasskey, revokeSession, status, talk as sendTalk, toast, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -730,11 +730,24 @@ function GeneralPanel({ v }: { v: PlayerView }) {
  *  installation, and the way out. Guests are told what leaving costs; the passkey comes with lot B. */
 function AccountPanel({ v }: { v: PlayerView }) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [account, setAccount] = useState<AccountInfo | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [erasing, setErasing] = useState(false);
+  const [keying, setKeying] = useState(false);
   const l = useSig(lang);
-  const load = () => { void fetchSessions().then(setSessions); };
+  const load = () => { void fetchSessions().then(setSessions); void fetchAccount().then(setAccount); };
   useEffect(load, []);
+  const protectedBy = (account?.passkeys.length ?? 0) > 0;
+  const say = (text: string, kind: 'ok' | 'err' = 'ok') => { toast.value = { text, kind }; setTimeout(() => { if (toast.value?.text === text) toast.value = null; }, 3000); };
+  const enroll = async () => {
+    setKeying(true);
+    const r = await addPasskey(l);
+    setKeying(false);
+    if (r.ok) { say(t('passkeyAdded')); load(); }
+    else if (r.reason === 'cancelled') say(t('passkeyCancelled'), 'err');
+    else say(t('passkeyFailed').replace('{r}', r.reason ?? ''), 'err');
+  };
+  const drop = async (id: string) => { if (await removePasskey(id)) load(); };
   const when = (ms: number | null): string => (ms ? new Date(ms).toLocaleString(l === 'fr' ? 'fr-CH' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : t('neverSeen'));
   const cut = async (id: string) => { if (await revokeSession(id)) { toast.value = { text: t('cutOffDone'), kind: 'ok' }; setTimeout(() => { toast.value = null; }, 2500); load(); } };
   const download = async () => {
@@ -747,8 +760,19 @@ function AccountPanel({ v }: { v: PlayerView }) {
   return (
     <div class="account">
       <h2>{v.me.name} <small class={`f-${v.me.faction}`}>{t(v.me.faction as 'guild')}</small></h2>
-      <p class="muted">{t(v.me.persona as 'vane')} · <span class="tag">{t('accountGuest')}</span></p>
-      <p class="muted small">{t('accountGuestHelp')}</p>
+      <p class="muted">{t(v.me.persona as 'vane')} · <span class={`tag ${protectedBy ? 'ok' : ''}`}>{protectedBy ? t('accountProtected') : t('accountGuest')}</span></p>
+      <p class="muted small">{protectedBy ? t('accountProtectedHelp') : t('accountGuestHelp')}</p>
+      <h3>{t('passkeys')} {account && account.passkeys.length > 0 && <small>{account.passkeys.length}</small>}</h3>
+      {!protectedBy && <p class="muted small">{t('addPasskeyHelp')}</p>}
+      <ul class="list">
+        {(account?.passkeys ?? []).map((k) => (
+          <li key={k.id}>
+            <span><b>{k.label || '—'}</b> <small>· {t('lastUsed')} {when(k.lastUsedAt)}</small></span>
+            <button onClick={() => void drop(k.id)}>{t('removePasskey')}</button>
+          </li>
+        ))}
+      </ul>
+      {passkeysSupported() ? <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button> : <p class="muted small">{t('passkeyUnsupported')}</p>}
       <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
       <ul class="list">
         {(sessions ?? []).map((s) => (
@@ -769,10 +793,19 @@ function AccountPanel({ v }: { v: PlayerView }) {
       <div class="lang"><button class={l === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button><button class={l === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button></div>
       <div class="actions"><InstallButton compact /><a class="link" href={`/c/${encodeURIComponent(v.me.id)}`} target="_blank" rel="noopener">{t('colonyPage')} ›</a></div>
       <h3>{t('logout')}</h3>
-      {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : (
+      {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : protectedBy ? (
+        <div class="selbox">
+          <p class="muted">{t('logoutSafe')}</p>
+          <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logout')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
+        </div>
+      ) : (
         <div class="selbox">
           <p class="bad">{t('logoutWarn')}</p>
-          <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logoutAnyway')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
+          <div class="actions">
+            {passkeysSupported() && <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button>}
+            <button onClick={() => void logout()}>{t('logoutAnyway')}</button>
+            <button onClick={() => setLeaving(false)}>{t('cancel')}</button>
+          </div>
         </div>
       )}
     </div>

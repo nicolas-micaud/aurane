@@ -193,10 +193,31 @@ export class Engine {
 
   private async issueToken(colony: Colony, name: string, device?: string): Promise<{ token: string; colony: Colony }> {
     const token = randomBytes(24).toString('base64url');
-    await this.store.createPlayer({ id: `P${colony.id}`, colonyId: colony.id, tokenHash: hashToken(token), name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null });
+    await this.store.createPlayer({ id: `P${colony.id}`, colonyId: colony.id, tokenHash: hashToken(token), name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null, accountId: null });
     await this.snapshot();
     return { token, colony };
   }
+
+  /** A new session on a colony the caller proved to own (passkey login, decision 0010). */
+  async openSession(colony: Colony, device: string, accountId: string): Promise<{ token: string; colony: Colony }> {
+    const token = randomBytes(24).toString('base64url');
+    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now(), label: device, lastSeenAt: Date.now(), revokedAt: null, accountId });
+    return { token, colony };
+  }
+
+  /** Once an account exists, every live session of its colony belongs to it. */
+  async adoptSessions(colonyId: string, accountId: string): Promise<void> {
+    for (const p of await this.store.listPlayers(colonyId)) if (!p.accountId && !p.revokedAt) await this.store.updatePlayer(p.id, { accountId });
+  }
+
+  /** The colony an account plays this season, if it is still in the world. */
+  async colonyOfAccount(accountId: string): Promise<Colony | null> {
+    for (const id of (await this.store.coloniesOfAccount(accountId)).reverse()) { const c = this.world.colonies[id]; if (c && !c.npc) return c; }
+    return null;
+  }
+
+  /** Public for the auth routes; the store stays private otherwise. */
+  get persistence(): Store { return this.store; }
 
   // --- sessions (decision 0010, lot A): one token per device, listed, revocable ---------
 
@@ -263,7 +284,7 @@ export class Engine {
     const colony = this.world.colonies[data.c];
     if (!colony || colony.npc) return null;
     const token = randomBytes(24).toString('base64url');
-    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null });
+    await this.store.createPlayer({ id: `P${colony.id}-${randomBytes(4).toString('hex')}`, colonyId: colony.id, tokenHash: hashToken(token), name: colony.name, createdAt: Date.now(), label: device ?? '', lastSeenAt: Date.now(), revokedAt: null, accountId: await this.store.accountOfColony(colony.id) });
     return { token, colony };
   }
 

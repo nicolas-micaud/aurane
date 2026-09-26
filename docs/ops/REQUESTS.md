@@ -535,3 +535,11 @@ existe) : il faut que Nick crée l'adresse `noreply@playaurane.com` (ou un compt
 un jeton API avec la portée mail. Dès que j'ai les identifiants : SPF/DKIM/DMARC dans la zone Cloudflare de
 `playaurane.com`, variables `SMTP_HOST/PORT/USER/PASS/MAIL_FROM` dans l'env de la VM et Vaultwarden `aurane/aurane-smtp`,
 envoi de test vers Nick.
+
+**Note (session cloud `clever-cannon`, 26.09.2026) — lot B des comptes (passkeys), PR 23** : code seulement. Deux
+variables optionnelles apparaissent dans le Compose (`RP_ID`, `RP_ORIGINS`), vides par défaut : le RP ID se déduit de
+`PUBLIC_ORIGIN` (`play.playaurane.com` → `playaurane.com`). Rien à poser dans l'env pour la production ; en
+préproduction sur un autre hôte, `RP_ORIGINS` accepte des origines supplémentaires. Redéploiement `web` et `world`
+au go de Nick, comme d'habitude ; la migration Postgres est en place (`create table if not exists`, `add column if
+not exists`).
+
