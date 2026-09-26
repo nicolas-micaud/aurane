@@ -64,7 +64,16 @@ describe('world server', () => {
     expect(chat.history).toHaveLength(2);
     const hist = await (await fetch(`${base}/api/talk`, { headers: { authorization: `Bearer ${token}` } })).json() as { history: unknown[] };
     expect(hist.history).toHaveLength(2);
-    expect(doc.policy.defendFirst).toContain(engine.world.colonies[colonyId]!.capital);
+    // Confirmation is on by default: the doctrine waits for the player's yes, then governs the Colony.
+    const held = doc as unknown as { pending: { id: string } | null; applied: boolean; readable: string[] };
+    expect(held.applied).toBe(false);
+    expect(held.pending?.id).toBeTruthy();
+    expect(held.readable.length).toBeGreaterThan(0);
+    expect(engine.world.colonies[colonyId]!.policy.aggression).not.toBe(0);
+    const confirmed = await (await fetch(`${base}/api/doctrine/confirm`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ id: held.pending!.id }) })).json() as { ok: boolean };
+    expect(confirmed.ok).toBe(true);
+    expect(engine.world.colonies[colonyId]!.policy.aggression).toBe(0);
+    expect(engine.world.colonies[colonyId]!.policy.defendFirst).toContain(engine.world.colonies[colonyId]!.capital);
     const brief = await (await fetch(`${base}/api/briefing?lang=en`, { headers: { authorization: `Bearer ${token}` } })).json() as { text: string; source: string };
     expect(brief.source).toBe('template');
     expect(brief.text).toContain('Oriel.');
