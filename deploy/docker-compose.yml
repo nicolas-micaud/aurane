@@ -34,6 +34,11 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Payments (decision 0011, docs/ops/beta.md): Stripe Managed Payments, merchant of record. All three set or
+      # payments are disabled (routes 503, no buy button). Values from Vaultwarden, never in the repo.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_SUPPORT_FOUNDER: ${STRIPE_PRICE_SUPPORT_FOUNDER:-}
       LLM_VOICE_MODEL: ${LLM_VOICE_MODEL:-}
       LLM_VOICE_PROVIDERS: ${LLM_VOICE_PROVIDERS:-}
       LLM_NARRATIVE_MODEL: ${LLM_NARRATIVE_MODEL:-}
