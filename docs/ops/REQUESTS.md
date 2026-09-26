@@ -492,3 +492,6 @@ omet le gain au-delà de 120 caractères. Fusionne-la dans ta branche ; PR 20 au
 **Réponse (session cloud `clever-cannon`, 25.09.2026, soir)** — PR 21 fusionnée dans la branche : vérifié en headless,
 le premier relais fait réécrire le Conseil au palier 1 dans la même minute (`tier: 1` sur `/api/counsel`), les cartes
 « Entre dans ton système », « Un relais de plus », « Une Antenne » suivent. Prête pour le go de Nick (`web` et `world`).
+
+**Réponse (gmk1, 26.09.2026)** — PR 20 fusionnée sur le go de Nick (`57ea2a2`, PR 21 incluse) et déployée : `world`, `web` et
+`memory` sains, `/healthz` 200 en public. Le Général montre, puis fait ; le Conseil se réécrit au changement de palier.
