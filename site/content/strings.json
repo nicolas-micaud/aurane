@@ -125,7 +125,69 @@
         }
       ]
     },
-    "rulesH1": "Les règles de la Saison 0"
+    "rulesH1": "Les règles de la Saison 0",
+    "corthexis": {
+      "kicker": "La mémoire de ton Général",
+      "title": "Corthexis",
+      "lead": "Un modèle de langage oublie tout à la fin de la conversation. Ton Général, non. Chaque décision, chaque traité, chaque bataille devient une note datée, reliée à ce qui a suivi. Avant de te parler, il relit ce graphe. C'est Corthexis.",
+      "cards": [
+        {
+          "title": "Des faits, pas des impressions",
+          "text": "Les notes sont écrites par le moteur du jeu : qui t'a attaqué, quel coup tu as choisi, ce qu'il a donné. Le modèle les lit et ne les réécrit pas. Chaque chiffre que dit le Général est vérifié contre l'état du monde avant d'arriver à l'écran."
+        },
+        {
+          "title": "Relié, donc utile",
+          "text": "Chaque note pointe vers ce qui a suivi : ton choix de relier Irzen, les trois Tirages où le pont a tenu. À ton retour, le briefing commence par là. Une doctrine qui coulerait la Colonie est refusée, parce qu'il sait qui sont tes alliés."
+        },
+        {
+          "title": "Plus fort que le Silence",
+          "text": "Corthexis vit hors du monde de la saison, sur une instance à part hébergée à Genève. Le Silence efface l'univers, pas elle."
+        },
+        {
+          "title": "À toi, pour de vrai",
+          "text": "Depuis l'onglet Compte, tu la lis, tu l'emportes en fichier, tu l'effaces d'un geste. Ta mémoire, pas la nôtre."
+        }
+      ],
+      "demo": "Voir Corthexis sur une vraie mémoire d'entreprise (démo publique)",
+      "caption": "Visualisation : la mémoire d'une Colonie sur deux saisons. Les nœuds sont des notes, les liens ce qui a suivi.",
+      "viz": {
+        "general": "Le Général",
+        "hud": "CORTHEXIS · mémoire de Colonie",
+        "notes": "notes",
+        "links": "synapses",
+        "seasons": "saisons",
+        "types": {
+          "decision": "décision",
+          "ally": "allié",
+          "betrayal": "trahison",
+          "battle": "bataille",
+          "episode": "épisode",
+          "refusal": "refus"
+        },
+        "nodes": {
+          "d1": "Relier Irzen",
+          "e1": "Le pont tient 3 Tirages",
+          "a1": "Pacte avec Halden",
+          "x1": "Défense d'Arthaven",
+          "b1": "Maro rompt le traité",
+          "r1": "Doctrine refusée : tout vendre",
+          "d2": "Acheter du Métal",
+          "e2": "Halden envoie une escorte",
+          "d3": "Tenir Eoulsol",
+          "s1": "Maro réapparaît",
+          "d4": "Relier Ancre"
+        },
+        "log": {
+          "note": "+ note",
+          "link": "↳ synapse",
+          "recall": "rappel · briefing",
+          "recallOut": "dernière décision + 1 nom à ne pas oublier",
+          "silence": "SILENCE · l'univers est effacé · mémoire conservée",
+          "season": "SAISON 1 · le Général se souvient de Maro",
+          "refuse": "doctrine refusée avant tout appel au modèle"
+        }
+      }
+    }
   },
   "en": {
     "lang": "en",
@@ -253,6 +315,68 @@
         }
       ]
     },
-    "rulesH1": "The rules of Season 0"
+    "rulesH1": "The rules of Season 0",
+    "corthexis": {
+      "kicker": "Your General's memory",
+      "title": "Corthexis",
+      "lead": "A language model forgets everything when the conversation ends. Your General does not. Every decision, every treaty, every battle becomes a dated note, linked to what came next. Before speaking to you, it reads that graph again. That is Corthexis.",
+      "cards": [
+        {
+          "title": "Facts, not impressions",
+          "text": "The notes are written by the game engine: who attacked you, which move you chose, what it led to. The model reads them and does not rewrite them. Every number the General says is checked against the state of the world before it reaches your screen."
+        },
+        {
+          "title": "Linked, therefore useful",
+          "text": "Each note points at what followed: your choice to link Irzen, the three Draws the bridge held. When you come back, the briefing starts there. A doctrine that would sink the Colony is turned down, because it knows who your allies are."
+        },
+        {
+          "title": "Stronger than the Silence",
+          "text": "Corthexis lives outside the season's world, on a separate instance hosted in Geneva. The Silence wipes the universe, not the memory."
+        },
+        {
+          "title": "Yours, for real",
+          "text": "From the Account tab you read it, take it with you as a file, erase it in one gesture. Your memory, not ours."
+        }
+      ],
+      "demo": "See Corthexis on a real company memory (public demo)",
+      "caption": "Visualisation: a Colony's memory across two seasons. Nodes are notes, links are what followed.",
+      "viz": {
+        "general": "The General",
+        "hud": "CORTHEXIS · Colony memory",
+        "notes": "notes",
+        "links": "synapses",
+        "seasons": "seasons",
+        "types": {
+          "decision": "decision",
+          "ally": "ally",
+          "betrayal": "betrayal",
+          "battle": "battle",
+          "episode": "episode",
+          "refusal": "refusal"
+        },
+        "nodes": {
+          "d1": "Link Irzen",
+          "e1": "The bridge holds 3 Draws",
+          "a1": "Pact with Halden",
+          "x1": "Defence of Arthaven",
+          "b1": "Maro breaks the treaty",
+          "r1": "Doctrine refused: sell everything",
+          "d2": "Buy Metal",
+          "e2": "Halden sends an escort",
+          "d3": "Hold Eoulsol",
+          "s1": "Maro reappears",
+          "d4": "Link Anchor"
+        },
+        "log": {
+          "note": "+ note",
+          "link": "↳ synapse",
+          "recall": "recall · briefing",
+          "recallOut": "last decision + 1 name not to forget",
+          "silence": "SILENCE · the universe is wiped · memory kept",
+          "season": "SEASON 1 · the General remembers Maro",
+          "refuse": "doctrine refused before any model call"
+        }
+      }
+    }
   }
 }

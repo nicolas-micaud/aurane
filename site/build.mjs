@@ -87,7 +87,7 @@ function top(lang, page) {
   const other = t.otherLang;
   const otherPath = page === 'rules' ? PATHS[other].rules : page === 'privacy' ? PATHS[other].privacy : PATHS[other].home;
   const nav = page === 'home'
-    ? `<a href="#jeu" class="sec">${esc(t.nav.game)}</a><a href="#general" class="sec">${esc(t.nav.general)}</a><a href="#factions" class="sec">${esc(t.nav.factions)}</a><a href="${p.rules}">${esc(t.nav.rules)}</a><a href="${p.waitlist}">${esc(t.nav.waitlist)}</a>`
+    ? `<a href="#jeu" class="sec">${esc(t.nav.game)}</a><a href="#general" class="sec">${esc(t.nav.general)}</a><a href="#corthexis" class="sec">Corthexis</a><a href="#factions" class="sec">${esc(t.nav.factions)}</a><a href="${p.rules}">${esc(t.nav.rules)}</a><a href="${p.waitlist}">${esc(t.nav.waitlist)}</a>`
     : `<a href="${p.home}">${esc(t.backHome)}</a><a href="${p.home}${p.waitlist}">${esc(t.nav.waitlist)}</a>`;
   return `<a class="skip" href="#main">${esc(t.skip)}</a>
 <div class="bg" aria-hidden="true"></div>
@@ -183,6 +183,21 @@ function hero(lang) {
 </section>`;
 }
 
+function corthexis(lang) {
+  const c = strings[lang].corthexis;
+  const data = JSON.stringify({ ...c.viz }).replace(/</g, '\\u003c');
+  return `<section id="corthexis" class="cx" aria-labelledby="h-cx">
+<p class="kicker">${esc(c.kicker)}</p>
+<h2 id="h-cx">${esc(c.title)}</h2>
+<p class="lead">${esc(c.lead)}</p>
+<figure class="cx-viz"><canvas id="cx-canvas" role="img" aria-label="${esc(c.caption)}"></canvas><figcaption>${esc(c.caption)}</figcaption></figure>
+<script type="application/json" id="cx-data">${data}</script>
+<div class="cards cx-cards">${c.cards.map((k) => `<article class="card"><h3>${esc(k.title)}</h3><p>${esc(k.text)}</p></article>`).join('')}</div>
+<p><a class="more" href="https://demo.corthexis.com/" rel="noopener">${esc(c.demo)} →</a></p>
+</section>
+<script src="/corthexis.js" defer></script>`;
+}
+
 function landing(lang, { isRoot = false } = {}) {
   const t = strings[lang];
   const p = PATHS[lang];
@@ -206,6 +221,7 @@ ${hero(lang)}
 <h2 id="h-general">${esc(sections.about.title[lang])}</h2>
 <div class="prose">${about.map((x) => `<p>${x}</p>`).join('')}</div>
 </section>
+${corthexis(lang)}
 <section id="aurane" aria-labelledby="h-aurane">
 <h2 id="h-aurane">${esc(sections.work.title[lang])}</h2>
 <div class="prose">${lore.map((x) => `<p>${x}</p>`).join('')}</div>

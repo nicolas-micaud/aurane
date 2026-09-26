@@ -106,4 +106,16 @@ describe('landing build', () => {
     expect(sm).toContain('hreflang="x-default"');
     for (const p of PAGES) expect((await stat(join(out, p))).size, p).toBeLessThan(60_000);
   });
+  it('explains Corthexis on the home page with its visualisation', async () => {
+    for (const [p, lead] of [['fr/index.html', 'Avant de te parler, il relit ce graphe.'], ['en/index.html', 'Before speaking to you, it reads that graph again.']]) {
+      const html = await read(p);
+      expect(html).toContain('id="corthexis"');
+      expect(html).toContain('href="#corthexis"');
+      expect(html).toContain('<canvas id="cx-canvas"');
+      expect(html).toContain('<script src="/corthexis.js" defer></script>');
+      expect(text(html)).toContain(lead);
+      expect(() => JSON.parse(html.match(/<script type="application\/json" id="cx-data">([^<]*)<\/script>/)![1])).not.toThrow();
+    }
+    expect((await stat(join(out, 'corthexis.js'))).isFile()).toBe(true);
+  });
 });
