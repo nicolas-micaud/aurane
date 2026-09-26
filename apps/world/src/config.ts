@@ -54,6 +54,12 @@ export interface Config {
   /** The dedicated long-memory instance of Aurane (PUT/GET/DELETE /memory/{colony}, Bearer); absent = Postgres only. */
   memoryUrl: string | null;
   memoryToken: string | null;
+  /** Outbox flush period (ms, 5000) and reconciliation period with the instance (ms, one hour). */
+  memoryFlushMs: number;
+  memoryReconcileMs: number;
+  /** Health thresholds: oldest unconfirmed write (s, 900) and backup age (h, 26: one missed nightly run). */
+  memoryAlertOutboxS: number;
+  memoryAlertBackupH: number;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -91,5 +97,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     budgetAlertRatio: num(env.LLM_BUDGET_ALERT_RATIO, 0.8),
     memoryUrl: env.AURANE_MEMORY_URL || null,
     memoryToken: env.AURANE_MEMORY_TOKEN || null,
+    memoryFlushMs: num(env.AURANE_MEMORY_FLUSH_MS, 5000),
+    memoryReconcileMs: num(env.AURANE_MEMORY_RECONCILE_MS, 3600000),
+    memoryAlertOutboxS: num(env.AURANE_MEMORY_ALERT_OUTBOX_S, 900),
+    memoryAlertBackupH: num(env.AURANE_MEMORY_ALERT_BACKUP_H, 26),
   };
 }

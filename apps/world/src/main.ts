@@ -3,7 +3,7 @@ import { Engine } from './engine.js';
 import { createHttpServer } from './http.js';
 import { mailerFromEnv } from './mail.js';
 import { FileStore, PgStore, type Store } from './store.js';
-import { FileBudgetStore, FileJobStore, FileMemoryStore, PgBudgetStore, PgJobStore, PgMemoryStore } from './llmstore.js';
+import { FileBudgetStore, FileJobStore, FileMemoryStore, PgBackupStatus, PgBudgetStore, PgJobStore, PgMemoryStore, PgMirrorOutbox } from './llmstore.js';
 import type { GeneralDeps } from './general.js';
 
 async function main(): Promise<void> {
@@ -16,7 +16,8 @@ async function main(): Promise<void> {
     await PgJobStore.migrate(pgStore.pgPool);
     await PgBudgetStore.migrate(pgStore.pgPool);
     store = pgStore;
-    general = { jobStore: new PgJobStore(pgStore.pgPool), memoryStore: new PgMemoryStore(pgStore.pgPool), budgetStore: new PgBudgetStore(pgStore.pgPool) };
+    const backups = new PgBackupStatus(pgStore.pgPool);
+    general = { jobStore: new PgJobStore(pgStore.pgPool), memoryStore: new PgMemoryStore(pgStore.pgPool), mirrorOutbox: new PgMirrorOutbox(pgStore.pgPool), backupStatus: () => backups.list(), budgetStore: new PgBudgetStore(pgStore.pgPool) };
   } else {
     store = new FileStore(cfg.snapshotDir);
     general = { jobStore: new FileJobStore(cfg.snapshotDir), memoryStore: new FileMemoryStore(cfg.snapshotDir), budgetStore: new FileBudgetStore(cfg.snapshotDir) };
