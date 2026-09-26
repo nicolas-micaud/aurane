@@ -8,12 +8,14 @@ import {
 } from '@aurane/sim';
 import { contactLine, firstRelayLine, inboundWarning, tierUnlocked, type GazetteIssue, type Turn } from '@aurane/general';
 import type { Config } from './config.js';
-import type { Store } from './store.js';
+import type { PastColony, Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
 import { FOUNDER_SKU } from './payments/catalog.js';
 
 const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
+/** A found ticket lives long enough to fill the founding form, not longer. */
+export const FOUND_TICKET_TTL_MS = 15 * 60000;
 
 export type Listener = (view: PlayerView) => void;
 export type SystemListener = (view: SystemDetailView) => void;
@@ -255,13 +257,76 @@ export class Engine {
   /** The General's memory follows the account across seasons; a guest's stays with its colony and its season. */
   async memoryKeyOf(colonyId: string): Promise<string> {
     const account = await this.store.accountOfColony(colonyId);
-    return account ? `account:${account}` : `season:${this.cfg.seasonSeed}:${colonyId}`;
+    return account ? this.accountMemoryKey(account) : `season:${this.cfg.seasonSeed}:${colonyId}`;
   }
 
   /** The colony an account plays this season, if it is still in the world. */
   async colonyOfAccount(accountId: string): Promise<Colony | null> {
     for (const id of (await this.store.coloniesOfAccount(accountId)).reverse()) { const c = this.world.colonies[id]; if (c && !c.npc) return c; }
     return null;
+  }
+
+  // --- returning accounts: a colony in the new season, linked to the account, no invitation needed -------------
+
+  /** Found tickets by hash: one per fresh sign-in with no colony this season. In process only: a restart asks for a new
+   *  sign-in, like the passkey challenges. */
+  private readonly foundTickets = new Map<string, { accountId: string; season: string; expiresAt: number }>();
+  /** One founding at a time per account: two tickets used at once still make one colony. */
+  private readonly founding = new Map<string, Promise<unknown>>();
+
+  /** The memory key of an account (what `memoryKeyOf` answers once a colony is linked to it). */
+  accountMemoryKey(accountId: string): string { return `account:${accountId}`; }
+
+  /**
+   * After a sign-in (passkey or e-mail code) that proved the account and found no colony this season: a single-use,
+   * short-lived ticket to found one, what the account played last season (to prefill the form) and whether its General
+   * remembers it. Only the sign-in routes call this, right after the proof.
+   */
+  async foundOffer(accountId: string): Promise<{ ticket: string; expiresAt: number; previous: PastColony | null; remembers: boolean }> {
+    const now = Date.now();
+    for (const [k, v] of this.foundTickets) if (v.expiresAt <= now) this.foundTickets.delete(k);
+    const ticket = randomBytes(24).toString('base64url');
+    const expiresAt = now + FOUND_TICKET_TTL_MS;
+    this.foundTickets.set(hashToken(ticket), { accountId, season: this.cfg.seasonSeed, expiresAt });
+    let previous: PastColony | null = null;
+    for (const id of (await this.store.coloniesOfAccount(accountId)).reverse()) {
+      if (this.world.colonies[id]) continue;
+      previous = await this.store.pastColony(id).catch(() => null);
+      if (previous) break;
+    }
+    if (previous && (!(FACTIONS as readonly string[]).includes(previous.faction) || !(PERSONAS as readonly string[]).includes(previous.persona))) previous = null;
+    const remembers = await this.general.hasMemory(this.accountMemoryKey(accountId)).catch(() => false);
+    return { ticket, expiresAt, previous, remembers };
+  }
+
+  /**
+   * Founds the account's colony of this season with a ticket from `foundOffer`: spent on first use (a replay is refused),
+   * refused once expired. No invitation: the account was admitted in a past season. One colony per account per season:
+   * when it already has one, that colony opens (`created: false`). The colony is linked to the account before anything
+   * can read the General's memory, so the memory is the account's from the first minute.
+   */
+  async foundColony(ticket: string, name: string, faction: Faction, persona: Persona, origin?: string, device?: string): Promise<{ token: string; colony: Colony; created: boolean } | { error: 'ticket expired or used' }> {
+    const key = hashToken(ticket);
+    const t = this.foundTickets.get(key);
+    this.foundTickets.delete(key); // spent now, whatever happens next
+    if (!t || t.expiresAt <= Date.now() || t.season !== this.cfg.seasonSeed) return { error: 'ticket expired or used' };
+    if (!(await this.store.findAccount(t.accountId))) return { error: 'ticket expired or used' };
+    const accountId = t.accountId;
+    const prev = this.founding.get(accountId) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(async () => {
+      const existing = await this.colonyOfAccount(accountId);
+      if (existing) return { ...(await this.openSession(existing, device ?? '', accountId)), created: false };
+      const colony = spawnColony(this.world, { name, faction, persona, npc: false, ...(origin ? { origin } : {}) });
+      await this.store.linkColony(accountId, colony.id, Date.now());
+      await this.general.adoptMemory(colony.id).catch((err: Error) => console.warn(JSON.stringify({ msg: 'memory adopt', colonyId: colony.id, error: err.message })));
+      const made = await this.openSession(colony, device ?? '', accountId);
+      await this.refreshCosmetics().catch(() => undefined);
+      await this.snapshot();
+      console.log(JSON.stringify({ msg: 'returning account founded a colony', account: accountId, colony: colony.id, season: this.cfg.seasonSeed }));
+      return { ...made, created: true };
+    });
+    this.founding.set(accountId, run);
+    try { return await run; } finally { if (this.founding.get(accountId) === run) this.founding.delete(accountId); }
   }
 
   /** Public for the auth routes; the store stays private otherwise. */

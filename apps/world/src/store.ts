@@ -1,6 +1,6 @@
 // Persistence behind one small interface: Postgres in production, JSON files for local
 // development and tests. The world is a single snapshot; players map tokens to colonies.
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
 import type { WorldSnapshot } from '@aurane/sim';
@@ -19,6 +19,8 @@ export interface EntitlementRecord {
   externalRef: string; /** The provider's payment reference (Stripe PaymentIntent), to revoke on a refund. */ paymentRef: string | null;
   amountCents: number; currency: string; createdAt: number; expiresAt: number | null; revokedAt: number | null;
 }
+/** How a colony of a finished season looked to its player: what a returning account is offered again. */
+export interface PastColony { name: string; faction: string; persona: string }
 export interface InviteRecord { code: string; note: string; createdAt: number; usedBy: string | null; usedAt: number | null }
 
 export interface Store {
@@ -26,6 +28,8 @@ export interface Store {
   saveSnapshot(snap: WorldSnapshot): Promise<void>;
   /** Keep the current snapshot under a label (a finished season) before a fresh world replaces it. */
   archiveSnapshot(label: string): Promise<void>;
+  /** The colony with this id in an archived season (ids never repeat across seasons), newest archive first. */
+  pastColony(colonyId: string): Promise<PastColony | null>;
   createPlayer(p: PlayerRecord): Promise<void>;
   findPlayerByToken(tokenHash: string): Promise<PlayerRecord | null>;
   /** Every session of a colony, revoked ones included (the client hides them). */
@@ -121,6 +125,20 @@ export class FileStore implements Store {
   async archiveSnapshot(label: string): Promise<void> {
     await this.ensure();
     try { await rename(join(this.dir, 'world.json'), join(this.dir, `world-${label.replace(/[^\w.-]/g, '_')}.json`)); } catch { /* nothing to archive */ }
+  }
+
+  async pastColony(colonyId: string): Promise<PastColony | null> {
+    await this.ensure();
+    const files = (await readdir(this.dir)).filter((f) => /^world-.+\.json$/.test(f));
+    const dated = await Promise.all(files.map(async (f) => ({ f, t: (await stat(join(this.dir, f))).mtimeMs })));
+    for (const { f } of dated.sort((a, b) => b.t - a.t)) {
+      try {
+        const snap = JSON.parse(await readFile(join(this.dir, f), 'utf8')) as { state?: { colonies?: Record<string, Partial<PastColony> & { npc?: boolean }> } };
+        const c = snap.state?.colonies?.[colonyId];
+        if (c && !c.npc && c.name && c.faction && c.persona) return { name: c.name, faction: c.faction, persona: c.persona };
+      } catch { /* unreadable archive: skip */ }
+    }
+    return null;
   }
 
   async createPlayer(p: PlayerRecord): Promise<void> {
@@ -277,6 +295,15 @@ export class PgStore implements Store {
       'insert into world_snapshots (id, data, updated_at) select $1, data, now() from world_snapshots where id = $2 on conflict (id) do update set data = excluded.data, updated_at = now()',
       [`season:${label}`, 'current'],
     );
+  }
+
+  async pastColony(colonyId: string): Promise<PastColony | null> {
+    const r = await this.pool.query<{ c: (Partial<PastColony> & { npc?: boolean }) | null }>(
+      "select data->'state'->'colonies'->$1 as c from world_snapshots where id like 'season:%' and data->'state'->'colonies' ? $1 order by updated_at desc limit 1",
+      [colonyId],
+    );
+    const c = r.rows[0]?.c;
+    return c && !c.npc && c.name && c.faction && c.persona ? { name: c.name, faction: c.faction, persona: c.persona } : null;
   }
 
   async createPlayer(p: PlayerRecord): Promise<void> {

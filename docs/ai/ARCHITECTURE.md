@@ -230,6 +230,11 @@ monde n'attend jamais la mémoire. Côté couche LLM :
   `season:<SEASON_SEED>:<colonie>` (la Colonie homonyme de la saison suivante ne la lit jamais). Les lignes d'avant
   (clé = id nu) sont migrées au démarrage si la Colonie est dans le monde, comptées `orphans` sinon.
   **Une graine de saison ne se réutilise jamais.**
+- **Retour d'un compte à la saison suivante** (26.09.2026) : la connexion (passkey ou code e-mail) d'un compte sans
+  Colonie dans la saison répond `404 { error: 'no colony this season', found: { ticket, expiresAt, previous, remembers } }` ;
+  `POST /api/account/found { ticket, name, faction, persona }` fonde la Colonie **liée au compte** avant toute lecture de
+  mémoire (`linkColony` puis `adoptMemory`) : le Général lit `account:<id>` dès la première minute. Détails :
+  `docs/ops/beta.md` § Comptes.
 
 ### Fiabilité de la mémoire (audit 26.09.2026)
 
@@ -286,9 +291,6 @@ monde n'attend jamais la mémoire. Côté couche LLM :
 
 - La file et la mémoire vivent hors instantané : un `docker compose down -v` les perd (le monde aussi) ; la
   mémoire longue se restaure alors depuis `s3://aurane-backups/memory/` (`memory-restore.sh`).
-- Le retour d'un compte à la saison suivante (`colonyOfAccount` renvoie 404 « no colony this season ») n'a pas
-  encore de parcours de création de Colonie liée au compte : la mémoire `account:` attend ce parcours, elle est
-  retrouvée dès que la nouvelle Colonie est liée au compte (test `apps/world/test/memory.test.ts`).
 - Les mémoires d'invités des saisons passées (`season:…`) et les lignes `orphans` ne sont plus lues ; elles ne sont
   pas purgées automatiquement (à décider : durée de conservation des données d'invités).
 - La projection d'Énergie compte le stock total de la Colonie ; le moteur paie l'entretien depuis les

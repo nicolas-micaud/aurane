@@ -20,6 +20,13 @@ const GuestSchema = z.object({
   invite: z.string().trim().max(40).optional(),
 });
 
+const FoundSchema = z.object({
+  ticket: z.string().min(16).max(128),
+  name: z.string().trim().min(2).max(32),
+  faction: z.enum(FACTIONS),
+  persona: z.enum(PERSONAS),
+});
+
 function html(res: ServerResponse, status: number, body: string): void {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' });
   res.end(body);
@@ -128,7 +135,9 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const r = await passkeys.loginVerify(parsed.data.handle, parsed.data.response as unknown as Parameters<typeof passkeys.loginVerify>[1]);
         if (!r.ok) return json(res, 403, { error: r.reason });
         const colony = await engine.colonyOfAccount(r.account.id);
-        if (!colony) return json(res, 404, { error: 'no colony this season' });
+        // A returning account (a past season's player): a ticket to found this season's colony, no invitation. The
+        // status stays 404 so an older client still shows its message; a newer one opens the founding form.
+        if (!colony) return json(res, 404, { error: 'no colony this season', found: await engine.foundOffer(r.account.id) });
         const made = await engine.openSession(colony, deviceLabel(req.headers['user-agent']), r.account.id);
         return json(res, 200, { token: made.token, colonyId: colony.id });
       }
@@ -144,9 +153,19 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const r = await emails.verifyLogin(parsed.data.handle, parsed.data.code);
         if (!r.ok) return json(res, 403, { error: r.reason });
         const colony = await engine.colonyOfAccount(r.account.id);
-        if (!colony) return json(res, 404, { error: 'no colony this season' });
+        // A returning account (a past season's player): a ticket to found this season's colony, no invitation. The
+        // status stays 404 so an older client still shows its message; a newer one opens the founding form.
+        if (!colony) return json(res, 404, { error: 'no colony this season', found: await engine.foundOffer(r.account.id) });
         const made = await engine.openSession(colony, deviceLabel(req.headers['user-agent']), r.account.id);
         return json(res, 200, { token: made.token, colonyId: colony.id });
+      }
+      // The founding itself, with the ticket from the sign-in above: 201 a new colony, 200 the one this account already has.
+      if (req.method === 'POST' && url.pathname === '/api/account/found') {
+        const parsed = FoundSchema.safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid colony', issues: parsed.error.issues });
+        const made = await engine.foundColony(parsed.data.ticket, parsed.data.name, parsed.data.faction, parsed.data.persona, engine.originHash(clientIp(req)), deviceLabel(req.headers['user-agent']));
+        if ('error' in made) return json(res, 403, { error: made.error });
+        return json(res, made.created ? 201 : 200, { token: made.token, colonyId: made.colony.id, created: made.created });
       }
       if (req.method === 'POST' && url.pathname === '/api/redeem') {
         const parsed = z.object({ code: z.string().min(10).max(400) }).safeParse(await readBody(req));

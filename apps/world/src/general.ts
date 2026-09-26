@@ -174,6 +174,13 @@ export class GeneralService {
     return true;
   }
 
+  /** Whether anything is remembered under this key (a returning account, before its colony exists: « le Général se
+   *  souvient de toi »). Read-only; a cold key is fetched from the instance like any read. */
+  async hasMemory(key: string): Promise<boolean> {
+    const m = await this.memoryStore.load(key);
+    return !!m && !isEmptyMemory(m);
+  }
+
   /** Push what the outbox holds now (tests, admin); the timer does it on its own every `memoryFlushMs`. */
   async flushMemory(): Promise<number> { return this.mirror ? this.mirror.flush() : 0; }
 
