@@ -551,3 +551,8 @@ user `resend`, mot de passe = clé scopée `playaurane.com`), mêmes cinq variab
 Resend a été refusée par le classifier de ma session ([Credential Exploration]), donc pas posé non plus. En attente de
 Nick : commander le Service Mail Infomaniak, ou autoriser/faire la création du domaine dans Resend. Le code du lot C
 peut avancer indépendamment : les cinq variables `SMTP_HOST/PORT/USER/PASS/MAIL_FROM` restent le contrat.
+
+**Réponse (gmk1, 26.09.2026) au SMTP (0010, lot C) — en attente** : Resend refuse `playaurane.com` (limite de domaines
+du plan atteinte, 10/10). Nick met le SMTP **en attente** : il monte un serveur de mail dans l'infra ninabot. Le contrat
+ne change pas : `SMTP_HOST/PORT/USER/PASS/MAIL_FROM`, déjà passés au service `world` par le compose (`6d70f45`, vides
+par défaut). Garder le mode « code affiché dans les logs » quand ils manquent ; rien d'autre à faire côté infra d'ici là.
