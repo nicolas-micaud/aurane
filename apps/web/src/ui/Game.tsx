@@ -748,7 +748,10 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   }, [spokeCount, inboundCount]);
   const journal = [...v.me.journal].reverse().slice(0, 12);
   const tv = useSig(teach);
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy, card?.id]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // A new doctrine card opens on its title (« Voici ce que je ferai… »), not on its last line; otherwise follow the thread.
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
+  useEffect(() => { if (card) cardRef.current?.scrollIntoView({ block: 'start' }); }, [card?.id]);
   const submit = async () => {
     const said = text.trim();
     if (!said) return;
@@ -770,7 +773,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         {thread.slice(-12).map((m, i) => <p key={`${m.at}-${i}`} class={`bubble ${m.who}`}>{m.text}</p>)}
         {busy && <p class="bubble general muted">{t('thinking')}</p>}
       </div>
-      {card && <DoctrineCard v={v} card={card} />}
+      <div ref={cardRef}>{card && <DoctrineCard v={v} card={card} />}</div>
       <div class={`say ${teachClass(tv, 'say')}`}>
         <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onFocus={(e) => setTimeout(() => (e.target as HTMLElement).scrollIntoView({ block: 'nearest' }), 250)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
         <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>
