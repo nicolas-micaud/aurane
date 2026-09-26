@@ -1,0 +1,28 @@
+HTTP/2 200 
+accept-ranges: bytes
+access-control-allow-origin: *
+age: 89591
+cache-control: public, max-age=3600, must-revalidate
+cdn-cache-control: public, s-maxage=86400
+cloudflare-cdn-cache-control: public, s-maxage=86400
+content-disposition: inline
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://va.vercel-scripts.com https://www.googletagmanager.com https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://cfsahuxbjxbdyrvpogxi.supabase.co https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.clarity.ms https://c.bing.com https://i.ytimg.com; media-src 'self' blob: data:; frame-src https://www.youtube-nocookie.com; connect-src 'self' https://cfsahuxbjxbdyrvpogxi.supabase.co https://*.supabase.co wss://cfsahuxbjxbdyrvpogxi.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://cloudflareinsights.com https://vitals.vercel-insights.com https://vercel-analytics.com https://va.vercel-scripts.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://www.google.com https://*.clarity.ms; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+content-signal: search=yes, ai-input=yes, ai-train=yes
+content-type: text/html; charset=utf-8
+cross-origin-opener-policy: same-origin
+date: Sat, 26 Sep 2026 07:00:03 GMT
+etag: "51f7fdc97dd3282c38997b2cc9457d1c"
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: strict-origin-when-cross-origin
+server: Vercel
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-matched-path: /about
+x-nextjs-prerender: 1
+x-nextjs-stale-time: 300
+x-vercel-cache: HIT
+x-vercel-id: fra1::xzfct-1790406003439-80465a869ac0
+content-length: 538627
+

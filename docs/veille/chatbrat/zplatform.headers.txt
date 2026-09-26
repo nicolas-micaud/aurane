@@ -1,0 +1,19 @@
+HTTP/2 200 
+date: Sat, 26 Sep 2026 07:00:06 GMT
+content-type: text/html; charset=utf-8
+x-xss-protection: 1; mode=block
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=qDd5XTBBsQnNKuUq6DzejIPwz%2FkXjTaglKvUPXgpLLnJYduMKlAXqmiqLGmrdnNUjX%2BuMsdFmbqLZpnH%2Fc%2FlAEAlLZ%2BuVDfzfReWI1k8MWRgsOYKyYcM%2F7XkQ4tekeQ%3D"}]}
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+access-control-allow-origin: *
+cache-control: public, max-age=0, must-revalidate
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.youtube.com https://s.ytimg.com https://analytics.ahrefs.com https://widget.trustpilot.com https://challenges.cloudflare.com https://www.clarity.ms https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://zplatform.ai https://api.zplatform.ai https://connect.pabbly.com https://cloudflareinsights.com https://*.google-analytics.com https://*.analytics.google.com https://analytics.ahrefs.com https://widget.trustpilot.com https://challenges.cloudflare.com https://*.clarity.ms https://c.bing.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://widget.trustpilot.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self' https://connect.pabbly.com; frame-ancestors 'none'; upgrade-insecure-requests
+permissions-policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: DENY
+server: cloudflare
+cf-cache-status: DYNAMIC
+cf-ray: a41063c179df0208-ZRH
+alt-svc: h3=":443"; ma=86400
+
