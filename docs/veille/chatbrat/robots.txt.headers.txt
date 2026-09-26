@@ -1,0 +1,27 @@
+HTTP/2 200 
+accept-ranges: bytes
+access-control-allow-origin: *
+age: 91129
+cache-control: public, max-age=0, must-revalidate
+content-disposition: inline; filename="robots.txt"
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://va.vercel-scripts.com https://www.googletagmanager.com https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://cfsahuxbjxbdyrvpogxi.supabase.co https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.clarity.ms https://c.bing.com https://i.ytimg.com; media-src 'self' blob: data:; frame-src https://www.youtube-nocookie.com; connect-src 'self' https://cfsahuxbjxbdyrvpogxi.supabase.co https://*.supabase.co wss://cfsahuxbjxbdyrvpogxi.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://cloudflareinsights.com https://vitals.vercel-insights.com https://vercel-analytics.com https://va.vercel-scripts.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://www.google.com https://*.clarity.ms; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+content-signal: search=yes, ai-input=yes, ai-train=yes
+content-type: text/plain; charset=utf-8
+cross-origin-opener-policy: same-origin
+date: Sat, 26 Sep 2026 07:00:05 GMT
+etag: "88278080fcf56b9186786669484e5f47"
+last-modified: Fri, 25 Sep 2026 05:41:15 GMT
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: strict-origin-when-cross-origin
+server: Vercel
+set-cookie: cb_guest=c89640f4-e849-45f1-8cf1-760f41db8055.4f4ee89477254489; Path=/; Expires=Mon, 26 Oct 2026 07:00:05 GMT; Max-Age=2592000; Secure; HttpOnly; SameSite=lax
+set-cookie: cb-region=CH; Path=/; Expires=Sun, 27 Sep 2026 07:00:05 GMT; Max-Age=86400; Secure; SameSite=lax
+set-cookie: cb-nsfw-blocked=1; Path=/; Expires=Sun, 27 Sep 2026 07:00:05 GMT; Max-Age=86400; Secure; SameSite=lax
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-matched-path: /robots.txt
+x-vercel-cache: HIT
+x-vercel-id: fra1::fmx45-1790406005295-f1dd8d521457
+content-length: 6373
+

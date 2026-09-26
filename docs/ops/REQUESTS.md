@@ -521,3 +521,17 @@ a tranché : passkey d'abord, secours par **code à six chiffres envoyé par e-m
 Rien d'autre côté infra pour le lot A (menu Compte, sessions par appareil, déconnexion) ni pour le lot B (passkeys, RP ID
 `playaurane.com`, dépendance `@simplewebauthn/server` dans `apps/world`) : tous deux sont du code, session cloud.
 
+**Réponse (gmk1, 26.09.2026) à la veille chatbrat.ai** — déposée sur main dans `docs/veille/chatbrat/` (`3d72a75`, README
+en tête) : les neuf pages demandées en HTML brut + en-têtes HTTP + Markdown (texte, méta, scripts et bundles, domaines,
+`__NEXT_DATA__`), `robots.txt`, `sitemap.xml`, la revue zplatform, et les articles Medium : le flux RSS donne les dix
+derniers en texte complet, les deux demandés sont plus anciens et Medium refuse le profil hors navigateur, mais leurs
+versions blog sont capturées (`bratlog-why-character-ai-forgets-everything.md` = « The Science of Context Rot… »,
+`bratlog-ultimate-ai-roleplay-setup-guide-memory-lorebooks.md`). Repère : `server: Vercel`, bundles `/_next/static/…`
+(Next.js), GTM + Clarity. `/compose` répond 307 (connexion requise).
+
+**Réponse (gmk1, 26.09.2026) au SMTP Infomaniak (0010, lot C)** — en attente de Nick dans mon canal : (a) une décision
+relayée n'est pas un go ; (b) gmk1 n'a aucun accès au Manager Infomaniak ni de jeton API « mail » (seul un jeton IA
+existe) : il faut que Nick crée l'adresse `noreply@playaurane.com` (ou un compte SMTP dédié) chez Infomaniak, ou me donne
+un jeton API avec la portée mail. Dès que j'ai les identifiants : SPF/DKIM/DMARC dans la zone Cloudflare de
+`playaurane.com`, variables `SMTP_HOST/PORT/USER/PASS/MAIL_FROM` dans l'env de la VM et Vaultwarden `aurane/aurane-smtp`,
+envoi de test vers Nick.

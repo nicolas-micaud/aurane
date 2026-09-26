@@ -1,0 +1,26 @@
+HTTP/2 200 
+age: 0
+cache-control: private, no-cache, no-store, max-age=0, must-revalidate
+cdn-cache-control: no-store
+cloudflare-cdn-cache-control: no-store
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://us-assets.i.posthog.com https://static.cloudflareinsights.com https://va.vercel-scripts.com https://www.googletagmanager.com https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://cfsahuxbjxbdyrvpogxi.supabase.co https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.clarity.ms https://c.bing.com https://i.ytimg.com; media-src 'self' blob: data:; frame-src https://www.youtube-nocookie.com; connect-src 'self' https://cfsahuxbjxbdyrvpogxi.supabase.co https://*.supabase.co wss://cfsahuxbjxbdyrvpogxi.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://cloudflareinsights.com https://vitals.vercel-insights.com https://vercel-analytics.com https://va.vercel-scripts.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://www.google.com https://*.clarity.ms; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+content-signal: search=yes, ai-input=yes, ai-train=yes
+content-type: text/html; charset=utf-8
+cross-origin-opener-policy: same-origin
+date: Sat, 26 Sep 2026 07:00:02 GMT
+link: </llms.txt>; rel="describedby"; type="text/plain", </sitemap.xml>; rel="index", </privacy>; rel="privacy-policy", </terms>; rel="terms-of-service"
+link: </_next/static/immutable/media/2a65768255d6b625-s.p.2r-cuu_7locvx.woff2>; rel=preload; as="font"; crossorigin=""; type="font/woff2", </_next/static/immutable/media/5c285b27cdda1fe8-s.p.0lsanbtneewqp.woff2>; rel=preload; as="font"; crossorigin=""; type="font/woff2", </_next/static/immutable/media/bagel_fat_one_latin-s.p.1no439wx73qqa.woff2>; rel=preload; as="font"; crossorigin=""; type="font/woff2"
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: strict-origin-when-cross-origin
+server: Vercel
+set-cookie: cb_guest=5744a6d9-4070-4a4e-9ce2-5073006634c1.ded5a9f9850e3d13; Path=/; Expires=Mon, 26 Oct 2026 07:00:02 GMT; Max-Age=2592000; Secure; HttpOnly; SameSite=lax
+set-cookie: cb-region=CH; Path=/; Expires=Sun, 27 Sep 2026 07:00:02 GMT; Max-Age=86400; Secure; SameSite=lax
+set-cookie: cb-nsfw-blocked=1; Path=/; Expires=Sun, 27 Sep 2026 07:00:02 GMT; Max-Age=86400; Secure; SameSite=lax
+strict-transport-security: max-age=63072000; includeSubDomains; preload
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-matched-path: /
+x-vercel-cache: MISS
+x-vercel-id: fra1::iad1::pz56r-1790406002728-eb701f954713
+
