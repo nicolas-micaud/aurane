@@ -229,4 +229,5 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .emailform .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .account .list li .actions { display: flex; gap: 6px; }
 .tag.ok { border-color: var(--ok); color: var(--ok); }
+.tag.founder { color: #f5c76b; border: 1px solid #f5c76b55; background: #2a2210; }
 
