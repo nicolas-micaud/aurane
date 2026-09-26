@@ -109,6 +109,15 @@ export function fallbackCards(input: CounselInput): CounselCard[] {
   }));
 }
 
+/**
+ * The title a card shows. A card that acts ("Do it") keeps the simulation's title, which names its target ("Relier
+ * Israzen"): the model's titles drift to the generic ("Link your neighbour") and the next relay card then reads the
+ * same as the one just done (issue #35). The General's voice is in the line; the model titles the other cards.
+ */
+export function cardTitle(o: Pick<CounselOption, 'command' | 'title'>, spoken: string, lang: Lang): string {
+  return (o.command && o.title ? o.title[lang] : spoken).trim().slice(0, 60);
+}
+
 const degradeReason = (err: unknown): DegradeReason => (err instanceof LlmUnavailable && (err.reason === 'saturated' || err.reason === 'open') ? 'saturated' : 'unavailable');
 
 /** Three cards in the General's voice, within the 3 s budget of the task; fallback cards otherwise. */
@@ -126,7 +135,7 @@ export async function writeCounsel(input: CounselInput, client: LlmClient | null
     analysis: `${input.analysis ?? ''}\n\nOPTIONS FOR THIS COUNSEL (the only ones you may propose, keep their ids):\n${optText}`, memory: input.memory ?? '',
     contract: [
       `TASK: ${input.minutesToDraw} minutes before the Draw, propose these options to the player as cards, in your voice, in the player's language.`,
-      'Answer ONLY with JSON: {"cards": [{"id": "<option id>", "title": "3 to 6 words", "line": "one or two sentences: what it does and why now, with the option\'s figures"}]}. One card per option, same order, never invent an option or a figure.',
+      'Answer ONLY with JSON: {"cards": [{"id": "<option id>", "title": "3 to 6 words, naming the target star or colony", "line": "one or two sentences: what it does and why now, with the option\'s figures"}]}. One card per option, same order, never invent an option or a figure.',
     ],
   });
   const allowed = new Set<number>([...RULE_NUMBERS, ...numbersIn(optText), ...numbersIn(input.analysis ?? '')]);
@@ -142,7 +151,7 @@ export async function writeCounsel(input: CounselInput, client: LlmClient | null
       const check = verifyNumbers(c.line, allowed);
       if (!check.ok) stripped = true;
       const line = (check.ok ? c.line : check.stripped).trim() || fallback.find((f) => f.id === o.id)!.line;
-      cards.push({ id: o.id, title: c.title.trim().slice(0, 60), line: line.slice(0, 240), command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}) });
+      cards.push({ id: o.id, title: cardTitle(o, c.title, L), line: line.slice(0, 240), command: o.command, show: o.show ?? null, ...(o.raw !== undefined ? { raw: o.raw } : {}) });
     }
     for (const f of fallback) if (!cards.some((c) => c.id === f.id)) cards.push(f); // the model dropped one: the fallback card fills in
     return { cards: cards.slice(0, 3), source: 'llm', numbersStripped: stripped };
@@ -177,7 +186,7 @@ export function liveCounselCards(cards: readonly CounselCard[], options: readonl
     if (!o) continue;
     if (JSON.stringify(o.command) === JSON.stringify(c.command)) { out.push(c); continue; }
     const fixed = fallbackCards({ persona: ctx.persona, lang: ctx.lang, tier: ctx.tier, options: [o], minutesToDraw: 0 })[0]!;
-    out.push({ ...fixed, title: c.title, line: o.label[ctx.lang].slice(0, 240) });
+    out.push({ ...fixed, title: cardTitle(o, c.title, ctx.lang), line: o.label[ctx.lang].slice(0, 240) });
   }
   return out;
 }
