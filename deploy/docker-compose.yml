@@ -82,6 +82,9 @@ services:
       # Absente = Postgres seul. Valeurs dans .env (Vaultwarden collection aurane, items env=AURANE_MEMORY_*).
       AURANE_MEMORY_URL: ${AURANE_MEMORY_URL:-}
       AURANE_MEMORY_TOKEN: ${AURANE_MEMORY_TOKEN:-}
+      # Fiabilité (docs/ai/ARCHITECTURE.md § Fiabilité de la mémoire) : seuils de /api/admin/memory/health.
+      AURANE_MEMORY_ALERT_OUTBOX_S: ${AURANE_MEMORY_ALERT_OUTBOX_S:-900}
+      AURANE_MEMORY_ALERT_BACKUP_H: ${AURANE_MEMORY_ALERT_BACKUP_H:-26}
       LLM_TALK_DEADLINE_MS: ${LLM_TALK_DEADLINE_MS:-25000}
       LLM_BRIEFING_DEADLINE_MS: ${LLM_BRIEFING_DEADLINE_MS:-8000}
       LLM_GAZETTE_SPREAD_MIN: ${LLM_GAZETTE_SPREAD_MIN:-40}
@@ -139,7 +142,8 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   # La mémoire longue des Généraux (décision 0009) : instance dédiée, jamais exposée (réseau Compose seul), jeton
-  # AURANE_MEMORY_TOKEN partagé avec world, données dans le volume memdata, sauvegardée par backup/pg-backup.sh.
+  # AURANE_MEMORY_TOKEN partagé avec world, données dans le volume memdata (SQLite WAL, synchronous=FULL), sauvegardée
+  # chaque nuit par backup/pg-backup.sh (VACUUM INTO vérifié → SOS memory/), testée par backup/memory-restore-test.sh.
   memory:
     build: ./memory
     image: aurane-memory:local
