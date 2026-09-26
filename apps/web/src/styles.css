@@ -79,6 +79,8 @@ fieldset { border: none; padding: 0; margin: 0; } legend { color: var(--muted); 
 .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin: 6px 0; } .row > * { flex: 1; min-width: 100px; }
 .seg { display: flex; } .seg button { flex: 1; border-radius: 0; } .seg button:first-child { border-radius: 8px 0 0 8px; } .seg button:last-child { border-radius: 0 8px 8px 0; }
 textarea { resize: vertical; }
+/* A placeholder is an example, never a value that looks already typed (issue #33). */
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .7; font-style: italic; }
 
 @media (max-width: 480px) { .chip em { display: none; } .chip { padding: 3px 7px; }
   /* A fifth tab (Account, Market…) opened from ⋯ must not push Colony off the strip at 390 px. */

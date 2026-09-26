@@ -20,6 +20,7 @@ type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplS
 const TPL_KEY: Record<string, TplKey> = { forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' };
 const selected = signal<string | null>(null);
 const linkFrom = signal<string | null>(null);
+const LINK_MODE_MS = 45000;
 // Back from Stripe's checkout: straight to the Account tab, where the thanks and the title wait.
 const tab = signal<Tab>(paidReturn.value ? 'account' : 'colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
@@ -73,6 +74,12 @@ export function Game() {
   const brief = useSig(briefing);
   useEffect(() => { map.current?.setSelection(selV); }, [selV]);
   useEffect(() => { map.current?.setLinkFrom(linkV); }, [linkV]);
+  // The link mode is a lesson, not a state to live in: it closes itself if no star is tapped for a while (issue #33).
+  useEffect(() => {
+    if (!linkV) return;
+    const id = setTimeout(() => { if (linkFrom.value === linkV) linkFrom.value = null; }, LINK_MODE_MS);
+    return () => clearTimeout(id);
+  }, [linkV]);
   // The General points at a button: bring it into view; the lesson ends when the player taps it.
   const teachV = useSig(teach);
   useEffect(() => {
