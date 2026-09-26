@@ -192,3 +192,12 @@ Mise en route (Nick, une fois) :
    `charge.refunded`, `charge.dispute.closed` ; le secret de signature (`whsec_…`) va dans `STRIPE_WEBHOOK_SECRET`.
 5. Les trois valeurs dans Vaultwarden (collection aurane), puis `.env` de la VM, redéploiement. Tester en mode test
    (carte `4242 4242 4242 4242`) avant les clés de production.
+
+## Notification de déploiement vers le testeur extérieur (Grok)
+
+Après chaque déploiement réussi (`https://play.playaurane.com/healthz` en 200), `deploy.sh` appelle
+`tools/notify-deploy/notify-deploy.sh`, qui poste `{project, env, version, commit, message, deployed_at, url}` à Grok
+Automations (délai 5 s, signé `webhook-signature` si un secret est posé ; un échec n'est qu'un avertissement).
+URL : Grok → Automations → « Aurane - notif déploiement » → webhook ; la copier avec son secret dans
+`/root/.config/ninabot/aurane-deploy.env` (`GROK_DEPLOY_WEBHOOK_URL`, `GROK_DEPLOY_WEBHOOK_SECRET`, voir
+`deploy/deploy.env.example`) et dans Vaultwarden `aurane/aurane-grok-deploy-webhook`. Variable absente = rien envoyé.
