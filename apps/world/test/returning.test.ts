@@ -131,3 +131,23 @@ describe('a returning account in a new season', () => {
     await s2.close();
   });
 });
+
+// The Postgres side of the prefill: the colony is read from the archived season's snapshot (skipped without a server).
+const pgUrl = process.env.AURANE_TEST_PG_URL;
+(pgUrl ? describe : describe.skip)('Postgres: a past season\'s colony', () => {
+  it('is found in the newest archive that holds it, never in the current world', async () => {
+    const { PgStore } = await import('../src/store.js');
+    const store = new PgStore(pgUrl!);
+    await store.migrate();
+    const id = `Cret${Date.now().toString(36)}`;
+    const snap = (name: string) => ({ version: 7, galaxyOptions: { radius: 4 }, state: { colonies: { [id]: { id, name, faction: 'oracles', persona: 'solen', npc: false } } } }) as unknown as Parameters<typeof store.saveSnapshot>[0];
+    await store.saveSnapshot(snap('Old'));
+    await store.archiveSnapshot(`${id}-a`);
+    await store.saveSnapshot(snap('Newer'));
+    await store.archiveSnapshot(`${id}-b`);
+    await store.saveSnapshot({ version: 7, galaxyOptions: { radius: 4 }, state: { colonies: {} } } as unknown as Parameters<typeof store.saveSnapshot>[0]);
+    expect(await store.pastColony(id)).toEqual({ name: 'Newer', faction: 'oracles', persona: 'solen' });
+    expect(await store.pastColony('Cnobody')).toBeNull();
+    await store.close();
+  });
+});
