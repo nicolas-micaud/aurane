@@ -49,6 +49,29 @@ describe('doctrine compilation', () => {
     expect(client.calls[0]!.messages[0]!.content).toContain('ANALYSIS');
   });
 
+  it('asks for an Energy floor when a compiled doctrine sells Energy with no reserve, whatever the model said', async () => {
+    const w = createWorld('doc-energy', { radius: 4 });
+    const c = spawnColony(w, { name: 'Nick', faction: 'guild', persona: 'vane' });
+    const ctx = ctxOf(w, c);
+    const client = scripted([JSON.stringify({ orders: { sellAbove: { energy: 0 } }, reply: 'Je brade.', question: null })]);
+    const r = await compileDoctrine('Brade notre Énergie au Marché à n\'importe quel prix.', ctx, client, { seed: 1 });
+    expect(r.question).toMatch(/combien j'en garde/);
+    expect(r.policy).toEqual(ctx.current);
+    const kept = scripted([JSON.stringify({ orders: { sellAbove: { energy: 2 }, reserves: { energy: 300 } }, reply: 'Au-dessus de 300.', question: null })]);
+    const ok = await compileDoctrine('Vends l\'Énergie au-dessus de 2, garde 300 en réserve.', ctx, kept, { seed: 1 });
+    expect(ok.question).toBeNull();
+    expect(ok.policy.reserves.energy).toBe(300);
+  });
+
+  it('tells the model how to name the capital in defendFirst', async () => {
+    const w = createWorld('doc-cap', { radius: 4 });
+    const c = spawnColony(w, { name: 'Nick', faction: 'guild', persona: 'vane' });
+    const client = scripted([JSON.stringify({ orders: { defendFirst: ['__capital__'] }, reply: 'La capitale.', question: null })]);
+    const r = await compileDoctrine('Défends la capitale en premier.', ctxOf(w, c), client, { seed: 1 });
+    expect(client.calls[0]!.messages[0]!.content).toContain('"__capital__" for the capital');
+    expect(r.policy.defendFirst).toEqual(['__capital__']);
+  });
+
   it('repairs an invalid answer once, then falls back to the heuristic', async () => {
     const w = createWorld('doc-2', { radius: 4 });
     const c = spawnColony(w, { name: 'Nick', faction: 'guild', persona: 'vane' });
@@ -214,5 +237,19 @@ describe('after the live bench (25.09)', () => {
     const bleed = scripted([JSON.stringify({ reply: 'Rien à signaler. Draven prépare un raid sur Kessa, je le sens. Tes ponts tiennent.', orders: null, question: null })]);
     const t = await converse({ text: 'Des nouvelles ?', lang: 'fr', persona: 'vane', history: [], ctx, analysis: a }, bleed);
     expect(t.reply).toBe('Rien à signaler. Tes ponts tiennent.');
+  });
+});
+
+describe('doctrine: the capital by role', () => {
+  it('adds the capital when the doctrine says to defend it and the model dropped it, once', async () => {
+    const { createWorld: cw, spawnColony: sc } = await import('@aurane/sim');
+    const w = cw('doc-cap2', { radius: 4 });
+    const c = sc(w, { name: 'Nick', faction: 'guild', persona: 'vane' });
+    const systems: Record<string, string> = { [c.capital]: w.galaxy.systems[c.capital]!.name };
+    const ctx = { lang: 'fr' as const, current: c.policy, systems, colonies: {}, alliances: {}, persona: c.persona, capital: c.capital };
+    const dropped = await compileDoctrine('Défends la capitale en premier et garde 200 d\'Énergie.', ctx, { name: 'x', healthy: async () => true, chat: async () => ({ text: JSON.stringify({ orders: { reserves: { energy: 200 } }, reply: 'Tenu.', question: null }), model: 'm', provider: 'p', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) }, { seed: 1 });
+    expect(dropped.policy.defendFirst).toEqual(['__capital__']);
+    const named = await compileDoctrine('Défends la capitale.', ctx, { name: 'x', healthy: async () => true, chat: async () => ({ text: JSON.stringify({ orders: { defendFirst: [c.capital] }, reply: 'Tenu.', question: null }), model: 'm', provider: 'p', inputTokens: 1, outputTokens: 1, ms: 1, attempts: 1 }) }, { seed: 1 });
+    expect(named.policy.defendFirst).toEqual([c.capital]);
   });
 });

@@ -39,6 +39,10 @@ describe('season change', () => {
     expect(await next.authenticate('token' in made ? made.token : '')).toBeNull();
     const again = await next.createGuest('Nick', 'guild', 'oriel', 'AUR-TEST');
     expect('token' in again).toBe(true);
+    // Ids never come back from one season to the next: the new first human is not the old one's namesake (its token,
+    // its account link and its General's memory are keyed on that id).
+    expect('token' in again ? again.colony.id : oldColony).not.toBe(oldColony);
+    expect(await next.authenticate('token' in made ? made.token : '')).toBeNull();
     await next.stop();
   });
 });

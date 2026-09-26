@@ -3,7 +3,7 @@ import { Engine } from './engine.js';
 import { createHttpServer } from './http.js';
 import { mailerFromEnv } from './mail.js';
 import { FileStore, PgStore, type Store } from './store.js';
-import { FileBudgetStore, FileJobStore, FileMemoryStore, PgBudgetStore, PgJobStore, PgMemoryStore } from './llmstore.js';
+import { FileBudgetStore, FileJobStore, FileMemoryStore, FilePendingDoctrineStore, PgBackupStatus, PgBudgetStore, PgJobStore, PgMemoryStore, PgMirrorOutbox, PgPendingDoctrineStore } from './llmstore.js';
 import type { GeneralDeps } from './general.js';
 
 async function main(): Promise<void> {
@@ -15,11 +15,13 @@ async function main(): Promise<void> {
     await pgStore.migrate();
     await PgJobStore.migrate(pgStore.pgPool);
     await PgBudgetStore.migrate(pgStore.pgPool);
+    await PgPendingDoctrineStore.migrate(pgStore.pgPool);
     store = pgStore;
-    general = { jobStore: new PgJobStore(pgStore.pgPool), memoryStore: new PgMemoryStore(pgStore.pgPool), budgetStore: new PgBudgetStore(pgStore.pgPool) };
+    const backups = new PgBackupStatus(pgStore.pgPool);
+    general = { jobStore: new PgJobStore(pgStore.pgPool), memoryStore: new PgMemoryStore(pgStore.pgPool), mirrorOutbox: new PgMirrorOutbox(pgStore.pgPool), backupStatus: () => backups.list(), budgetStore: new PgBudgetStore(pgStore.pgPool), pendingStore: new PgPendingDoctrineStore(pgStore.pgPool) };
   } else {
     store = new FileStore(cfg.snapshotDir);
-    general = { jobStore: new FileJobStore(cfg.snapshotDir), memoryStore: new FileMemoryStore(cfg.snapshotDir), budgetStore: new FileBudgetStore(cfg.snapshotDir) };
+    general = { jobStore: new FileJobStore(cfg.snapshotDir), memoryStore: new FileMemoryStore(cfg.snapshotDir), budgetStore: new FileBudgetStore(cfg.snapshotDir), pendingStore: new FilePendingDoctrineStore(cfg.snapshotDir) };
   }
   const engine = new Engine(cfg, store, general);
   await engine.init();

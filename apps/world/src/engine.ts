@@ -10,6 +10,7 @@ import { contactLine, firstRelayLine, inboundWarning, tierUnlocked, type Gazette
 import type { Config } from './config.js';
 import type { Store } from './store.js';
 import { GeneralService, type GeneralDeps } from './general.js';
+import { FOUNDER_SKU } from './payments/catalog.js';
 
 const DECISION_INTERVAL_S = 1800;
 const ABSENT_AFTER_S = 1800;
@@ -37,25 +38,34 @@ export class Engine {
   private lastEventSeen = 0;
   /** The Generals: conversation, doctrine, briefing, Gazette, behind the job queue. Never called from step(). */
   readonly general: GeneralService;
+  /** Presentation only (decision 0011): colonies whose account carries the founder title, for the public pages and
+   *  the ranking. Refreshed from the entitlements; the simulation never reads it. */
+  private founderColonies = new Set<string>();
+  private cosmeticsTimer: NodeJS.Timeout | null = null;
 
   constructor(readonly cfg: Config, private readonly store: Store, generalDeps: Partial<GeneralDeps> = {}) {
-    this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, ...generalDeps });
+    this.general = new GeneralService(cfg, { world: () => this.world, dirty: (id) => { this.dirtyColonies.add(id); }, memoryKey: (id) => this.memoryKeyOf(id), ...generalDeps });
   }
 
   async init(): Promise<void> {
     let snap = await this.store.loadSnapshot();
+    let carriedId = 1;
     // A new seed or radius in the configuration means a new season: the old world is archived, a fresh one starts.
     // The radius may have grown during the season (galaxy growth): the base radius is what the season was configured with.
     if (snap && (snap.state.seed !== seedNumber(this.cfg.seasonSeed) || (snap.galaxyOptions.baseRadius ?? snap.galaxyOptions.radius ?? 12) !== this.cfg.galaxyRadius)) {
       const label = `${snap.state.seed}-${Math.floor(snap.state.time)}`;
       console.log(`[world] season changed (seed ${this.cfg.seasonSeed}, radius ${this.cfg.galaxyRadius}): archiving the previous world as ${label}`);
       await this.store.archiveSnapshot(label);
+      // Ids are a per-world counter: a fresh world would hand the first human of every season the same id (C3d), and
+      // that id keys the session tokens, the account links and the General's memory. The counter carries on instead.
+      carriedId = Math.max(1, Number((snap.state as { nextId?: number }).nextId) || 1);
       snap = null;
     }
     if (snap) {
       this.world = restoreWorld(snap);
     } else {
       this.world = createWorld(this.cfg.seasonSeed, { radius: this.cfg.galaxyRadius, seasonDays: this.cfg.seasonDays });
+      this.world.nextId = Math.max(this.world.nextId, carriedId);
       for (let i = 0; i < this.cfg.npcCount; i++) {
         const faction = FACTIONS[i % FACTIONS.length] as Faction;
         const persona = PERSONAS[(i * 7 + Math.floor(i / 4)) % PERSONAS.length] as Persona;
@@ -66,7 +76,16 @@ export class Engine {
     this.lastDrawSeen = this.world.drawIndex;
     this.lastDaySeen = Math.floor(this.world.time / 86400);
     this.lastEventSeen = this.world.events.length;
+    await this.refreshCosmetics();
   }
+
+  /** Re-reads who holds the founder title (after a purchase, a refund, an account link, and every few minutes). */
+  async refreshCosmetics(): Promise<void> {
+    const next = new Set<string>();
+    for (const account of await this.store.accountsWithSku(FOUNDER_SKU, Date.now())) for (const c of await this.store.coloniesOfAccount(account)) next.add(c);
+    this.founderColonies = next;
+  }
+  isFounder(colonyId: string): boolean { return this.founderColonies.has(colonyId); }
 
   start(): void {
     if (this.timer) return;
@@ -74,11 +93,14 @@ export class Engine {
     this.lastReal = Date.now();
     this.timer = setInterval(() => void this.step(), 1000);
     this.systemTimer = setInterval(() => this.streamSystems(), SYSTEM_STREAM_MS);
+    this.cosmeticsTimer = setInterval(() => void this.refreshCosmetics().catch(() => { /* next round */ }), 5 * 60000);
   }
 
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     if (this.systemTimer) clearInterval(this.systemTimer);
+    if (this.cosmeticsTimer) clearInterval(this.cosmeticsTimer);
+    this.cosmeticsTimer = null;
     this.timer = null;
     this.systemTimer = null;
     await this.general.stop();
@@ -224,9 +246,16 @@ export class Engine {
     return { token, colony };
   }
 
-  /** Once an account exists, every live session of its colony belongs to it. */
+  /** Once an account exists, every live session of its colony belongs to it, and so does the General's memory. */
   async adoptSessions(colonyId: string, accountId: string): Promise<void> {
     for (const p of await this.store.listPlayers(colonyId)) if (!p.accountId && !p.revokedAt) await this.store.updatePlayer(p.id, { accountId });
+    await this.general.adoptMemory(colonyId).catch((err: Error) => console.warn(JSON.stringify({ msg: 'memory adopt', colonyId, error: err.message })));
+  }
+
+  /** The General's memory follows the account across seasons; a guest's stays with its colony and its season. */
+  async memoryKeyOf(colonyId: string): Promise<string> {
+    const account = await this.store.accountOfColony(colonyId);
+    return account ? `account:${account}` : `season:${this.cfg.seasonSeed}:${colonyId}`;
   }
 
   /** The colony an account plays this season, if it is still in the world. */
@@ -398,22 +427,22 @@ export class Engine {
   briefing(colonyId: string, lang: 'fr' | 'en'): ReturnType<GeneralService['briefing']> { return this.general.briefing(colonyId, lang); }
   gazette(lang: 'fr' | 'en', day?: number): Promise<GazetteIssue | null> { return this.general.gazette(lang, day); }
 
-  publicColony(id: string): { id: string; name: string; faction: string; persona: string; alliance: string | null; score: number; connected: number; createdAt: number; npc: boolean; beacons: string[] } | null {
+  publicColony(id: string): { id: string; name: string; faction: string; persona: string; alliance: string | null; score: number; connected: number; createdAt: number; npc: boolean; beacons: string[]; founder: boolean } | null {
     const c = this.world.colonies[id];
     if (!c) return null;
     const net = ownedSystems(this.world, c.id).length;
-    return { id: c.id, name: c.name, faction: c.faction, persona: c.persona, alliance: c.alliance ? this.world.alliances[c.alliance]?.name ?? null : null, score: Math.round(colonyScoreOf(this.world, c) * 10) / 10, connected: net, createdAt: c.createdAt, npc: c.npc, beacons: Object.values(this.world.litBeacons).filter((b) => b.by === c.id).map((b) => this.world.galaxy.systems[b.system]?.beaconName ?? b.system) };
+    return { id: c.id, name: c.name, faction: c.faction, persona: c.persona, alliance: c.alliance ? this.world.alliances[c.alliance]?.name ?? null : null, score: Math.round(colonyScoreOf(this.world, c) * 10) / 10, connected: net, createdAt: c.createdAt, npc: c.npc, beacons: Object.values(this.world.litBeacons).filter((b) => b.by === c.id).map((b) => this.world.galaxy.systems[b.system]?.beaconName ?? b.system), founder: this.isFounder(c.id) };
   }
 
   publicConfig(): { requireInvite: boolean; seasonDays: number; seasonSeed: string } {
     return { requireInvite: this.cfg.requireInvite, seasonDays: this.cfg.seasonDays, seasonSeed: this.cfg.seasonSeed };
   }
 
-  publicSummary(): { time: number; drawIndex: number; colonies: { id: string; name: string; faction: string; score: number; alliance: string | null }[]; titles: World['titles']; ended: World['ended'] } {
+  publicSummary(): { time: number; drawIndex: number; colonies: { id: string; name: string; faction: string; score: number; alliance: string | null; founder: boolean }[]; titles: World['titles']; ended: World['ended'] } {
     const w = this.world;
     return {
       time: w.time, drawIndex: w.drawIndex, titles: w.titles, ended: w.ended,
-      colonies: Object.values(w.colonies).map((c) => ({ id: c.id, name: c.name, faction: c.faction, alliance: c.alliance, score: Math.round(colonyScoreOf(w, c) * 10) / 10 }))
+      colonies: Object.values(w.colonies).map((c) => ({ id: c.id, name: c.name, faction: c.faction, alliance: c.alliance, score: Math.round(colonyScoreOf(w, c) * 10) / 10, founder: this.isFounder(c.id) }))
         .sort((a, b) => b.score - a.score),
     };
   }

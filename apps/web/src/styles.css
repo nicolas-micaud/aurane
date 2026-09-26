@@ -229,4 +229,17 @@ button.enter { border-color: var(--accent); color: var(--accent); font-weight: 6
 .emailform .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .account .list li .actions { display: flex; gap: 6px; }
 .tag.ok { border-color: var(--ok); color: var(--ok); }
+.tag.founder { color: #f5c76b; border: 1px solid #f5c76b55; background: #2a2210; }
 
+
+/* The doctrine waiting for the player's yes (DOCTRINE_CONFIRM): the counsel card's look, inside the General panel. */
+.doctrine-card { background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; }
+.doctrine-card .who { color: var(--muted); font-family: Rajdhani, Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; font-size: 11px; }
+.doctrine-card p { margin: 2px 0 6px; font-size: 14px; line-height: 1.35; }
+.doctrine-card .voice { color: var(--muted); font-style: italic; font-size: 13px; }
+.doctrine-card ul { margin: 0 0 8px; padding-left: 18px; font-size: 14px; line-height: 1.4; }
+.doctrine-card li + li { margin-top: 2px; }
+.doctrine-card .question { color: var(--energy); }
+.doctrine-card .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.doctrine-card .acts button { min-height: 40px; padding: 8px 14px; font-size: 14px; }
+@media (max-width: 899px) { .doctrine-card .acts button { flex: 1 1 0; } }

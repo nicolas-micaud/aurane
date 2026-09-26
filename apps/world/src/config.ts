@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { limitsFromEnv, type QuotaLimits } from '@aurane/general';
 import { rpIdFor } from './auth.js';
+import { stripeConfigFromEnv, type StripeConfig } from './payments/stripe.js';
 
 export interface Config {
   port: number;
@@ -30,8 +31,11 @@ export interface Config {
   rpId: string;
   /** Origins a passkey ceremony may come from: the public origin, plus RP_ORIGINS (comma separated) for development. */
   rpOrigins: string[];
-  /** A compiled doctrine waits for the player's confirmation before it is active (DOCTRINE_CONFIRM=1). */
+  /** A compiled doctrine waits for the player's confirmation before it is active. On by default: the player reads
+   *  what the General will do while they are away before it governs the Colony. DOCTRINE_CONFIRM=0 turns it off. */
   doctrineConfirm: boolean;
+  /** A doctrine left unconfirmed this long is dropped (the active one stays); DOCTRINE_PENDING_TTL_H, default 24. */
+  doctrinePendingTtlMs: number;
   /** How long a live request waits for the model before the General answers in character without it. */
   talkDeadlineMs: number;
   briefingDeadlineMs: number;
@@ -54,6 +58,15 @@ export interface Config {
   /** The dedicated long-memory instance of Aurane (PUT/GET/DELETE /memory/{colony}, Bearer); absent = Postgres only. */
   memoryUrl: string | null;
   memoryToken: string | null;
+  /** Stripe Managed Payments (decision 0011): null unless STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET and
+   *  STRIPE_PRICE_SUPPORT_FOUNDER are all set; null = payments disabled. */
+  stripe: StripeConfig | null;
+  /** Outbox flush period (ms, 5000) and reconciliation period with the instance (ms, one hour). */
+  memoryFlushMs: number;
+  memoryReconcileMs: number;
+  /** Health thresholds: oldest unconfirmed write (s, 900) and backup age (h, 26: one missed nightly run). */
+  memoryAlertOutboxS: number;
+  memoryAlertBackupH: number;
 }
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d);
@@ -78,7 +91,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicOrigin: env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com',
     rpId: env.RP_ID || rpIdFor(env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com'),
     rpOrigins: [env.PUBLIC_ORIGIN ?? 'https://play.playaurane.com', ...(env.RP_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)],
-    doctrineConfirm: env.DOCTRINE_CONFIRM === '1' || env.DOCTRINE_CONFIRM === 'true',
+    doctrineConfirm: env.DOCTRINE_CONFIRM !== '0' && env.DOCTRINE_CONFIRM !== 'false',
+    doctrinePendingTtlMs: num(env.DOCTRINE_PENDING_TTL_H, 24) * 3600 * 1000,
     talkDeadlineMs: num(env.LLM_TALK_DEADLINE_MS, 25000),
     briefingDeadlineMs: num(env.LLM_BRIEFING_DEADLINE_MS, 8000),
     gazetteSpreadMin: num(env.LLM_GAZETTE_SPREAD_MIN, 40),
@@ -91,5 +105,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     budgetAlertRatio: num(env.LLM_BUDGET_ALERT_RATIO, 0.8),
     memoryUrl: env.AURANE_MEMORY_URL || null,
     memoryToken: env.AURANE_MEMORY_TOKEN || null,
+    stripe: stripeConfigFromEnv(env),
+    memoryFlushMs: num(env.AURANE_MEMORY_FLUSH_MS, 5000),
+    memoryReconcileMs: num(env.AURANE_MEMORY_RECONCILE_MS, 3600000),
+    memoryAlertOutboxS: num(env.AURANE_MEMORY_ALERT_OUTBOX_S, 900),
+    memoryAlertBackupH: num(env.AURANE_MEMORY_ALERT_BACKUP_H, 26),
   };
 }

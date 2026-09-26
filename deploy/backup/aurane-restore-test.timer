@@ -1,0 +1,8 @@
+[Unit]
+Description=Aurane — weekly restore test (Sunday 05:10 Europe/Zurich)
+[Timer]
+OnCalendar=Sun *-*-* 05:10:00
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target

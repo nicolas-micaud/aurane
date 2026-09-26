@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, addPasskey, answerCounsel, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { act, addPasskey, answerCounsel, confirmDoctrine, discardDoctrine, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchEntitlements, fetchPendingDoctrine, fetchPublicConfig, fetchSessions, fetchTalk, logout, paidReturn, startCheckout, type PaymentsConfig, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -11,6 +11,7 @@ import { SystemMode } from './SystemView.js';
 import { LogisticsPanel } from './Logistics.js';
 import { InstallButton, RES, UpdateBanner, fmt, hms } from './bits.js';
 import { decreeLabel, describeEvent, describeNote, etaText, stamp } from './feed.js';
+import { cardAfterTalk, cardFromPending, pendingLineKey, type PendingCard } from './doctrine.js';
 import { marketPrefill, pendingDemo, pointAt, sceneFlashReq, stopTeaching, teach, teachClass, teachKey } from './teach.js';
 
 type Tab = 'colony' | 'system' | 'logistics' | 'market' | 'fleets' | 'diplomacy' | 'general' | 'log' | 'account';
@@ -18,12 +19,13 @@ type TplKey = 'tplForge' | 'tplOasis' | 'tplCrossroads' | 'tplGraveyard' | 'tplS
 const TPL_KEY: Record<string, TplKey> = { forge: 'tplForge', oasis: 'tplOasis', crossroads: 'tplCrossroads', graveyard: 'tplGraveyard', sanctuary: 'tplSanctuary', lair: 'tplLair', burnt: 'tplBurnt' };
 const selected = signal<string | null>(null);
 const linkFrom = signal<string | null>(null);
-const tab = signal<Tab>('colony');
+// Back from Stripe's checkout: straight to the Account tab, where the thanks and the title wait.
+const tab = signal<Tab>(paidReturn.value ? 'account' : 'colony');
 const briefing = signal<{ text: string; source: string } | null>(null);
 /** The system whose plateau is open full-screen, or null for the galaxy. */
 export const systemMode = signal<string | null>(null);
 /** Bumped when something asks the panel to unfold (the Counsel's "Show me" on a phone), or to fold so the map shows. */
-const openPanel = signal(0);
+const openPanel = signal(paidReturn.value ? 1 : 0);
 const foldPanel = signal(0);
 
 export function Game() {
@@ -393,6 +395,8 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   const all: Tab[] = (['colony', 'system', 'logistics', 'market', 'fleets', 'diplomacy', 'general', 'log', 'account'] as Tab[]).filter((k) => (TAB_TIER[k] ?? 0) <= tier);
   const primary: Tab[] = ['colony', 'system', 'general', 'log'];
   useEffect(() => { if (!all.includes(current)) tab.value = 'colony'; }, [tier]);
+  const pendingV = useSig(pendingDoctrine);
+  useEffect(() => { loadPendingDoctrine(); }, []);
   const read = useSig(logRead);
   const unread = current === 'log' ? 0 : v.events.filter((e) => e.at > read && e.kind !== 'draw').length;
   useEffect(() => { if (current === 'log') markLogRead(v); }, [current, v.events.length]);
@@ -401,7 +405,7 @@ function Panel({ v, map }: { v: PlayerView; map: { current: GalaxyMap | null } }
   return (
     <div class={`panel ${open ? 'open' : ''}`}>
       <div class="tabs" onClick={() => setOpen(true)}>
-        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && unread > 0 ? <i class="badge">{unread > 9 ? '9+' : unread}</i> : null}</button>)}
+        {tabs.map((k) => <button key={k} class={current === k ? 'on' : ''} onClick={(e) => { e.stopPropagation(); tab.value = k; setOpen(true); setMore(false); }}>{labels[k]}{k === 'log' && unread > 0 ? <i class="badge">{unread > 9 ? '9+' : unread}</i> : null}{k === 'general' && pendingV && current !== 'general' ? <i class="dotn" /> : null}</button>)}
         {isNarrow() && <button class={more ? 'on' : ''} onClick={(e) => { e.stopPropagation(); setMore(!more); }} title={t('more')}>⋯</button>}
         <button class="collapse" onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{open ? '▾' : '▴'}</button>
       </div>
@@ -679,14 +683,60 @@ function DiplomacyPanel({ v }: { v: PlayerView }) {
 
 const talk = signal<Turn[]>([]);
 let talkLoaded = false;
+/** The doctrine waiting for the player's yes (DOCTRINE_CONFIRM): restored from the server once per load. */
+const pendingDoctrine = signal<PendingCard | null>(null);
+let pendingLoaded = false;
+view.subscribe((v) => { if (!v) { pendingLoaded = false; pendingDoctrine.value = null; } }); // logged out: the next Colony loads its own
+function loadPendingDoctrine(force = false): void {
+  if (pendingLoaded && !force) return;
+  pendingLoaded = true;
+  void fetchPendingDoctrine().then((b) => { pendingDoctrine.value = cardFromPending(b); });
+}
+
+/** « Voici ce que je ferai en ton absence »: the lines the General will play by, and the player's yes or no. */
+function DoctrineCard({ v, card }: { v: PlayerView; card: PendingCard }) {
+  const [busy, setBusy] = useState(false);
+  const say = (text: string, kind: 'ok' | 'err' = 'ok'): void => { toast.value = { text, kind }; setTimeout(() => { if (toast.value?.text === text) toast.value = null; }, 3500); };
+  const apply = async (): Promise<void> => {
+    setBusy(true);
+    const r = await confirmDoctrine(card.id);
+    setBusy(false);
+    if (r === 'ok') { pendingDoctrine.value = null; say(t('pendingApplied')); }
+    else if (r === 'gone') { say(t('pendingGone'), 'err'); loadPendingDoctrine(true); }
+    else say(t('generalOffline'), 'err');
+  };
+  const notThat = async (): Promise<void> => {
+    setBusy(true);
+    const ok = await discardDoctrine();
+    setBusy(false);
+    if (!ok) { say(t('generalOffline'), 'err'); return; }
+    pendingDoctrine.value = null;
+    say(t('pendingDiscarded'));
+    (document.querySelector('.generalpanel .say textarea') as HTMLTextAreaElement | null)?.focus();
+  };
+  return (
+    <div class="doctrine-card" role="region" aria-label={t('pendingTitle')}>
+      <small class="who">{t(v.me.persona as 'vane')}</small>
+      <p class="title"><b>{t('pendingTitle')}</b></p>
+      <p class="voice">{t(pendingLineKey(v.me.persona))}</p>
+      {card.readable.length > 0 ? <ul>{card.readable.map((l, i) => <li key={i}>{l}</li>)}</ul> : <p class="muted small">{t('pendingNothing')}</p>}
+      {card.question && <p class="question">{card.question}</p>}
+      <div class="acts">
+        <button class="primary" disabled={busy} onClick={() => void apply()}>{t('pendingApply')}</button>
+        <button disabled={busy} onClick={() => void notThat()}>{t('pendingNotThat')}</button>
+      </div>
+    </div>
+  );
+}
 
 function GeneralPanel({ v }: { v: PlayerView }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const thread = useSig(talk);
+  const card = useSig(pendingDoctrine);
   const endRef = useRef<HTMLDivElement>(null);
   const p = v.me.policy;
-  useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } }, []);
+  useEffect(() => { if (!talkLoaded) { talkLoaded = true; void fetchTalk().then((h) => { if (h.length) talk.value = h; }); } loadPendingDoctrine(); }, []);
   // The General speaks first when a hostile fleet heads our way: pick up its line when such an event lands.
   const inboundCount = v.events.filter((e) => e.kind === 'fleet.inbound' && e.actors[1] === v.me.id).length;
   // Whenever the General may have spoken first (hostile fleet, new tier, first contact), the thread is refetched: the
@@ -699,7 +749,10 @@ function GeneralPanel({ v }: { v: PlayerView }) {
   }, [spokeCount, inboundCount]);
   const journal = [...v.me.journal].reverse().slice(0, 12);
   const tv = useSig(teach);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // A new doctrine card opens on its title (« Voici ce que je ferai… »), not on its last line; otherwise follow the thread.
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [thread.length, busy]);
+  useEffect(() => { if (card) cardRef.current?.scrollIntoView({ block: 'start' }); }, [card?.id]);
   const submit = async () => {
     const said = text.trim();
     if (!said) return;
@@ -707,7 +760,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
     talk.value = [...talk.value, { who: 'me', text: said, at: Date.now() }];
     const r = await sendTalk(said, lang.value);
     setBusy(false);
-    if (r) { talk.value = r.history; if (r.policyChanged) toast.value = { text: t('compiled'), kind: 'ok' }; }
+    if (r) { talk.value = r.history; pendingDoctrine.value = cardAfterTalk(pendingDoctrine.value, r); if (r.policyChanged) toast.value = { text: t('compiled'), kind: 'ok' }; }
     else talk.value = [...talk.value, { who: 'general', text: t('generalOffline'), at: Date.now() }];
   };
   return (
@@ -721,6 +774,7 @@ function GeneralPanel({ v }: { v: PlayerView }) {
         {thread.slice(-12).map((m, i) => <p key={`${m.at}-${i}`} class={`bubble ${m.who}`}>{m.text}</p>)}
         {busy && <p class="bubble general muted">{t('thinking')}</p>}
       </div>
+      <div ref={cardRef}>{card && <DoctrineCard v={v} card={card} />}</div>
       <div class={`say ${teachClass(tv, 'say')}`}>
         <textarea rows={2} value={text} placeholder={t('doctrinePlaceholder')} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onFocus={(e) => setTimeout(() => (e.target as HTMLElement).scrollIntoView({ block: 'nearest' }), 250)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
         <button class="primary" disabled={busy || text.trim().length < 1} onClick={() => void submit()}>{t('send')}</button>
@@ -795,6 +849,61 @@ function EmailSection({ email, onChange, say }: { email: string | null; onChange
   );
 }
 
+/** « Soutenir Aurane » (decision 0011): a one-off purchase, a cosmetic founder title held by the account, zero effect on
+ *  the game. Hidden when the server has no payment provider, unless the title is already owned. */
+function SupportSection({ accountId, say }: { accountId: string | null; say: (text: string, kind?: 'ok' | 'err') => void }) {
+  const l = useSig(lang);
+  const ret = useSig(paidReturn);
+  const [cfg, setCfg] = useState<PaymentsConfig | null>(null);
+  const [ent, setEnt] = useState<Awaited<ReturnType<typeof fetchEntitlements>>>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void fetchPublicConfig().then((c) => setCfg(c.payments ?? { enabled: false, skus: [] })); }, []);
+  // The webhook may land a few seconds after Stripe sends the player back: poll until the title exists (30 s at most).
+  useEffect(() => {
+    let stop = false; let tries = 0;
+    const load = async (): Promise<void> => {
+      const e = await fetchEntitlements();
+      if (stop) return;
+      setEnt(e);
+      const has = e?.entitlements.some((x) => x.sku === 'support_founder' && x.active) ?? false;
+      if (!has && ret && ret !== 'cancel' && tries++ < 15) setTimeout(() => void load(), 2000);
+    };
+    void load();
+    return () => { stop = true; };
+  }, [ret, accountId]);
+  const owned = ent?.entitlements.some((x) => x.sku === 'support_founder' && x.active) ?? false;
+  const offer = cfg?.enabled ? cfg.skus.find((x) => x.id === 'support_founder') : undefined;
+  const back = ret !== null && ret !== 'cancel';
+  if (!owned && !offer && !back) return null;
+  const price = offer ? String(offer.priceChf) : '5';
+  const buy = async () => {
+    setBusy(true);
+    const r = await startCheckout('support_founder', l);
+    setBusy(false);
+    say(t('supportFailed').replace('{r}', tError(r.reason)), 'err');
+  };
+  return (
+    <>
+      <h3>{t('supportTitle')}</h3>
+      {owned ? (
+        <>
+          <p><span class="tag ok founder">✦ {t('founderTitle')}</span></p>
+          <p class="muted small">{back ? t('supportThanks') : t('supportOwned')}</p>
+        </>
+      ) : back ? (
+        <p class="muted small">{t('supportPending')}</p>
+      ) : (
+        <>
+          {ret === 'cancel' && <p class="muted small">{t('supportCancelled')}</p>}
+          <p class="muted small">{t('supportText').replace('{p}', price)}</p>
+          <p class="muted small">{t('supportLegal')}</p>
+          {ent && !ent.account ? <p class="muted small">{t('supportNeedsAccount')}</p> : <button class="primary" disabled={busy || !ent} onClick={() => void buy()}>{t('supportButton').replace('{p}', price)}</button>}
+        </>
+      )}
+    </>
+  );
+}
+
 function AccountPanel({ v }: { v: PlayerView }) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -844,6 +953,7 @@ function AccountPanel({ v }: { v: PlayerView }) {
       {passkeysSupported() ? <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button> : <p class="muted small">{t('passkeyUnsupported')}</p>}
       <h3>{t('rescueEmail')}</h3>
       <EmailSection email={account?.account?.email ?? null} onChange={load} say={say} />
+      <SupportSection accountId={account?.account?.id ?? null} say={say} />
       <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
       <ul class="list">
         {(sessions ?? []).map((s) => (

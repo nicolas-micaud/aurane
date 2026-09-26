@@ -4,7 +4,8 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
-import { MemoryJobStore, emptyMemory, type Job, type JobState, type JobStore, type MemoryRecord, type MemoryStore } from '@aurane/general';
+import { KeyedLock, MemoryJobStore, combineOps, emptyMemory, isEmptyMemory, normalizeMemory, type Job, type JobState, type JobStore, type MemoryIndexEntry, type MemoryRecord, type MemoryStore, type MemoryUpdate, type MirrorOutbox, type OutboxItem, type OutboxOp } from '@aurane/general';
+import type { PendingDoctrine, PendingDoctrineStore } from './general.js';
 
 /** Jobs and memory in one JSON file per kind, rewritten on change: fine for a developer's machine. */
 export class FileJobStore extends MemoryJobStore {
@@ -46,14 +47,25 @@ export class FileMemoryStore implements MemoryStore {
     await mkdir(this.dir, { recursive: true });
     try { for (const [k, v] of Object.entries(JSON.parse(await readFile(join(this.dir, 'general-memory.json'), 'utf8')) as Record<string, MemoryRecord>)) this.map.set(k, v); } catch { /* first run */ }
   }
-  async load(colonyId: string): Promise<MemoryRecord | null> { await this.ensure(); const m = this.map.get(colonyId); return m ? structuredClone(m) : null; }
-  async save(colonyId: string, m: MemoryRecord): Promise<void> {
+  private readonly lock = new KeyedLock();
+  async load(key: string): Promise<MemoryRecord | null> { await this.ensure(); const m = this.map.get(key); return m ? normalizeMemory(structuredClone(m)) : null; }
+  async save(key: string, m: MemoryRecord): Promise<void> {
     await this.ensure();
-    this.map.set(colonyId, structuredClone(m));
-    const tmp = join(this.dir, 'general-memory.json.tmp');
-    await writeFile(tmp, JSON.stringify(Object.fromEntries(this.map)));
-    await rename(tmp, join(this.dir, 'general-memory.json'));
+    this.map.set(key, structuredClone(m));
+    // One file for every key: writes are queued so two saves never race on the temp file.
+    await this.lock.run('file', async () => {
+      const tmp = join(this.dir, 'general-memory.json.tmp');
+      await writeFile(tmp, JSON.stringify(Object.fromEntries(this.map)));
+      await rename(tmp, join(this.dir, 'general-memory.json'));
+    });
   }
+  async update(key: string, fn: MemoryUpdate): Promise<MemoryRecord> {
+    await this.ensure();
+    const next = fn(await this.load(key)); // no await between the read and the in-memory write
+    await this.save(key, next);
+    return next;
+  }
+  async index(): Promise<MemoryIndexEntry[]> { await this.ensure(); return [...this.map.entries()].map(([key, m]) => ({ key, rev: m.rev ?? 0, empty: isEmptyMemory(normalizeMemory(m) ?? emptyMemory()) })); }
 }
 
 interface JobRow { id: string; kind: string; task: string; priority: number; colony: string | null; key: string | null; payload: unknown; created_at: string; run_after: string; expires_at: string; attempts: number; state: string; result: unknown; error: string | null }
@@ -70,6 +82,11 @@ export class PgJobStore implements JobStore {
       create index if not exists llm_jobs_ready on llm_jobs (state, run_after, priority, created_at);
       create index if not exists llm_jobs_key on llm_jobs (key) where key is not null;
       create table if not exists general_memory (colony_id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+      create sequence if not exists memory_outbox_seq;
+      create table if not exists memory_outbox (key text primary key, op text not null, seq bigint not null, attempts int not null default 0,
+        next_at bigint not null, created_at bigint not null, last_error text);
+      create index if not exists memory_outbox_due on memory_outbox (next_at);
+      create table if not exists ops_backups (kind text primary key, at timestamptz not null, bytes bigint, object text);
     `);
   }
   async put(j: Job): Promise<void> {
@@ -104,14 +121,79 @@ export class PgJobStore implements JobStore {
   async close(): Promise<void> { /* the pool belongs to the caller */ }
 }
 
+/** `colony_id` is the memory key (`account:…` or `season:<seed>:<colony>`; a bare colony id is a pre-0.x legacy row). */
 export class PgMemoryStore implements MemoryStore {
   constructor(private readonly pool: pg.Pool) {}
-  async load(colonyId: string): Promise<MemoryRecord | null> {
-    const r = await this.pool.query<{ data: MemoryRecord }>('select data from general_memory where colony_id = $1', [colonyId]);
-    return r.rows[0]?.data ?? null;
+  async load(key: string): Promise<MemoryRecord | null> {
+    const r = await this.pool.query<{ data: unknown }>('select data from general_memory where colony_id = $1', [key]);
+    return r.rows[0] ? normalizeMemory(r.rows[0].data) : null;
   }
-  async save(colonyId: string, m: MemoryRecord): Promise<void> {
-    await this.pool.query('insert into general_memory (colony_id, data, updated_at) values ($1, $2, now()) on conflict (colony_id) do update set data = excluded.data, updated_at = now()', [colonyId, JSON.stringify(m)]);
+  async save(key: string, m: MemoryRecord): Promise<void> {
+    await this.pool.query('insert into general_memory (colony_id, data, updated_at) values ($1, $2, now()) on conflict (colony_id) do update set data = excluded.data, updated_at = now()', [key, JSON.stringify(m)]);
+  }
+  /** Read-modify-write under a transaction-scoped advisory lock on the key: it also covers a row that does not exist yet. */
+  async update(key: string, fn: MemoryUpdate): Promise<MemoryRecord> {
+    const c = await this.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query('select pg_advisory_xact_lock(hashtext($1))', [`general_memory:${key}`]);
+      const r = await c.query<{ data: unknown }>('select data from general_memory where colony_id = $1', [key]);
+      const next = fn(r.rows[0] ? normalizeMemory(r.rows[0].data) : null);
+      await c.query('insert into general_memory (colony_id, data, updated_at) values ($1, $2, now()) on conflict (colony_id) do update set data = excluded.data, updated_at = now()', [key, JSON.stringify(next)]);
+      await c.query('commit');
+      return next;
+    } catch (err) { await c.query('rollback').catch(() => undefined); throw err; } finally { c.release(); }
+  }
+  async index(): Promise<MemoryIndexEntry[]> {
+    const r = await this.pool.query<{ key: string; rev: string; empty: boolean }>(`
+      select colony_id as key,
+        case when jsonb_typeof(data) = 'object' and data->>'rev' ~ '^[0-9]+$' then (data->>'rev')::bigint else 0 end as rev,
+        not (jsonb_typeof(data) = 'object' and (
+          (case when jsonb_typeof(data->'notes') = 'array' then jsonb_array_length(data->'notes') else 0 end) > 0 or
+          (case when jsonb_typeof(data->'seasons') = 'array' then jsonb_array_length(data->'seasons') else 0 end) > 0 or
+          (case when jsonb_typeof(data->'recentPhrases') = 'array' then jsonb_array_length(data->'recentPhrases') else 0 end) > 0)) as empty
+      from general_memory`);
+    return r.rows.map((x) => ({ key: x.key, rev: Number(x.rev), empty: x.empty }));
+  }
+}
+
+/** The mirror's outbox in Postgres: what the memory instance has not confirmed survives a restart of the world. */
+export class PgMirrorOutbox implements MirrorOutbox {
+  constructor(private readonly pool: pg.Pool) {}
+  async enqueue(key: string, op: OutboxOp, now: number): Promise<number> {
+    const c = await this.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query('select pg_advisory_xact_lock(hashtext($1))', [`memory_outbox:${key}`]);
+      const prev = await c.query<{ op: OutboxOp }>('select op from memory_outbox where key = $1', [key]);
+      const r = await c.query<{ seq: string }>(`insert into memory_outbox (key, op, seq, attempts, next_at, created_at, last_error) values ($1, $2, nextval('memory_outbox_seq'), 0, $3, $3, null)
+        on conflict (key) do update set op = excluded.op, seq = excluded.seq, attempts = 0, next_at = excluded.next_at returning seq`, [key, combineOps(prev.rows[0]?.op ?? null, op), now]);
+      await c.query('commit');
+      return Number(r.rows[0]!.seq);
+    } catch (err) { await c.query('rollback').catch(() => undefined); throw err; } finally { c.release(); }
+  }
+  async due(now: number, limit: number): Promise<OutboxItem[]> {
+    const r = await this.pool.query<{ key: string; op: OutboxOp; seq: string; attempts: number; next_at: string; created_at: string; last_error: string | null }>('select * from memory_outbox where next_at <= $1 order by next_at limit $2', [now, limit]);
+    return r.rows.map((x) => ({ key: x.key, op: x.op, seq: Number(x.seq), attempts: x.attempts, nextAt: Number(x.next_at), createdAt: Number(x.created_at), lastError: x.last_error }));
+  }
+  async ack(key: string, seq: number): Promise<void> { await this.pool.query('delete from memory_outbox where key = $1 and seq = $2', [key, seq]); }
+  async retry(key: string, seq: number, nextAt: number, error: string): Promise<void> {
+    await this.pool.query('update memory_outbox set attempts = attempts + 1, next_at = $3, last_error = $4 where key = $1 and seq = $2', [key, seq, nextAt, error.slice(0, 500)]);
+  }
+  async stats(now: number): Promise<{ depth: number; oldestAgeS: number; maxAttempts: number }> {
+    const r = await this.pool.query<{ depth: string; oldest: string | null; max_attempts: number | null }>('select count(*)::text as depth, min(created_at)::text as oldest, max(attempts) as max_attempts from memory_outbox');
+    const x = r.rows[0]!;
+    return { depth: Number(x.depth), oldestAgeS: x.oldest ? Math.max(0, Math.round((now - Number(x.oldest)) / 1000)) : 0, maxAttempts: x.max_attempts ?? 0 };
+  }
+}
+
+/** Last successful backup per kind (`pg`, `memory`), written by deploy/backup/pg-backup.sh, read for the metrics. */
+export interface BackupStatus { kind: string; at: number; bytes: number | null; object: string | null }
+export class PgBackupStatus {
+  constructor(private readonly pool: pg.Pool) {}
+  async list(): Promise<BackupStatus[]> {
+    const r = await this.pool.query<{ kind: string; at: Date; bytes: string | null; object: string | null }>('select kind, at, bytes, object from ops_backups order by kind');
+    return r.rows.map((x) => ({ kind: x.kind, at: x.at.getTime(), bytes: x.bytes === null ? null : Number(x.bytes), object: x.object }));
   }
 }
 
@@ -138,6 +220,34 @@ export class PgBudgetStore implements BudgetStore {
   static async migrate(pool: pg.Pool): Promise<void> { await pool.query('create table if not exists llm_budget (month text primary key, eur double precision not null default 0, updated_at timestamptz not null default now())'); }
   async load(month: string): Promise<number> { const r = await this.pool.query<{ eur: number }>('select eur from llm_budget where month = $1', [month]); return Number(r.rows[0]?.eur ?? 0); }
   async save(month: string, eur: number): Promise<void> { await this.pool.query('insert into llm_budget (month, eur, updated_at) values ($1, $2, now()) on conflict (month) do update set eur = greatest(llm_budget.eur, excluded.eur), updated_at = now()', [month, eur]); }
+}
+
+/** Doctrines waiting for the player's yes, one JSON file for the whole world (development). */
+export class FilePendingDoctrineStore implements PendingDoctrineStore {
+  constructor(private readonly dir: string) {}
+  private file(): string { return join(this.dir, 'doctrine-pending.json'); }
+  private async read(): Promise<Record<string, PendingDoctrine>> {
+    try { return JSON.parse(await readFile(this.file(), 'utf8')) as Record<string, PendingDoctrine>; } catch { return {}; }
+  }
+  private async write(all: Record<string, PendingDoctrine>): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    const tmp = `${this.file()}.tmp`;
+    await writeFile(tmp, JSON.stringify(all));
+    await rename(tmp, this.file());
+  }
+  async loadAll(): Promise<PendingDoctrine[]> { return Object.values(await this.read()); }
+  async save(p: PendingDoctrine): Promise<void> { const all = await this.read(); all[p.colonyId] = p; await this.write(all); }
+  async remove(colonyId: string): Promise<void> { const all = await this.read(); if (!(colonyId in all)) return; delete all[colonyId]; await this.write(all); }
+}
+
+export class PgPendingDoctrineStore implements PendingDoctrineStore {
+  constructor(private readonly pool: pg.Pool) {}
+  static async migrate(pool: pg.Pool): Promise<void> { await pool.query('create table if not exists doctrine_pending (colony_id text primary key, data jsonb not null, created_at bigint not null)'); }
+  async loadAll(): Promise<PendingDoctrine[]> { return (await this.pool.query<{ data: PendingDoctrine }>('select data from doctrine_pending')).rows.map((r) => r.data); }
+  async save(p: PendingDoctrine): Promise<void> {
+    await this.pool.query('insert into doctrine_pending (colony_id, data, created_at) values ($1, $2, $3) on conflict (colony_id) do update set data = excluded.data, created_at = excluded.created_at', [p.colonyId, JSON.stringify(p), p.createdAt]);
+  }
+  async remove(colonyId: string): Promise<void> { await this.pool.query('delete from doctrine_pending where colony_id = $1', [colonyId]); }
 }
 
 export { emptyMemory };

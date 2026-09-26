@@ -5,15 +5,17 @@
 //   node tools/persona-bench/dist/main.js --live --record      # and save the answers to recordings/live.json
 //   node tools/persona-bench/dist/main.js --replay recordings/live.json
 //   options: --providers a,b  --personas vane,oriel  --langs fr  --scenarios joke,energy-crisis  --out docs/ai/persona-report.md
+//   The report opens with one line per provider: JSON validity, number fidelity, doctrine correctness, latency p50/p90,
+//   tokens and EUR per 1000 calls (from LLM_PROVIDER_<NAME>_PRICE_IN/_OUT). BENCH_DEBUG=1 prints raw answers and policies.
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { PERSONAS, type Persona } from '@aurane/protocol';
 import { viewFor } from '@aurane/sim';
-import { OpenAICompatibleClient, ProviderPool, analyze, compileDoctrine, converse, factsFrom, emptyMemory, providerConfigFromEnv, renderAnalysis, renderMemory, writeBriefing, writeCounsel, type LlmClient } from '@aurane/general';
+import { OpenAICompatibleClient, ProviderPool, TASK_PARAMS, extractJson, analyze, compileDoctrine, converse, factsFrom, emptyMemory, providerConfigFromEnv, renderAnalysis, renderMemory, writeBriefing, writeCounsel, type LlmClient } from '@aurane/general';
 import { SCENARIOS, type Lang } from './scenarios.js';
 import { recordingKey, replayClient, syntheticClient, type Recording } from './mock.js';
-import { aggregate, markdown, type Sample } from './report.js';
+import { aggregate, markdown, summarize, summaryMarkdown, type Call, type Sample } from './report.js';
 
 const { values: a } = parseArgs({ options: {
   live: { type: 'boolean', default: false }, record: { type: 'boolean', default: false }, replay: { type: 'string' },
@@ -30,6 +32,7 @@ let current = { provider: 'mock', scenario: '', persona: 'vane' as Persona, lang
 const synthetic = syntheticClient(() => current);
 const recording: Recording = a.replay ? JSON.parse(await readFile(a.replay, 'utf8')) as Recording : {};
 const clients = new Map<string, LlmClient>();
+const prices: Record<string, { inPerM: number; outPerM: number }> = {};
 if (a.live) {
   const names = (a.providers ?? process.env.LLM_VOICE_PROVIDERS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   for (const n of names) {
@@ -37,6 +40,7 @@ if (a.live) {
     if (!cfg) { console.error(`provider ${n}: LLM_PROVIDER_${n.toUpperCase().replace(/-/g, '_')}_BASE_URL/_MODEL missing, skipped`); continue; }
     const c = new OpenAICompatibleClient(cfg);
     clients.set(n, new ProviderPool('voice', c.modelId, [c]));
+    prices[n] = { inPerM: cfg.priceIn ?? 0, outPerM: cfg.priceOut ?? 0 };
   }
   if (!clients.size) { console.error('no live provider configured'); process.exit(2); }
 } else if (a.replay) {
@@ -54,13 +58,28 @@ for (const [provider, client] of clients) {
     const { w, c, awaySeconds } = sc.build(persona, lang);
     const systems: Record<string, string> = {}; for (const [id, st] of Object.entries(w.systems)) if (st.owner === c.id) systems[id] = w.galaxy.systems[id]!.name;
     const colonies: Record<string, string> = {}; for (const o of Object.values(w.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
-    const ctx = { lang, current: c.policy, systems, colonies, alliances: {} as Record<string, string>, persona };
+    const ctx = { lang, current: c.policy, systems, colonies, alliances: {} as Record<string, string>, persona, capital: c.capital };
     const analysis = analyze(w, c);
     const memory = renderMemory(factsFrom(w, c), emptyMemory(), lang);
     current = { provider, scenario: sc.id, persona, lang, task: sc.kind, crisis: analysis.crisis };
     const started = Date.now();
     let recordText: ((t: string) => void) | null = null;
-    const wrapped: LlmClient | null = client ? { name: client.name, healthy: () => client.healthy(), chat: async (m, o) => { const r = await client.chat(m, o); recordText?.(r.text); return r; } } : null;
+    const calls: Call[] = []; let repaired = false, numbersRetry = false;
+    const wrapped: LlmClient | null = client ? { name: client.name, healthy: () => client.healthy(), chat: async (m, o) => {
+      const last = m.at(-1)?.content ?? '';
+      if (/^Your answer was not valid for the required JSON shape/.test(last)) repaired = true;
+      if (/^Your reply cited figures/.test(last)) numbersRetry = true;
+      const isJson = o?.task ? TASK_PARAMS[o.task].json : !!o?.json;
+      const t0 = Date.now();
+      try {
+        const r = await client.chat(m, o);
+        let json: boolean | null = null;
+        if (isJson) { try { extractJson(r.text); json = true; } catch { json = false; } }
+        calls.push({ ms: r.ms, inputTokens: r.inputTokens, outputTokens: r.outputTokens, ok: true, json });
+        if (process.env.BENCH_DEBUG) process.stderr.write(`raw ${r.text.slice(0, 400)}\n`);
+        recordText?.(r.text); return r;
+      } catch (err) { calls.push({ ms: Date.now() - t0, inputTokens: 0, outputTokens: 0, ok: false, json: isJson ? false : null, error: (err as Error).message.slice(0, 120) }); throw err; }
+    } } : null;
     recordText = (t) => { recorded[recordingKey(provider, sc.id, persona, lang)] = t; };
     let sample: Sample;
     try {
@@ -70,6 +89,8 @@ for (const [provider, client] of clients) {
       } else if (sc.kind === 'doctrine') {
         const r = await compileDoctrine(sc.text[lang], ctx, wrapped, { analysis: renderAnalysis(analysis, lang), memory, crisis: analysis.crisis, seed: `${sc.id}:${persona}` });
         sample = { provider, scenario: sc.id, persona, lang, kind: sc.kind, source: r.source, reply: r.reply, question: r.question, ordersApplied: r.question === null && JSON.stringify(r.policy) !== JSON.stringify(ctx.current), numbersStripped: false, ms: Date.now() - started, expect: sc.expect };
+        if (process.env.BENCH_DEBUG) process.stderr.write(`policy ${JSON.stringify({ defendFirst: r.policy.defendFirst, capital: c.capital, aggression: r.policy.aggression, sellAbove: r.policy.sellAbove, reserves: r.policy.reserves })}\n`);
+        if (sc.check) sample.correct = sc.check({ policy: r.question || r.refused ? null : r.policy, question: r.question, refused: r.refused }, c);
       } else if (sc.kind === 'counsel') {
         const r = await writeCounsel({ persona, lang, tier: 6, options: analysis.options, analysis: renderAnalysis(analysis, lang), memory, crisis: analysis.crisis, minutesToDraw: 20, seed: `${sc.id}:${persona}` }, wrapped);
         sample = { provider, scenario: sc.id, persona, lang, kind: sc.kind, source: r.source, reply: r.cards.map((c) => `[${c.title}] ${c.line}`).join(' / '), question: null, ordersApplied: false, numbersStripped: r.numbersStripped, ms: Date.now() - started, expect: sc.expect };
@@ -82,15 +103,19 @@ for (const [provider, client] of clients) {
     } catch (err) {
       sample = { provider, scenario: sc.id, persona, lang, kind: sc.kind, source: `error: ${(err as Error).message.slice(0, 80)}`, reply: '', question: null, ordersApplied: false, numbersStripped: false, ms: Date.now() - started, expect: sc.expect };
     }
+    if (client) { sample.calls = calls; sample.repaired = repaired; sample.numbersRetry = numbersRetry; }
     samples.push(sample);
-    process.stderr.write(`${provider} ${sc.id} ${persona} ${lang} → ${sample.source} (${sample.ms} ms)\n`);
+    const errs = (sample.calls ?? []).filter((x) => !x.ok).map((x) => x.error).join(' | ');
+    process.stderr.write(`${provider} ${sc.id} ${persona} ${lang} → ${sample.source} (${sample.ms} ms)${errs ? ` [${errs}]` : ''}\n`);
   }
 }
 
 if (a.record) { await mkdir('tools/persona-bench/recordings', { recursive: true }); await writeFile('tools/persona-bench/recordings/live.json', JSON.stringify(recorded, null, 1)); console.error('recorded → tools/persona-bench/recordings/live.json'); }
 const rows = aggregate(samples);
-const md = markdown(rows, samples, { mode: a.live ? 'réel' : a.replay ? `rejeu (${a.replay})` : 'simulé (réponses synthétiques tirées des fiches)', date: new Date().toISOString().slice(0, 10), providers: [...clients.keys()], scenarios: scenarios.map((s) => s.id) });
+const summary = summarize(samples.filter((s) => s.provider !== 'heuristic'), prices);
+const md = markdown(rows, samples, { mode: a.live ? 'réel' : a.replay ? `rejeu (${a.replay})` : 'simulé (réponses synthétiques tirées des fiches)', date: new Date().toISOString().slice(0, 10), providers: [...clients.keys()], scenarios: scenarios.map((s) => s.id) }, summaryMarkdown(summary));
 await mkdir(dirname(a.out!), { recursive: true });
 await writeFile(a.out!, md);
 console.log(`${samples.length} réponses, rapport → ${a.out}`);
 for (const r of rows) console.log(`${r.provider.padEnd(10)} ${r.persona.padEnd(8)} ${r.lang}  modèle ${Math.round(r.modelRate * 100)} %  voix ${Math.round(r.voiceRate * 100)} %  chiffres ${Math.round(r.numbersOk * 100)} %  question ${Math.round(r.questionOk * 100)} %  ordres ${Math.round(r.ordersOk * 100)} %  humour ${Math.round(r.humourOk * 100)} %  ${Math.round(r.avgChars)} c`);
+for (const r of summary) console.log(`${r.provider.padEnd(12)} modèle ${Math.round(r.modelRate * 100)} %  JSON1 ${Math.round(r.jsonFirstTry * 100)} %  chiffres ${Math.round(r.numbersOk * 100)} % (1er essai ${Math.round(r.numbersFirstTry * 100)} %)  doctrine ${Math.round(r.doctrineOk * 100)} %  voix ${Math.round(r.voiceRate * 100)} %  p50 ${r.p50}  p90 ${r.p90}  talk p90 ${r.talkP90}  counsel p90 ${r.counselP90}  err ${r.errors}/${r.calls} (to ${r.timeouts})  ${Math.round(r.avgIn)}/${Math.round(r.avgOut)} tok  ${r.eurPer1k.toFixed(3)} EUR/1k  dépense ${r.spendEur.toFixed(4)} EUR`);

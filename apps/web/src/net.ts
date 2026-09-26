@@ -20,10 +20,40 @@ export async function createGuest(name: string, faction: Faction, persona: Perso
   setToken(token);
 }
 
-export interface PublicConfig { requireInvite: boolean; seasonDays: number; seasonSeed: string }
+/** Payments (decision 0011): enabled only when the server has Stripe configured; the SKUs on sale, price in CHF. */
+export interface PaymentsConfig { enabled: boolean; skus: { id: string; priceChf: number }[] }
+export interface PublicConfig { requireInvite: boolean; seasonDays: number; seasonSeed: string; payments?: PaymentsConfig }
 export async function fetchPublicConfig(): Promise<PublicConfig> {
   try { const r = await fetch('/api/public/config'); if (r.ok) return await r.json() as PublicConfig; } catch { /* offline */ }
   return { requireInvite: false, seasonDays: 56, seasonSeed: '' };
+}
+
+/** Back from Stripe's hosted page: `?paid=<sku>` (success) or `?paid=cancel`. Read once, then removed from the URL. */
+function readPaidReturn(): { sku: string } | 'cancel' | null {
+  try {
+    const q = new URLSearchParams(location.search);
+    const paid = q.get('paid');
+    if (!paid) return null;
+    q.delete('paid');
+    const rest = q.toString();
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+    return paid === 'cancel' ? 'cancel' : /^[a-z0-9_]{1,40}$/.test(paid) ? { sku: paid } : null;
+  } catch { return null; }
+}
+export const paidReturn = signal<{ sku: string } | 'cancel' | null>(readPaidReturn());
+
+export interface Entitlement { sku: string; createdAt: number; expiresAt: number | null; active: boolean }
+export async function fetchEntitlements(): Promise<{ payments: boolean; account: boolean; entitlements: Entitlement[] } | null> {
+  try { const res = await fetch('/api/account/entitlements', { headers: authHeaders() }); return res.ok ? await res.json() as { payments: boolean; account: boolean; entitlements: Entitlement[] } : null; } catch { return null; }
+}
+/** Opens Stripe's hosted checkout for this SKU; resolves only on failure (on success the page navigates away). */
+export async function startCheckout(sku: string, l: 'fr' | 'en'): Promise<{ ok: false; reason: string }> {
+  try {
+    const res = await fetch('/api/pay/checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ sku, lang: l }) });
+    const body = await res.json().catch(() => ({})) as { url?: string; error?: string };
+    if (res.ok && body.url) { location.assign(body.url); return await new Promise<never>(() => { /* navigating */ }); }
+    return { ok: false, reason: body.error ?? `http ${res.status}` };
+  } catch { return { ok: false, reason: 'network' }; }
 }
 
 /** Opens an existing colony on this device from a link code (see requestLink). */
@@ -120,10 +150,11 @@ export async function fetchBriefing(lang: 'fr' | 'en'): Promise<{ text: string; 
 
 export interface Turn { who: 'me' | 'general'; text: string; at: number }
 /** Talk to the General: small talk, questions, orders. */
-export async function talk(text: string, lang: 'fr' | 'en'): Promise<{ reply: string; source: string; policyChanged: boolean; history: Turn[] } | null> {
+export interface TalkAnswer { reply: string; source: string; policyChanged: boolean; history: Turn[]; /** A doctrine waiting for the player's yes (DOCTRINE_CONFIRM). */ pending?: { id: string; readable: string[] } | null; question?: string | null }
+export async function talk(text: string, lang: 'fr' | 'en'): Promise<TalkAnswer | null> {
   try {
     const res = await fetch('/api/talk', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
-    return res.ok ? (await res.json() as { reply: string; source: string; policyChanged: boolean; history: Turn[] }) : null;
+    return res.ok ? (await res.json() as TalkAnswer) : null;
   } catch { return null; }
 }
 /** A card of the Draw Counsel in the General's voice (LLM layer, decision 0009). */
@@ -149,11 +180,31 @@ export async function fetchTalk(): Promise<Turn[]> {
   try { const res = await fetch('/api/talk', { headers: authHeaders() }); return res.ok ? ((await res.json() as { history: Turn[] }).history) : []; } catch { return []; }
 }
 
-export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<{ summary: string; source: string; warnings: string[]; reply: string } | null> {
+export interface DoctrineAnswer { summary: string; source: string; warnings: string[]; reply: string; readable?: string[]; question?: string | null; pending?: { id: string } | null; applied?: boolean }
+export async function submitDoctrine(text: string, lang: 'fr' | 'en'): Promise<DoctrineAnswer | null> {
   try {
     const res = await fetch('/api/doctrine', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ text, lang }) });
-    return res.ok ? (await res.json() as { summary: string; source: string; warnings: string[]; reply: string }) : null;
+    return res.ok ? (await res.json() as DoctrineAnswer) : null;
   } catch { return null; }
+}
+
+/** The doctrine waiting for the player's yes, as the server keeps it (null when none, or on a network error). */
+export async function fetchPendingDoctrine(): Promise<unknown> {
+  try { const res = await fetch('/api/doctrine/pending', { headers: authHeaders() }); return res.ok ? await res.json() : null; } catch { return null; }
+}
+
+/** "Apply": the pending doctrine becomes the Colony's. `gone` when it was replaced or expired meanwhile. */
+export async function confirmDoctrine(id: string): Promise<'ok' | 'gone' | 'offline'> {
+  try {
+    const res = await fetch('/api/doctrine/confirm', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id }) });
+    if (res.status === 404) return 'gone';
+    return res.ok ? 'ok' : 'offline';
+  } catch { return 'offline'; }
+}
+
+/** "Not like that": the pending doctrine is dropped, the active one stays. */
+export async function discardDoctrine(): Promise<boolean> {
+  try { return (await fetch('/api/doctrine/discard', { method: 'POST', headers: authHeaders(), body: '{}' })).ok; } catch { return false; }
 }
 
 export type BattleSummary = { id: string; system: string; systemName: string; poi: string; startedAt: number; endedAt: number | null; sides: string[]; kills: number };

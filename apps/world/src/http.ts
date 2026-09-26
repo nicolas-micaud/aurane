@@ -9,6 +9,9 @@ import { mailerFromEnv, type Mailer } from './mail.js';
 import { CommandSchema, FACTIONS, PERSONAS } from '@aurane/protocol';
 import type { Engine } from './engine.js';
 import { renderColonyPage, renderGazettePage } from './pages.js';
+import { PaymentService } from './payments/service.js';
+import { StripeManagedPayments } from './payments/stripe.js';
+import type { PaymentProvider } from './payments/provider.js';
 
 const GuestSchema = z.object({
   name: z.string().trim().min(2).max(32),
@@ -28,7 +31,8 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(data);
 }
 
-async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<unknown> {
+/** The body exactly as it came: a webhook signature is computed over these bytes, not over re-serialised JSON. */
+async function readRaw(req: IncomingMessage, limit = 64 * 1024): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -36,8 +40,13 @@ async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<unknow
     if (size > limit) throw new Error('body too large');
     chunks.push(chunk as Buffer);
   }
-  if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+  return Buffer.concat(chunks);
+}
+
+async function readBody(req: IncomingMessage, limit = 64 * 1024): Promise<unknown> {
+  const raw = await readRaw(req, limit);
+  if (!raw.length) return {};
+  return JSON.parse(raw.toString('utf8')) as unknown;
 }
 
 /** The client address as the tunnel reports it (Cloudflare, then any proxy), else the socket's. */
@@ -63,9 +72,12 @@ function bearer(req: IncomingMessage): string | null {
   return null;
 }
 
-export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeResendMs?: number } = {}): Server {
+export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeResendMs?: number; /** Overrides the provider built from the configuration (tests). */ payments?: PaymentProvider | null } = {}): Server {
   const passkeys = new PasskeyService(engine.persistence, { rpName: 'Aurane', rpId: engine.cfg.rpId, origins: engine.cfg.rpOrigins });
   const emails = new EmailCodeService(engine.persistence, passkeys, deps.mailer ?? mailerFromEnv(), deps.codeResendMs);
+  // Decision 0011: Stripe Managed Payments as merchant of record; absent configuration = payments disabled.
+  const provider = deps.payments !== undefined ? deps.payments : engine.cfg.stripe ? new StripeManagedPayments(engine.cfg.stripe) : null;
+  const payments = new PaymentService(engine.persistence, provider, { publicOrigin: engine.cfg.publicOrigin, onChange: () => engine.refreshCosmetics(), log: (m) => console.log(JSON.stringify({ ...m, scope: 'pay' })) });
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     try {
@@ -89,7 +101,18 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const c = engine.publicColony(decodeURIComponent(url.pathname.slice(3)));
         return c ? html(res, 200, renderColonyPage(c)) : html(res, 404, '<h1>404</h1>');
       }
-      if (req.method === 'GET' && url.pathname === '/api/public/config') return json(res, 200, engine.publicConfig());
+      if (req.method === 'GET' && url.pathname === '/api/public/config') return json(res, 200, { ...engine.publicConfig(), payments: payments.publicConfig() });
+      // Stripe's webhook: no session, the signature over the raw body is the authentication.
+      if (req.method === 'POST' && url.pathname === '/api/pay/webhook') {
+        if (!payments.enabled) return json(res, 503, { error: 'payments_disabled' });
+        let r;
+        try { r = await payments.webhook(await readRaw(req, 512 * 1024), req.headers); } catch (err) {
+          console.error(JSON.stringify({ scope: 'pay', msg: 'webhook failed', error: (err as Error).message }));
+          return json(res, 500, { error: 'webhook failed' }); // Stripe retries
+        }
+        return json(res, r.status, r.body);
+      }
+      if (url.pathname === '/api/pay/checkout' && !payments.enabled) return json(res, 503, { error: 'payments_disabled' });
       if (req.method === 'POST' && url.pathname === '/api/guest') {
         const parsed = GuestSchema.safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid guest', issues: parsed.error.issues });
@@ -141,9 +164,11 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         }
         if (req.method === 'GET' && url.pathname === '/api/admin/invites') return json(res, 200, { invites: await engine.invites() });
         if (req.method === 'GET' && url.pathname === '/api/admin/llm/metrics') {
-          if (url.searchParams.get('format') === 'prometheus') { const body = engine.general.prometheus(); res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); return res.end(body); }
+          if (url.searchParams.get('format') === 'prometheus') { const body = await engine.general.prometheus(); res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); return res.end(body); }
           return json(res, 200, await engine.general.snapshot());
         }
+        // For Uptime Kuma (HTTP monitor with the x-admin-token header): 503 as soon as a problem is listed.
+        if (req.method === 'GET' && url.pathname === '/api/admin/memory/health') { const h = await engine.general.memoryHealth(); return json(res, h.ok ? 200 : 503, h); }
         return json(res, 404, { error: 'not found' });
       }
       const token = bearer(req);
@@ -170,7 +195,7 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const r = await passkeys.registrationVerify(colony, parsed.data.response as unknown as Parameters<typeof passkeys.registrationVerify>[1], parsed.data.label || deviceLabel(req.headers['user-agent']));
         if (!r.ok) return json(res, 400, { error: r.reason });
         const account = await passkeys.accountFor(colony, 'fr', false);
-        if (account) await engine.adoptSessions(colony.id, account.id);
+        if (account) { await engine.adoptSessions(colony.id, account.id); await engine.refreshCosmetics(); }
         return json(res, 200, { ok: true, id: r.id });
       }
       if (req.method === 'DELETE' && url.pathname.startsWith('/api/account/passkeys/')) {
@@ -191,10 +216,22 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         const r = await emails.verifyAdd(colony, parsed.data.code);
         if (!r.ok) return json(res, 400, { error: r.reason });
         await engine.adoptSessions(colony.id, r.account.id);
+        await engine.refreshCosmetics();
         return json(res, 200, { ok: true, email: r.email });
       }
       if (req.method === 'DELETE' && url.pathname === '/api/account/email') {
         return (await emails.removeEmail(colony)) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'no e-mail' });
+      }
+      // Purchases (decision 0011): held by the account, never by the colony; the simulation never sees them.
+      if (req.method === 'POST' && url.pathname === '/api/pay/checkout') {
+        const parsed = z.object({ sku: z.string().max(64), lang: z.enum(['fr', 'en']).default('fr') }).safeParse(await readBody(req));
+        if (!parsed.success) return json(res, 400, { error: 'invalid request' });
+        const r = await payments.checkout(await engine.persistence.accountOfColony(colony.id), parsed.data.sku, parsed.data.lang);
+        return r.ok ? json(res, 200, { url: r.url }) : json(res, r.status, { error: r.error });
+      }
+      if (req.method === 'GET' && url.pathname === '/api/account/entitlements') {
+        const accountId = await engine.persistence.accountOfColony(colony.id);
+        return json(res, 200, { payments: payments.enabled, account: accountId !== null, entitlements: await payments.entitlements(accountId) });
       }
       if (req.method === 'POST' && url.pathname === '/api/link') { const code = engine.linkCode(colony.id); return json(res, 200, { code, url: `${engine.cfg.publicOrigin}/#join=${encodeURIComponent(code)}` }); }
       if (req.method === 'GET' && url.pathname.startsWith('/api/system/')) {
@@ -218,8 +255,8 @@ export function createHttpServer(engine: Engine, deps: { mailer?: Mailer; codeRe
         if (!parsed.success) return json(res, 400, { error: 'invalid doctrine' });
         return json(res, 200, await engine.doctrine(colony.id, parsed.data.text, parsed.data.lang));
       }
-      // The doctrine shown to the player, waiting for a yes (DOCTRINE_CONFIRM=1), and the yes itself.
-      if (req.method === 'GET' && url.pathname === '/api/doctrine/pending') { const p = engine.general.pendingDoctrine(colony.id); return json(res, 200, p ? { id: p.id, readable: p.readable, summary: p.summary, reply: p.reply } : null); }
+      // The doctrine shown to the player, waiting for a yes (DOCTRINE_CONFIRM, on by default), and the yes itself.
+      if (req.method === 'GET' && url.pathname === '/api/doctrine/pending') { const p = engine.general.pendingDoctrine(colony.id); return json(res, 200, p ? { id: p.id, readable: p.readable, summary: p.summary, reply: p.reply, createdAt: p.createdAt, expiresAt: p.createdAt + engine.cfg.doctrinePendingTtlMs } : null); }
       if (req.method === 'POST' && url.pathname === '/api/doctrine/confirm') {
         const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await readBody(req));
         if (!parsed.success) return json(res, 400, { error: 'invalid confirmation' });

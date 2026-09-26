@@ -1,29 +1,45 @@
 #!/usr/bin/env bash
-# pg-backup.sh — dump quotidien de la base Aurane vers Exoscale SOS (bucket aurane-backups, ch-gva-2), rétention 14 jours.
-# Tourne sur la VM aurane-app1 (timer systemd aurane-pg-backup.timer). Creds S3 = clé scopée terraform-aurane
-# (/etc/aurane/backup.env : AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY). Test de restauration : pg-restore-test.sh.
+# pg-backup.sh — nightly backup of Aurane to Exoscale SOS (bucket aurane-backups, ch-gva-2), 14-day retention.
+# Runs on aurane-app1 (systemd aurane-pg-backup.timer, 04:20). Two parts, each recorded in Postgres ops_backups on
+# success (the world exposes their age: aurane_backup_age_seconds, /api/admin/memory/health):
+#   pg/      pg_dump -Fc of the world database
+#   memory/  the Generals' long memory (aurane-memory, SQLite): a consistent VACUUM INTO copy made and checked by the
+#            instance itself, never a copy of the live file.
+# A failed part fails the unit (exit 1) after the other part has run. Restore tests: pg-restore-test.sh,
+# memory-restore-test.sh (timer aurane-restore-test, weekly).
 set -euo pipefail
-cd /srv/aurane
-set -a; . /etc/aurane/backup.env; set +a
-BUCKET=${BACKUP_BUCKET:-aurane-backups}; ENDPOINT=${BACKUP_ENDPOINT:-https://sos-ch-gva-2.exo.io}
-STAMP=$(date -u +%Y%m%dT%H%M%SZ); OUT=/var/tmp/aurane-${STAMP}.dump
-docker compose exec -T postgres pg_dump -U aurane -d aurane -Fc > "$OUT"
-[ -s "$OUT" ] || { echo "dump vide"; exit 1; }
-aws --endpoint-url "$ENDPOINT" s3 cp --quiet "$OUT" "s3://$BUCKET/pg/aurane-${STAMP}.dump"
-rm -f "$OUT"
-# La mémoire longue des Généraux (aurane-memory, SQLite) part avec la base : même bucket, préfixe memory/.
-MEM=/var/tmp/aurane-memory-${STAMP}.json
-if docker compose ps --format '{{.Name}}' | grep -q memory; then
-  set -a; . /srv/aurane/.env; set +a
-  docker compose exec -T memory python -c "import urllib.request,sys; r=urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8090/admin/export', headers={'authorization':'Bearer '+sys.argv[1]}), timeout=20); sys.stdout.buffer.write(r.read())" "$AURANE_MEMORY_TOKEN" > "$MEM" \
-    && [ -s "$MEM" ] && aws --endpoint-url "$ENDPOINT" s3 cp --quiet "$MEM" "s3://$BUCKET/memory/aurane-memory-${STAMP}.json" && echo "mémoire longue sauvegardée"
-  rm -f "$MEM"
+cd "${AURANE_DIR:-/srv/aurane}"
+. "$(dirname "$(readlink -f "$0")")/lib.sh"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+FAIL=0
+
+OUT=/var/tmp/aurane-${STAMP}.dump
+if docker compose exec -T postgres pg_dump -U aurane -d aurane -Fc > "$OUT" && [ -s "$OUT" ] \
+   && s3 cp --quiet "$OUT" "s3://$BUCKET/pg/aurane-${STAMP}.dump"; then
+  record_ops pg "$(stat -c %s "$OUT")" "pg/aurane-${STAMP}.dump" || { echo "ÉCHEC enregistrement ops_backups pg" >&2; FAIL=1; }
+  echo "backup pg ok aurane-${STAMP}.dump ($(stat -c %s "$OUT") octets)"
+else
+  echo "ÉCHEC backup pg" >&2; FAIL=1
 fi
-# rétention 14 jours
-CUTOFF=$(date -u -d '14 days ago' +%Y%m%dT%H%M%SZ)
-# (boucle en if/fi : une condition fausse en fin de `&&` ferait sortir le script en erreur sous `set -e -o pipefail`)
-aws --endpoint-url "$ENDPOINT" s3 ls "s3://$BUCKET/pg/" | awk '{print $4}' | while read -r f; do
-  s=${f#aurane-}; s=${s%.dump}
-  if [ -n "$s" ] && [[ "$s" < "$CUTOFF" ]]; then aws --endpoint-url "$ENDPOINT" s3 rm --quiet "s3://$BUCKET/pg/$f"; echo "purgé $f"; fi
-done
-echo "backup ok aurane-${STAMP}.dump"
+rm -f "$OUT"
+
+if docker compose ps --status running --format '{{.Service}}' | grep -qx memory; then
+  MEM=/var/tmp/aurane-memory-${STAMP}.db
+  if RES=$(memory_api POST /admin/backup) \
+     && FILE=$(printf '%s' "$RES" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["ok"] and d["integrity"]=="ok"; print(d["file"])') \
+     && docker compose cp "memory:/data/backups/$FILE" "$MEM" && [ -s "$MEM" ] && gzip -f "$MEM" \
+     && s3 cp --quiet "$MEM.gz" "s3://$BUCKET/memory/aurane-memory-${STAMP}.db.gz"; then
+    record_ops memory "$(stat -c %s "$MEM.gz")" "memory/aurane-memory-${STAMP}.db.gz" || { echo "ÉCHEC enregistrement ops_backups memory" >&2; FAIL=1; }
+    echo "backup mémoire ok aurane-memory-${STAMP}.db.gz ($RES)"
+  else
+    echo "ÉCHEC backup mémoire longue" >&2; FAIL=1
+  fi
+  rm -f "$MEM" "$MEM.gz"
+else
+  echo "ÉCHEC backup mémoire longue : service memory arrêté" >&2; FAIL=1
+fi
+
+purge pg .dump
+purge memory .db.gz
+purge memory .json   # anciennes exportations JSON (avant VACUUM INTO)
+exit $FAIL

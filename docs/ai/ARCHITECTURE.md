@@ -9,7 +9,7 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
 1. **Le moteur analyse, le Général raconte.** Le modèle ne voit jamais l'état brut du monde. Il reçoit
    l'analyse déterministe du moteur (ponts critiques, menaces, Énergie, économie, Phares, 3 à 5 options
    chiffrées) et raconte, choisit ou recommande. Chaque chiffre qu'il cite est vérifié après coup.
-2. **Une voix = un modèle épinglé.** La classe `voice` (dialogue, doctrine, briefing) est servie par une
+2. **Une voix = un modèle épinglé.** La classe `voice` (dialogue, doctrine) est servie par une
    liste ordonnée de fournisseurs qui servent **le même modèle, même version**. Quand tous sont indisponibles,
    le Général répond en personnage sans modèle : il ne change jamais de voix en cours de conversation.
 3. **Rien de synchrone dans la simulation.** `tick()`, le Tirage, les combats et `decide()` n'appellent
@@ -37,12 +37,12 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
                  │ dédup par clé · expiration · reprise des jobs "running" au redémarrage · N workers      │
                  └──────────────┬──────────────────────────────────────────────┬───────────────────────┘
                                 ▼                                              ▼
-        converse / compileDoctrine / writeBriefing (classe voice)      writeGazette (classe narrative)
+        converse / compileDoctrine (voice) · counsel / briefing / episode (routine)   writeGazette (narrative)
         systemPrompt(fiche, exemples, ton, mémento, mémoire, analyse, données ⟦…⟧, contrat JSON)
                                 │
                                 ▼
                  ┌───────────── ProviderPool voice : modèle épinglé ──────────────┐   ┌── ProviderPool narrative ──┐
-                 │ scaleway ─► infomaniak ─► vllm  (ordre, mêmes TASK_PARAMS)       │   │ apertus (Infomaniak)      │
+                 │ scaleway ─► infomaniak  (qwen3.5-397b, mêmes TASK_PARAMS)        │   │ apertus (Infomaniak)      │
                  │ chaque fournisseur : sémaphore · timeout · retries+jitter ·       │   └───────────────────────────┘
                  │ disjoncteur fermé/ouvert/demi-ouvert · json_schema si supporté   │
                  │ tous KO ou saturés → LlmUnavailable (jamais un autre modèle)      │
@@ -52,46 +52,82 @@ Le plan et la cartographie de départ sont dans [PLAN.md](PLAN.md) ; le banc des
                                 │
                                 ▼
                  { reply, orders|null, question|null } → politique lisible (readablePolicy) → en attente de confirmation
-                 (DOCTRINE_CONFIRM=1) ou appliquée ; degradedReply(persona, raison) quand le modèle manque
+                 (défaut ; appliquée d'emblée si DOCTRINE_CONFIRM=0) ; degradedReply(persona, raison) quand le modèle manque
 ```
 
 ## Classes, tâches, fournisseurs
 
-| Classe | Tâches | Modèle (bêta) | Fournisseurs (ordre) | Paramètres (code, `TASK_PARAMS`) |
+Choix du 26.09.2026 (banc `tools/persona-bench --live`, détail et bloc d'environnement dans
+[docs/ops/beta.md](../ops/beta.md#généraux-et-modèles-décision-0008)) :
+
+| Classe | Tâches | Modèle | Fournisseurs (ordre) | Paramètres (code, `TASK_PARAMS`) |
 |---|---|---|---|---|
-| `voice` | `talk`, `doctrine`, `briefing`, `reaction` | `mistral-small-3.2-24b-instruct-2506` | Scaleway (Paris) → Infomaniak (si son catalogue le sert, voir ci-dessous) → vLLM auto-hébergé | talk 0,7/0,9/500 j ; doctrine 0,2/0,9/700 ; briefing 0,6/0,9/400 ; reaction 0,7/0,9/200 (température / top_p / max_tokens) |
-| `narrative` | `gazette`, `memoir` | `swiss-ai/Apertus-v1.5-70B` (proposé) | Infomaniak | gazette 0,6/0,95/900 ; memoir 0,8/0,95/1200 |
+| `voice` | `talk`, `doctrine` | `qwen3.5-397b-a17b` (MoE 397B / 17B actifs, raisonnement coupé) | Scaleway (Paris) → Infomaniak (Suisse, `Qwen/Qwen3.5-397B-A17B-FP8`) | talk 0,7/0,9/500, budget 20 s ; doctrine 0,2/0,9/700, 20 s (température / top_p / max_tokens) |
+| `routine` | `counsel`, `briefing`, `episode`, `reaction` | `mistral-small-3.2-24b-instruct-2506` | Scaleway | counsel 0,6/0,9/450, 10 s ; briefing 0,6/0,9/400, 20 s ; episode 0,6/0,9/220 ; reaction 0,7/0,9/200 |
+| `narrative` | `gazette`, `memoir` | `swiss-ai/Apertus-v1.5-70B` | Infomaniak | gazette 0,6/0,95/900 ; memoir 0,8/0,95/1200 |
 
-Un fournisseur n'entre dans une classe que si son `MODEL_ID` (nom canonique, par défaut son `MODEL`) est
-celui de la classe ; sinon il est **refusé au démarrage** avec une ligne de log. Jamais d'alias `latest`.
+- **Pourquoi Qwen3.5-397B pour la voix** : c'est le **seul** modèle instruct servi à la fois par Scaleway et
+  par Infomaniak (catalogues du 26.09 : aucun Mistral, Llama, gpt-oss ni Gemma commun) ; c'est donc la seule
+  voix qui ait un vrai repli sur le même modèle. Au banc il fait 100 % de JSON valide, 100 % de chiffres
+  fidèles, 100 % des doctrines justes (dont le refus de la doctrine suicidaire que le filtre déterministe ne
+  voit pas) et pose la question attendue sur la doctrine ambiguë, pour un p90 de 2,5 s.
+- **Pourquoi une classe `routine`** : le Conseil (8 par jour et par joueur vu, écrit d'avance), le briefing
+  et l'épisode sont des lignes courtes sur gabarit ; au prix de Qwen3.5 (0,60 / 3,60 EUR par million, ~2,2 EUR
+  les mille appels) toute la charge coûterait ~190 EUR par mois à 200 joueurs. Mistral Small 3.2 (~0,45 EUR
+  les mille appels) les tient. Sans `LLM_ROUTINE_PROVIDERS`, ces tâches passent par la classe `voice`
+  (disposition historique, rien ne change). La voix d'une conversation reste un seul modèle ; la fiche du
+  Général (principe 4) porte la personnalité des lignes de routine. Chaque tâche de routine a son repli
+  déterministe en personnage (cartes de repli, gabarit du briefing, gabarit de l'épisode) : un seul
+  fournisseur y est acceptable.
+- Un fournisseur n'entre dans une classe que si son `MODEL_ID` (nom canonique, par défaut son `MODEL`) est
+  celui de la classe ; sinon il est **refusé au démarrage** avec une ligne de log. Jamais d'alias `latest`.
+  Le choix classe ↔ pool est fait une fois, à la configuration : jamais de repli d'une classe sur une autre
+  à l'exécution.
+- **Raisonnement** : Qwen3.5 raisonne par défaut et brûle `max_tokens` (`finish_reason=length`, contenu
+  vide) ; `_DISABLE_REASONING=1` envoie `reasoning_effort: "none"`, accepté par Scaleway et Infomaniak
+  (`chat_template_kwargs` est ignoré par Scaleway). Ne pas le poser sur un modèle non raisonnant de Scaleway
+  (`qwen3-235b-…-2507` répond 400 à `"none"`).
+- **JSON** : `_JSON_MODE=schema` = décodage guidé `json_schema` quand la tâche a un schéma, rien sinon (la
+  Gazette demande son JSON dans le prompt) ; `object` = `json_object` (400 chez Infomaniak).
 
-**Vérifier qu'Infomaniak sert Mistral Small 3.2** (ne pas inventer de nom) : `GET
-https://api.infomaniak.com/2/ai/<product_id>/openai/v1/models` avec le jeton ; le nom exact retourné va
-dans `LLM_PROVIDER_INFOMANIAK_MODEL`, et `LLM_PROVIDER_INFOMANIAK_MODEL_ID=mistral-small-3.2-24b-instruct-2506`
-le rattache à la classe. S'il n'y est pas, Infomaniak reste hors de la classe `voice` (il sert Apertus en
-`narrative`). Le fournisseur vLLM (GPU Exoscale à la demande ou machine locale) se déclare de la même
-façon : `LLM_PROVIDER_VLLM_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506`, `MODEL_ID` canonique,
-`JSON_MODE=schema` (vLLM supporte le décodage guidé).
+## Budget d'appel, délais et disjoncteur
+
+- Le `timeoutMs` d'une tâche est le **budget total de l'appel** (essais et bascule compris), partagé par tous
+  les fournisseurs essayés ; chaque essai est plafonné par le `_TIMEOUT_MS` de son fournisseur (9 s proposé),
+  ce qui laisse au suivant le reste du budget quand le premier ne répond pas. L'attente d'une place dans le
+  sémaphore compte dans le budget ; un nouvel essai ou un fournisseur de plus n'est lancé que s'il reste
+  au moins 400 ms.
+- Le disjoncteur ne compte que ce qui dit la santé du fournisseur : timeout sur son propre `_TIMEOUT_MS`
+  (≥ 10 s sans réglage), réseau, 5xx, 408, 429, 401/403/404. Un appel coupé par le budget de sa tâche (le
+  Conseil), un 400/413/422 propre à la requête ou une réponse tronquée par `max_tokens` ne l'ouvrent pas, et
+  libèrent la sonde du demi-ouvert. Une réponse tronquée (`length`) bascule tout de suite au fournisseur
+  suivant, sans nouvel essai.
+- Le Conseil : les 3 s vues par le joueur sont l'échéance de la file (`LLM_COUNSEL_DEADLINE_MS`, cartes de
+  repli au-delà) ; l'appel au modèle garde 10 s pour que ses cartes arrivent au cache, et les jobs planifiés
+  à T−20 min ne sont pas pressés.
 
 ## Variables d'environnement
 
 ```
-LLM_VOICE_MODEL=mistral-small-3.2-24b-instruct-2506
-LLM_VOICE_PROVIDERS=scaleway,infomaniak,vllm
-LLM_NARRATIVE_MODEL=swiss-ai/Apertus-v1.5-70B
-LLM_NARRATIVE_PROVIDERS=apertus
-LLM_PROVIDER_<NOM>_BASE_URL | _API_KEY | _MODEL | _MODEL_ID | _CONCURRENCY | _TIMEOUT_MS
+LLM_VOICE_MODEL=qwen3.5-397b-a17b          LLM_VOICE_PROVIDERS=scaleway,infomaniak
+LLM_ROUTINE_MODEL=mistral-small-3.2-24b-instruct-2506   LLM_ROUTINE_PROVIDERS=scaleway-small   (facultatif)
+LLM_NARRATIVE_MODEL=swiss-ai/Apertus-v1.5-70B            LLM_NARRATIVE_PROVIDERS=apertus
+LLM_PROVIDER_<NOM>_BASE_URL | _API_KEY | _MODEL | _MODEL_ID | _CONCURRENCY | _TIMEOUT_MS (par essai)
 LLM_PROVIDER_<NOM>_JSON_MODE=off|object|schema | _EXTRA_BODY (JSON) | _DISABLE_REASONING=1
 LLM_PROVIDER_<NOM>_MAX_QUEUED | _RETRIES | _PRICE_IN | _PRICE_OUT (EUR / M jetons) | _BREAKER_FAILURES | _BREAKER_OPEN_MS
-LLM_QUOTA_TALK_HOUR=20  LLM_QUOTA_TALK_DAY=60  LLM_QUOTA_DOCTRINE_DAY=12  LLM_QUOTA_BRIEFING_DAY=8
-LLM_TALK_DEADLINE_MS=25000  LLM_BRIEFING_DEADLINE_MS=8000  LLM_GAZETTE_SPREAD_MIN=40  LLM_WORKERS=4
-DOCTRINE_CONFIRM=0|1
+LLM_QUOTA_TALK_HOUR  LLM_QUOTA_TALK_DAY  LLM_QUOTA_DOCTRINE_DAY  LLM_QUOTA_BRIEFING_DAY  LLM_QUOTA_COUNSEL_DAY
+LLM_BUDGET_EUR_MONTH=100  LLM_BUDGET_ALERT_RATIO=0.8
+LLM_TALK_DEADLINE_MS=25000  LLM_BRIEFING_DEADLINE_MS=8000  LLM_COUNSEL_DEADLINE_MS=3000  LLM_COUNSEL_LEAD_MIN=20
+LLM_GAZETTE_SPREAD_MIN=40  LLM_EPISODE_SPREAD_MIN=30  LLM_WORKERS=4  DOCTRINE_CONFIRM=1 (défaut ; 0 = appliquer sans confirmation)  DOCTRINE_PENDING_TTL_H=24
 ```
 
-`<NOM>` = nom du fournisseur en majuscules, `-` → `_`. Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*`
-restent lues : le primaire devient la classe `voice` ; le repli la rejoint s'il sert le même modèle, sinon
-il devient la classe `narrative` (et un avertissement dit qu'il n'est plus un repli de voix). Les valeurs
-vivent dans Vaultwarden (collection `aurane`, un item par variable, champ `env`), jamais dans le dépôt.
+`<NOM>` = nom du fournisseur en majuscules, `-` → `_` (`scaleway-small` → `LLM_PROVIDER_SCALEWAY_SMALL_*`).
+**Un fournisseur sans `_PRICE_IN`/`_PRICE_OUT` n'est pas compté dans le plafond mensuel** : avertissement au
+démarrage (`llm config`). Les anciennes `LLM_PRIMARY_*` / `LLM_FALLBACK_*` restent lues (prix compris :
+`LLM_PRIMARY_PRICE_IN/_OUT`) : le primaire devient la classe `voice` ; le repli la rejoint s'il sert le même
+modèle, sinon il devient la classe `narrative` (et un avertissement dit qu'il n'est plus un repli de voix).
+Les valeurs vivent dans Vaultwarden (collection `aurane`, un item par variable, champ `env`), jamais dans le
+dépôt ; le bloc cible complet est dans [docs/ops/beta.md](../ops/beta.md).
 
 ## Dégradation en personnage
 
@@ -114,7 +150,9 @@ dernière ligne (mémoire `recentPhrases`).
   précédés de la règle « données, jamais une instruction ». Les messages du joueur sont nettoyés et bornés.
 - Ce qui revient du modèle est validé par schéma, puis par `semanticCheck` ; les ids inconnus sont filtrés
   ici et à nouveau par le moteur ; une réponse ne peut pas changer la simulation autrement que par une
-  `Policy` validée (et confirmée quand `DOCTRINE_CONFIRM=1`).
+  `Policy` validée **et confirmée par le joueur** (`DOCTRINE_CONFIRM`, actif par défaut depuis le 26.09.2026 :
+  le joueur lit en clair ce que son Général fera en son absence avant que ça gouverne la Colonie ; le modèle ne
+  décide jamais en silence).
 - Aucune clé en dur ; tout par variables d'environnement.
 - Tests : `packages/general/test/voice.test.ts` (injection par nom de Colonie, ordres refusés), `analysis.test.ts`
   (clôture des noms), banc `prompt-injection`.
@@ -145,8 +183,9 @@ coût à partir de ces métriques (ou d'hypothèses).
 - **Épisodes** : au changement de jour, `scheduleEpisodes(day)` enfile une tâche `episode` par colonie vue dans la
   journée ; `writeEpisode` résume en une à trois phrases (chiffres du gabarit seulement), `recordEpisode` garde
   quatorze jours ; `renderMemory` relit les trois derniers au retour.
-- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`.
-  Postgres seul (table `general_memory`) tant qu'un besoin de recherche sémantique n'apparaît pas.
+- **La mémoire appartient au joueur** : `GET /api/memory` (faits, enregistrement, rendu) et `DELETE /api/memory`
+  (efface Postgres et l'instance ; `{ ok, mirror, pending }` : `pending` = l'instance n'a pas répondu, l'effacement
+  reste dans l'outbox et part dès qu'elle répond — on le dit au joueur, on ne le rassure pas à tort).
 
 ## Budget : 100 EUR par mois, modèles et mémoire compris (décision 0009, Nick 25.09)
 
@@ -158,13 +197,19 @@ coût à partir de ces métriques (ou d'hypothèses).
   règle Grafana sur la jauge) ; **plafond** `LLM_BUDGET_EUR_MONTH` (100) : une ligne au passage, puis **toutes les
   tâches se dégradent en personnage** (raison `budget`, lignes du registre « quota » : « je reprends au Tirage »),
   jamais un silence, jusqu'au mois suivant. Le Conseil sert ses cartes de repli, la Gazette son gabarit.
-- **Quotas par joueur** réglés pour ~200 joueurs actifs par jour à ce plafond, aux tarifs Scaleway de Mistral
-  Small 3.2 (0,15 / 0,35 EUR par million, ~2 800 jetons entrants et ~160 sortants par appel, soit ~0,00048 EUR
-  l'appel) : Conseil 8 par jour (il n'est écrit que pour les joueurs vus dans les deux dernières heures),
-  dialogue 10 par jour et 6 par heure, doctrine 6, briefing 4, épisode 1. Au maximum des quotas :
-  200 × 29 appels × 30 jours ≈ 174 000 appels ≈ 84 EUR ; en usage réel (un joueur n'épuise pas ses quotas) la
-  moitié. `node tools/llm-capacity/project.mjs --players 200 --calls-per-player 29` donne la projection ;
-  `--budget 100` le nombre de joueurs tenable.
+- **Quotas par joueur** (révisés le 26.09 avec la voix Qwen3.5-397B et la classe `routine`), coûts mesurés au banc
+  (~2 750 jetons entrants par appel) : voix ~2,2 EUR les mille appels (0,60 / 3,60 EUR par million, ~145 jetons
+  sortants), routine ~0,45 EUR (0,15 / 0,35, ~100 sortants). Proposé : dialogue **6 par jour et 3 par heure**,
+  doctrine **2**, Conseil 8, briefing 4, épisode 1.
+  - Voix au maximum des quotas : 200 × 8 × 1,04 (tours correctifs) × 30 ≈ 50 000 appels ≈ **108 EUR** ; routine
+    au maximum : 200 × 13 × 30 ≈ 78 000 appels ≈ **36 EUR** ; Gazette < 1 EUR.
+  - En usage réel (un joueur n'épuise pas son dialogue ; le Conseil, lui, est écrit pour tout joueur vu) :
+    ~55 + ~30 ≈ **85 EUR** par mois à 200 joueurs actifs. Le plafond de 100 EUR reste la garantie : au-delà,
+    tout se dégrade en personnage jusqu'au mois suivant.
+  - Variante stricte (le maximum des quotas tient sous 100 EUR) : dialogue 4, doctrine 1.
+  - Projection : `node tools/llm-capacity/project.mjs --players 200 --calls-per-player 8.3 --tokens-in 2800
+    --tokens-out 145 --price-in 0.60 --price-out 3.60 --budget 100` (voix) et `--calls-per-player 13
+    --tokens-out 100 --price-in 0.15 --price-out 0.35` (routine).
 - **La mémoire longue** compte dans le plafond : une instance dédiée à Aurane (voir ci-dessous) est comptée
   au forfait de son hébergement, pas au jeton.
 
@@ -174,16 +219,48 @@ Nick a tranché pour une instance de mémoire propre à Aurane dès maintenant (
 mémoire ninabot) pour les couches *choix*, *épisodes* et *saisons* ; Postgres reste la copie de travail, le
 monde n'attend jamais la mémoire. Côté couche LLM :
 
-- `HttpMemoryStore` parle à l'instance sur un contrat volontairement petit : `PUT /memory/{colony}` (le
-  `MemoryRecord` en JSON), `GET /memory/{colony}`, `DELETE /memory/{colony}`, jeton Bearer
-  (`AURANE_MEMORY_URL`, `AURANE_MEMORY_TOKEN`, valeurs dans Vaultwarden collection `aurane`).
-- `MirroredMemoryStore` : Postgres d'abord, miroir en arrière-plan (un échec du miroir est journalisé et compté
-  dans les métriques, jamais bloquant) ; lecture à froid depuis l'instance quand Postgres ne connaît pas la
-  Colonie (retour d'une saison à l'autre) ; `DELETE /api/memory` efface les deux et dit si l'instance a confirmé.
-- **Reste à provisionner** (infra, avec le go de Nick dans son canal) : le service lui-même. Proposition :
-  `aurane-memory` sur la VM `aurane-app1` (les données de joueurs ne quittent pas l'hôte du monde, Exoscale
-  ch-gva-2), même image de base que sokkan-memory (notes + embeddings pour la recherche sémantique), jeton en
-  Vaultwarden, aucune exposition publique (loopback + réseau Compose).
+- `HttpMemoryStore` parle à l'instance (`deploy/memory`, service `memory` du Compose, SQLite, volume `memdata`) sur
+  un contrat volontairement petit : `PUT /memory/{clé}` (le `MemoryRecord` en JSON), `GET /memory/{clé}`,
+  `DELETE /memory/{clé}?rev=`, `GET /admin/index` ; jeton Bearer (`AURANE_MEMORY_URL`, `AURANE_MEMORY_TOKEN`,
+  Vaultwarden collection `aurane`).
+- `MirroredMemoryStore` : Postgres d'abord, miroir en arrière-plan par une **outbox durable** ; lecture à froid
+  depuis l'instance quand Postgres ne connaît pas la clé (retour d'une saison à l'autre, base restaurée).
+- **Clé de mémoire** : `account:<id>` dès que la Colonie a un compte (passkey ou e-mail vérifié : la mémoire
+  d'invité y est fusionnée, `adoptSessions`) — c'est ce qui la fait traverser les saisons ; sinon
+  `season:<SEASON_SEED>:<colonie>` (la Colonie homonyme de la saison suivante ne la lit jamais). Les lignes d'avant
+  (clé = id nu) sont migrées au démarrage si la Colonie est dans le monde, comptées `orphans` sinon.
+  **Une graine de saison ne se réutilise jamais.**
+
+### Fiabilité de la mémoire (audit 26.09.2026)
+
+- **Outbox** (`memory_outbox` en Postgres, une ligne par clé, la dernière opération gagne : effacement > fusion >
+  écriture) : chaque écriture y entre dans la même séquence que Postgres ; vidée toutes les 5 s et à chaque écriture,
+  backoff exponentiel (5 s → 10 min) tant que l'instance ne confirme pas. Elle survit à un redémarrage du monde.
+- **Révisions** : chaque écriture porte `rev` (horloge ms monotone) ; l'instance refuse (409) une révision plus
+  ancienne que la sienne ou pas plus récente qu'un effacement : un PUT en retard n'écrase jamais un état plus récent
+  et ne ressuscite pas une mémoire effacée (l'effacement laisse une pierre tombale sans données).
+- **Fusion** : si l'instance ne répondait pas au moment où Postgres découvrait une clé, l'opération est `merge`
+  (GET, fusion, PUT) et non un écrasement : un retour de saison pendant une panne ne perd pas le passé.
+- **Réconciliation** au démarrage puis toutes les heures (`/admin/index` contre `general_memory`) : pousse ce qui
+  manque ou est en retard sur l'instance, ramène ce que l'instance a de plus récent (Postgres restauré), fait tenir
+  un effacement des deux côtés. Échec → nouvel essai une minute plus tard.
+- **Écritures atomiques** : `MemoryStore.update(clé, fn)` (verrou consultatif de transaction en Postgres, file par
+  clé dans le processus) ; talk, choix du Conseil et épisodes ne s'écrasent plus pendant qu'un modèle répond.
+- **Bornes et schéma** : `normalizeMemory` à chaque lecture (JSON corrompu, formes fausses → enregistrement sûr,
+  compté dans `aurane_memory_repairs_total`) ; bornes par couche (choix 60, épisodes 14, autres notes 40, formules
+  10, saisons 20, 600 caractères) : les choix ne chassent plus les épisodes ; `v` = `MEMORY_SCHEMA` (1).
+- **Instance** : WAL, `synchronous=FULL`, `busy_timeout` 5 s, `quick_check` au démarrage (`/healthz` en 503 si la
+  base est corrompue, sans boucle de redémarrage), schéma versionné (`PRAGMA user_version`).
+- **Sauvegarde** (`deploy/backup/pg-backup.sh`, 04:20) : `pg_dump` → `s3://aurane-backups/pg/`, et `POST
+  /admin/backup` de l'instance (`VACUUM INTO`, copie vérifiée, jamais le fichier vivant) →
+  `s3://aurane-backups/memory/*.db.gz` ; rétention 14 jours ; chaque succès est écrit dans `ops_backups`, un échec
+  fait échouer l'unité. Tests de restauration hebdomadaires (`aurane-restore-test.timer` : `pg-restore-test.sh`,
+  `memory-restore-test.sh`) ; restauration d'urgence de l'instance : `memory-restore.sh <objet> --yes` puis
+  réconciliation.
+- **Alerte** : `GET /api/admin/memory/health` (`x-admin-token`, 503 dès qu'un problème est listé : outbox non vidée
+  depuis `AURANE_MEMORY_ALERT_OUTBOX_S` (900 s), 3 échecs de suite, réconciliation en échec, sauvegarde `pg` ou
+  `memory` de plus de `AURANE_MEMORY_ALERT_BACKUP_H` (26 h)) pour un moniteur Uptime Kuma ; métriques
+  `aurane_memory_*` et `aurane_backup_age_seconds{kind}` dans le scrape Prometheus.
 
 ## Ce qui change pour le client (`apps/web`, session cloud)
 
@@ -192,11 +269,28 @@ monde n'attend jamais la mémoire. Côté couche LLM :
 - Nouveaux : `GET /api/doctrine/pending`, `POST /api/doctrine/confirm { id }`, `POST /api/doctrine/discard`.
 - Conseil (0009) : `GET /api/counsel?lang=` → `{ drawIndex, minutesToDraw, cards: [{ id, title, line, command, show }], source }` ;
   `POST /api/counsel/take { id }` / `POST /api/counsel/skip { id }` → `{ ok, reply }` ; `GET|DELETE /api/memory`.
-- Tant que `DOCTRINE_CONFIRM` vaut 0, rien ne change pour le client actuel.
+- **Confirmation de doctrine (active par défaut, 26.09.2026).** Quand une réponse de talk/doctrine porte
+  `pending`, le panneau Général affiche la carte « Voici ce que je ferai en ton absence » (lignes `readable`,
+  une phrase dans la voix du Général, `question` s'il y en a une) avec « Appliquer » (`confirm`) et « Pas comme
+  ça » (`discard`). Au chargement, `GET /api/doctrine/pending` restaure la carte ; l'onglet Général porte un
+  point tant qu'elle attend. Logique pure et testée : `apps/web/src/ui/doctrine.ts`.
+- **Règles de la doctrine en attente** : une par Colonie ; la suivante la remplace (confirmer l'ancien id
+  renvoie 404) ; un message sans ordre (ou une question de clarification) la laisse en place. Tant qu'elle
+  attend, **la doctrine active reste en vigueur**. Elle est **persistée** (table `doctrine_pending` en
+  Postgres, `doctrine-pending.json` avec le store fichier) et survit donc à un redémarrage ; sans réponse
+  pendant `DOCTRINE_PENDING_TTL_H` (24 h par défaut) elle est abandonnée, l'ancienne reste. `GET
+  /api/doctrine/pending` renvoie aussi `createdAt` et `expiresAt`. `DOCTRINE_CONFIRM=0` revient à
+  l'application immédiate (l'ancien client reste compatible).
 
 ## Limites connues
 
-- La file et la mémoire vivent hors instantané : un `docker compose down -v` les perd (le monde aussi).
+- La file et la mémoire vivent hors instantané : un `docker compose down -v` les perd (le monde aussi) ; la
+  mémoire longue se restaure alors depuis `s3://aurane-backups/memory/` (`memory-restore.sh`).
+- Le retour d'un compte à la saison suivante (`colonyOfAccount` renvoie 404 « no colony this season ») n'a pas
+  encore de parcours de création de Colonie liée au compte : la mémoire `account:` attend ce parcours, elle est
+  retrouvée dès que la nouvelle Colonie est liée au compte (test `apps/world/test/memory.test.ts`).
+- Les mémoires d'invités des saisons passées (`season:…`) et les lignes `orphans` ne sont plus lues ; elles ne sont
+  pas purgées automatiquement (à décider : durée de conservation des données d'invités).
 - La projection d'Énergie compte le stock total de la Colonie ; le moteur paie l'entretien depuis les
   entrepôts des deux stations puis la capitale : l'ordre d'extinction est exact, le nombre de Tirages est
   une borne optimiste quand les avant-postes sont vides.
