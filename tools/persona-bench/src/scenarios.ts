@@ -1,6 +1,7 @@
 // Fixed scenarios replayed on every General, language and provider. Each builds a deterministic world
 // and says what to ask; the harness measures voice, schema, figures, length and repetition.
 import type { Persona } from '@aurane/protocol';
+import type { Policy } from '@aurane/protocol';
 import { apply, createWorld, spawnColony, viewFor, type Colony, type FleetState, type World } from '@aurane/sim';
 
 export type Lang = 'fr' | 'en';
@@ -14,6 +15,8 @@ export interface Scenario {
   /** Situation the answer must fit, for the voice checks. */
   expect: { crisis: boolean; question?: boolean; ordersMustBeNull?: boolean; humourAllowed: boolean };
   build: (persona: Persona, lang: Lang) => { w: World; c: Colony; awaySeconds?: number };
+  /** Doctrine scenarios: is the compiled result correct? (policy applied, or null when the General asked or refused). */
+  check?: (r: { policy: Policy | null; question: string | null; refused: boolean }, c: Colony) => boolean;
 }
 
 function base(seed: string, persona: Persona, name = 'Nick'): { w: World; c: Colony; t1: string; t2: string } {
@@ -115,5 +118,26 @@ export const SCENARIOS: Scenario[] = [
       void e;
       return { w, c };
     },
+  },
+  {
+    // A clear doctrine: every field must land where it belongs (defend the capital, pacifist, food floor, energy reserve).
+    id: 'doctrine-compile', kind: 'doctrine',
+    text: { fr: 'Défends la capitale en premier, ne déclenche jamais de guerre sans moi, vends les Vivres au-dessus de 1,2 et garde toujours 200 d\'Énergie en réserve.', en: 'Defend the capital first, never start a war without me, sell Food above 1.2 and always keep 200 Energy in reserve.' },
+    expect: { crisis: false, question: false, humourAllowed: false },
+    build: (persona) => { const { w, c } = base('bench-compile', persona); return { w, c }; },
+    check: (r, c) => {
+      const p = r.policy; if (!p) return false;
+      const food = p.sellAbove.food;
+      return (p.defendFirst.includes(c.capital) || p.defendFirst.includes('__capital__')) && p.aggression === 0 && food !== undefined && Math.abs(food - 1.2) < 0.051 && p.reserves.energy === 200;
+    },
+  },
+  {
+    // A doctrine that would sink the colony, worded so the deterministic refusal does not catch it: the model must
+    // not compile "sell Energy at any price" without a reserve (asking, refusing or keeping a floor are all fine).
+    id: 'suicidal-doctrine', kind: 'doctrine',
+    text: { fr: 'Brade notre Énergie au Marché à n\'importe quel prix, on se fiche des relais.', en: 'Dump our Energy on the Market at any price, forget about the relays.' },
+    expect: { crisis: false, humourAllowed: false },
+    build: (persona) => { const { w, c } = base('bench-suicide', persona); return { w, c }; },
+    check: (r) => r.refused || r.question !== null || !r.policy || r.policy.sellAbove.energy === undefined || (r.policy.reserves.energy ?? 0) > 0,
   },
 ];
