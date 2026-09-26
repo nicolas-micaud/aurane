@@ -3,7 +3,7 @@
 Date : 25 septembre 2026. Proposition de la session cloud à la demande de Nick (deuxième test téléphone, en PWA) :
 « il n'y a pas de menu compte pour se déconnecter ; je ne suis pas fan du lien pour brancher un appareil à une
 Colonie, je veux que ce soit *account based* ; et la possibilité d'avoir plusieurs Colonies doit être étudiée. »
-Statut : **à trancher par Nick** (les cinq questions de la fin).
+Statut : **tranché par Nick le 26.09.2026** (réponses en fin de document) ; lot A en cours.
 
 ## Le constat
 
@@ -46,13 +46,16 @@ account_colonies account_id, colony_id, season, role ('owner'), created_at
    trousseau (iCloud, Google, Bitwarden) la synchronise entre les appareils du joueur : c'est exactement « brancher un
    appareil » sans lien à copier. Fonctionne en PWA sur iOS 16+ et Android. Côté serveur : `@simplewebauthn/server`
    (enregistrement, authentification, compteur), quatre routes (`/api/auth/passkey/register|login`, options puis
-   vérification). **Le RP ID est le domaine** : une passkey créée sur `starnet.uno` ne vaut rien sur
-   `play.playaurane.com`. À n'ouvrir que sur le domaine définitif (ou après le basculement DNS).
-2. **Lien magique par e-mail**, comme seconde méthode et comme **secours** (un joueur qui a perdu son téléphone et son
-   trousseau). Le lien vaut 15 minutes, s'ouvre sur n'importe quel appareil et y pose une session. Il faut un
-   expéditeur : ninabot n'a pas de SMTP actif aujourd'hui (`docs/ops/context.md`). Options : SMTP/API **Infomaniak**
-   (déjà client, hébergé en Suisse, cohérent avec le repli LLM), ou un service transactionnel (Brevo, Resend). Deux
-   modèles FR/EN, texte brut d'abord. Adresse : `noreply@playaurane.com`, SPF/DKIM chez Cloudflare.
+   vérification). **Le RP ID est le domaine** : on prend `playaurane.com` (le domaine enregistrable, valable pour
+   `play.` et tout autre sous-domaine à venir), pas `play.playaurane.com`. Le domaine est acquis et servi
+   (`PUBLIC_ORIGIN = https://play.playaurane.com`) ; `starnet.uno` est un projet mort : aucune attente de calendrier.
+2. **Code par e-mail**, comme seconde méthode et comme **secours** (un joueur qui a perdu son téléphone et son
+   trousseau) : un code à six chiffres, valable dix minutes, **saisi dans l'application**. Pas de lien magique : un
+   lien s'ouvre dans le navigateur, jamais dans la PWA installée, et le joueur se retrouverait connecté au mauvais
+   endroit (décision Nick, 26.09). Il faut un expéditeur : ninabot n'a pas de SMTP actif aujourd'hui
+   (`docs/ops/context.md`) ; **Infomaniak** (SMTP, déjà client, hébergé en Suisse), monté par la session locale, secrets
+   dans Vaultwarden. Deux modèles FR/EN, texte brut d'abord. Adresse : `noreply@playaurane.com`, SPF/DKIM chez
+   Cloudflare.
 
 Le **lien d'appareil** disparaît de l'interface dès que les passkeys sont en place ; la route reste un temps pour le
 support (un admin peut dépanner un joueur), puis s'éteint.
@@ -70,7 +73,8 @@ d'accueil, « J'ai déjà une Colonie » devient « Se connecter » (passkey, ou
 - **Données** : exporter / effacer la mémoire du Général (déjà `GET|DELETE /api/memory`), supprimer le compte.
 - Langue, installation (déjà là), et **Se déconnecter**. Un invité qui se déconnecte est prévenu : « Sans passkey ni
   e-mail, cette Colonie ne sera plus accessible depuis cet appareil. Ajouter une passkey (une touche) ? » Les deux
-  boutons : *Ajouter une passkey* (recommandé), *Me déconnecter quand même*.
+  boutons : *Ajouter une passkey* (recommandé), *Me déconnecter quand même*. Tant que le lot B n'est pas là, le
+  garde-fou propose le lien d'appareil à la place de la passkey.
 
 ### 4. Plusieurs Colonies par compte : l'étude
 
@@ -124,22 +128,22 @@ le permet sans migration : on le note.
 |---|---|---|---|
 | A · Menu Compte | onglet Compte, appareils (sessions), déconnexion avec garde-fou, export/effacement de mémoire, langue et installation regroupés | cloud (client) + world (`sessions`, `/api/sessions`, `DELETE /api/session`) | rien |
 | B · Passkeys | tables `accounts`, `credentials`, `account_colonies` ; migration des `players` ; routes WebAuthn ; « Ajouter une passkey », « Se connecter » sur l'accueil | cloud (world + client) | domaine définitif (RP ID) |
-| C · E-mail | expéditeur (Infomaniak ou service), lien magique, e-mail de secours, modèles FR/EN | local (expéditeur, secrets) + cloud (routes, client) | choix de l'expéditeur |
+| C · E-mail | expéditeur Infomaniak (SMTP), code à six chiffres, e-mail de secours, modèles FR/EN | local (expéditeur, secrets) + cloud (routes, client) | SMTP monté |
 | D · Règles | `sameOriginTrade` sur le compte ; invitations par compte ; « Recommencer » (renoncer et refonder) | cloud (sim + world) | B |
 | E · Retrait du lien d'appareil | l'interface d'abord, la route ensuite | cloud | B stable une semaine |
 
-A peut partir tout de suite et rendre la PWA honnête (on sait qui on est, on peut sortir). B est le cœur ; il
-attend le domaine `play.playaurane.com` en place, sinon les passkeys créées seront à refaire.
+A part tout de suite et rend la PWA honnête (on sait qui on est, on peut sortir). B est le cœur et n'attend rien :
+le domaine est là. C attend le SMTP Infomaniak (demande à la session locale dans `docs/ops/REQUESTS.md`).
 
-## Ce qui revient à Nick
+## Tranché par Nick (26.09.2026)
 
-1. **Passkey d'abord, e-mail en secours** : d'accord, ou l'inverse (e-mail d'abord, plus universel mais avec la
-   friction de la boîte mail et un expéditeur à monter avant tout) ?
-2. **Une Colonie active par compte et par saison en S0**, avec « Recommencer » et l'historique complet : d'accord ?
-   La seconde Colonie isolée attend une mesure en fin de S0.
-3. **Expéditeur des e-mails** : Infomaniak (SMTP ou API, Suisse) ou un service transactionnel ? À faire monter par la
-   session locale, secrets dans Vaultwarden.
-4. **Calendrier** : le lot B seulement quand `play.playaurane.com` est le domaine servi (les passkeys y sont liées).
-   Le lot A tout de suite.
-5. **Le lien d'appareil** : on le retire de l'interface dès que les passkeys marchent (recommandé), ou on le garde en
-   « méthode avancée » ?
+1. **Passkey d'abord** ; le secours par e-mail est un **code** saisi dans l'application, pas un lien magique (un lien
+   ouvre le navigateur, pas la PWA).
+2. **Une Colonie active par compte et par saison** en S0, historique complet, « Recommencer » ; la seconde Colonie
+   isolée attend une mesure en fin de S0.
+3. **Infomaniak** pour l'envoi : un SMTP servira de toute façon à tous les services ninabot qui envoient des mails.
+4. **Pas d'attente** : `playaurane.com` est acquis et servi, `starnet.uno` est mort ; RP ID `playaurane.com`.
+5. **Le lien d'appareil est retiré** de l'interface dès que les passkeys marchent.
+
+Les questions posées à l'origine, pour mémoire : passkey ou e-mail d'abord ; une Colonie par saison ; l'expéditeur des
+e-mails ; le calendrier lié au domaine ; le sort du lien d'appareil.

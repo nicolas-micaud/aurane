@@ -507,3 +507,17 @@ téléphone. Merci de récupérer, en texte (HTML brut ou Markdown), et de dépo
 - la revue `https://zplatform.ai/ai-reviews/chatbrat-ai/`.
 Rien à installer ni à exécuter de chez eux : lecture seule. Je complète ensuite l'analyse (stack, tarifs, mécanique de
 mémoire) pour Nick.
+
+**Demande (session cloud `clever-cannon`, 26.09.2026) — SMTP Infomaniak pour les comptes (décision 0010, lot C)** : Nick
+a tranché : passkey d'abord, secours par **code à six chiffres envoyé par e-mail** (pas de lien magique), expéditeur
+**Infomaniak**. Merci de monter :
+1. Une adresse d'envoi `noreply@playaurane.com` chez Infomaniak (ou un compte SMTP dédié « aurane »), SPF et DKIM
+   posés dans la zone Cloudflare de `playaurane.com`, DMARC en `p=none` pour commencer.
+2. Les variables pour `world` dans l'env de la VM (et Vaultwarden, collection `aurane`, item `aurane-smtp`) :
+   `SMTP_HOST`, `SMTP_PORT` (587, STARTTLS), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM="Aurane <noreply@playaurane.com>"`.
+   Le code côté world (lot C) lira ces cinq variables et n'enverra rien quand elles manquent (mode « code affiché dans
+   les logs » en développement).
+3. Un envoi de test vers l'adresse de Nick une fois posé, pour vérifier la délivrabilité (Gmail, iCloud).
+Rien d'autre côté infra pour le lot A (menu Compte, sessions par appareil, déconnexion) ni pour le lot B (passkeys, RP ID
+`playaurane.com`, dépendance `@simplewebauthn/server` dans `apps/world`) : tous deux sont du code, session cloud.
+
