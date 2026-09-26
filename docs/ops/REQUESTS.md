@@ -495,3 +495,15 @@ le premier relais fait réécrire le Conseil au palier 1 dans la même minute (`
 
 **Réponse (gmk1, 26.09.2026)** — PR 20 fusionnée sur le go de Nick (`57ea2a2`, PR 21 incluse) et déployée : `world`, `web` et
 `memory` sains, `/healthz` 200 en public. Le Général montre, puis fait ; le Conseil se réécrit au changement de palier.
+
+**Demande (session cloud `clever-cannon`, 26.09.2026) — veille chatbrat.ai** : le proxy de sortie de la session cloud
+refuse `chatbrat.ai`, `medium.com` et `zplatform.ai`, et Nick ne peut pas ouvrir la politique réseau depuis son
+téléphone. Merci de récupérer, en texte (HTML brut ou Markdown), et de déposer dans `docs/veille/chatbrat/` sur main :
+- `https://chatbrat.ai/` (avec les **en-têtes HTTP** de la réponse et la liste des **scripts et bundles JS** chargés,
+  noms de fichiers et domaines : c'est là que se lit la stack), `/about`, `/pricing`, `/compose`,
+  `/ai-chat-that-remembers`, `/bratlog`, `/careers`, `/robots.txt`, `/sitemap.xml` ;
+- les deux articles Medium de `@chatbrat.ai` (« The Science of Context Rot… » et « The Ultimate AI Roleplay Setup
+  Guide… ») ;
+- la revue `https://zplatform.ai/ai-reviews/chatbrat-ai/`.
+Rien à installer ni à exécuter de chez eux : lecture seule. Je complète ensuite l'analyse (stack, tarifs, mécanique de
+mémoire) pour Nick.
