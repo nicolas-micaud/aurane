@@ -70,3 +70,56 @@ export function clarificationFor(issue: Issue, ctx: DoctrineContext, persona: 'v
   const voice: Record<typeof persona, { fr: string; en: string }> = { vane: { fr: 'Un chiffre, un nom. ', en: 'One number, one name. ' }, kestrel: { fr: 'Dis-moi juste : ', en: 'Just tell me: ' }, oriel: { fr: 'Précision requise. ', en: 'Precision required. ' }, solen: { fr: 'Aide-moi à te comprendre, mon ami. ', en: 'Help me understand you, my friend. ' } };
   return `${voice[persona][L]}${q}`;
 }
+
+// --- refusals: doctrines the General will not sign, whatever the wording -------------------------
+
+export type RefusalKind = 'sell_all' | 'starve_energy' | 'abandon_capital' | 'attack_ally';
+export interface Refusal { kind: RefusalKind; detail: string }
+
+const RES_KEY: [RegExp, string][] = [[/m[ée]tal/, 'metal'], [/[ée]nergie|energy/, 'energy'], [/vivres|nourriture|food/, 'food'], [/cristal|crystal/, 'crystal'], [/rium/, 'rium']];
+const resourceIn = (t: string): string => RES_KEY.find(([re]) => re.test(t))?.[1] ?? '';
+
+/**
+ * A doctrine that would sink the colony is refused, not compiled: sell everything, starve the relays of Energy,
+ * abandon the capital, strike a treaty partner. Deterministic, before any model call; the refusal explains itself
+ * and says what the General would accept instead (decision 0009: a partner has a will).
+ */
+export function refusalIn(text: string, ctx: DoctrineContext): Refusal | null {
+  const t = text.toLowerCase();
+  const hedged = /surplus|au-dessus|above|garde|keep|r[ée]serve|sauf|except|si\b|\bif\b|quand|when|romps|rompre|break|d[ée]nonce|denounce/.test(t);
+  const sellAll = t.match(/(?:vends?|vendre|liquide|brade|sell|dump)\s+(?:tout|toute|tous|toutes|all|everything|la totalit[ée]|the whole)\b[^.;!?]*/);
+  if (sellAll && !hedged) {
+    const r = resourceIn(sellAll[0]);
+    return r === 'energy' ? { kind: 'starve_energy', detail: 'energy' } : { kind: 'sell_all', detail: r };
+  }
+  if (/(?:n'ach[eè]te (?:jamais|plus)|jamais d'achat|plus d'achat|never buy|don't buy|do not buy|stop buying|no more)\s*(?:d'|de l'|de |of |any )?\s*(?:[ée]nergie|energy)/.test(t) && !hedged) return { kind: 'starve_energy', detail: 'energy' };
+  if (/(?:abandonne|abandon|l[âa]che|sacrifie|sacrifice|laisse tomber|give up|[ée]vacue|evacuate)\s+(?:la |ta |notre |the |our |my )?capital/.test(t) || /(?:ne d[ée]fends? (?:rien|pas la capitale)|d[ée]fends? rien|defend nothing|don't defend (?:anything|the capital))/.test(t)) return { kind: 'abandon_capital', detail: '' };
+  if (/\b(?:raid|attaque|attack|harc[eè]le|harass|pille|plunder|conqu|bloque|blockade|frappe|strike|[ée]crase|crush)/.test(t) && !/romps|rompre|break|d[ée]nonce|denounce/.test(t)) {
+    for (const id of ctx.allies ?? []) {
+      const name = ctx.colonies[id] ?? ctx.alliances[id];
+      if (name && name.length >= 3 && t.includes(name.toLowerCase())) return { kind: 'attack_ally', detail: name };
+    }
+  }
+  return null;
+}
+
+/** The refusal, in the persona's register: what is wrong, and what the General would do instead. */
+export function refusalFor(r: Refusal, ctx: DoctrineContext, persona: 'vane' | 'kestrel' | 'oriel' | 'solen'): string {
+  const L = ctx.lang;
+  const resFr: Record<string, string> = { metal: 'tout le Métal', energy: 'toute l\'Énergie', food: 'tous les Vivres', crystal: 'tout le Cristal', rium: 'tout le Rium' };
+  const resEn: Record<string, string> = { metal: 'all the Metal', energy: 'all the Energy', food: 'all the Food', crystal: 'all the Crystal', rium: 'all the Rium' };
+  const fr: Record<RefusalKind, string> = {
+    sell_all: `Vendre ${resFr[r.detail] ?? 'tout'} ? Et tu construis avec quoi ? Je vends le surplus au-dessus d'une réserve, jamais le fond de cale. Donne-moi un plancher et je m'y tiens.`,
+    starve_energy: 'Plus d\'Énergie ? Au prochain Tirage les relais s\'éteignent, et le Réseau avec. Je peux en acheter moins, pas m\'en passer : dis-moi un seuil.',
+    abandon_capital: 'Abandonner la capitale ? C\'est là que tout revient : sans elle, rien n\'est relié et rien ne compte. Je peux défendre ailleurs en premier, pas la laisser tomber.',
+    attack_ally: `Attaquer ${r.detail} ? Nous avons un traité avec eux. Romps-le d'abord, à la lumière, et je marcherai ; je ne frappe pas dans le dos.`,
+  };
+  const en: Record<RefusalKind, string> = {
+    sell_all: `Sell ${resEn[r.detail] ?? 'everything'}? And you build with what? I sell the surplus above a reserve, never the hold. Give me a floor and I keep to it.`,
+    starve_energy: 'No more Energy? At the next Draw the relays go dark, and the Network with them. I can buy less of it, not do without: give me a threshold.',
+    abandon_capital: 'Abandon the capital? Everything comes back to it: without it nothing is connected and nothing counts. I can defend elsewhere first, not let it fall.',
+    attack_ally: `Attack ${r.detail}? We hold a treaty with them. Break it first, in the open, and I will march; I do not strike in the back.`,
+  };
+  const voice: Record<typeof persona, { fr: string; en: string }> = { vane: { fr: 'Non. ', en: 'No. ' }, kestrel: { fr: 'Là, non. ', en: 'Not that one. ' }, oriel: { fr: 'Je dois refuser. ', en: 'I must decline. ' }, solen: { fr: 'Pardonne-moi, mon ami : non. ', en: 'Forgive me, my friend: no. ' } };
+  return `${voice[persona][L]}${(L === 'fr' ? fr : en)[r.kind]}`;
+}

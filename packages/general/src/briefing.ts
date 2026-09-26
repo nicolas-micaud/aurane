@@ -6,7 +6,7 @@ import type { PlayerView, WorldEvent } from '@aurane/sim';
 import { LlmUnavailable, type LlmClient } from './llm/index.js';
 import { PERSONA_VOICES } from './personas.js';
 import { numbersIn, verifyNumbers, RULE_NUMBERS, type Analysis, renderAnalysis } from './analysis/index.js';
-import { degradedReply, systemPrompt, type DegradeReason } from './persona/index.js';
+import { degradedReply, describeChoice, lastChoice, systemPrompt, type DegradeReason, type Facts, type MemoryRecord } from './persona/index.js';
 
 export interface BriefingInput {
   view: PlayerView;
@@ -17,6 +17,10 @@ export interface BriefingInput {
   names: Record<string, string>; // colony id → name
   analysis?: Analysis | undefined;
   memory?: string | undefined;
+  /** The persisted memory (choices, episodes): the report then names the player's last decision and what followed. */
+  record?: MemoryRecord | undefined;
+  /** Facts from the event log: the report then names who broke a treaty or keeps attacking. */
+  facts?: Facts | undefined;
   seed?: string | number | undefined;
   overQuota?: boolean | undefined;
 }
@@ -69,6 +73,37 @@ function hours(s: number, lang: 'fr' | 'en'): string {
   return lang === 'fr' ? `${Math.round(h / 24)} jours` : `${Math.round(h / 24)} days`;
 }
 
+
+const plural = (n: number, fr: boolean): string => (fr ? (n > 1 ? 's' : '') : n === 1 ? '' : 's');
+
+/**
+ * What the General remembers, inside the report itself (decision 0009, Grok's reading of 26.09): the player's last
+ * Counsel decision and what followed while they were away, then one name it does not forget. Deterministic, so the
+ * template carries it and the model only rephrases it.
+ */
+export function recallLines(input: BriefingInput, d: Digest): string[] {
+  const fr = input.lang === 'fr';
+  const out: string[] = [];
+  const name = (id: string): string => input.view.systems.find((s) => s.id === id)?.name ?? input.names[id] ?? id;
+  const last = input.record ? lastChoice(input.record) : null;
+  if (last) {
+    const what = describeChoice(last.id, input.lang, name);
+    const followed = fr
+      ? (d.raidsSuffered || d.lost ? `j'ai tenu la ligne pendant ${d.relaysCut} coupure${plural(d.relaysCut, true)}` : d.claimed ? `j'ai relié ${d.claimed} étoile${plural(d.claimed, true)} entre-temps` : d.trades ? `j'ai réglé ${d.trades} troc${plural(d.trades, true)}` : 'rien n\'a bougé de ce côté')
+      : (d.raidsSuffered || d.lost ? `I held the line through ${d.relaysCut} cut${plural(d.relaysCut, false)}` : d.claimed ? `I linked ${d.claimed} star${plural(d.claimed, false)} meanwhile` : d.trades ? `I settled ${d.trades} barter${plural(d.trades, false)}` : 'nothing moved on that side');
+    if (last.kind === 'counsel.taken') out.push(fr ? `Tu m'avais dit oui pour « ${what} » ; depuis, ${followed}.` : `You had said yes to "${what}"; since then, ${followed}.`);
+    else out.push(fr ? `Tu avais écarté « ${what} » ; je n'y suis pas revenu, et ${followed}.` : `You had set aside "${what}"; I did not go back to it, and ${followed}.`);
+  }
+  const f = input.facts;
+  if (f) {
+    const b = f.betrayals[f.betrayals.length - 1];
+    const a = f.attackers[0];
+    if (b) out.push(fr ? `Je n'oublie pas : ${b.who} a rompu un traité il y a ${b.hoursAgo} h.` : `I do not forget: ${b.who} broke a treaty ${b.hoursAgo} h ago.`);
+    else if (a && a.times >= 2) out.push(fr ? `Je garde ${a.who} à l'œil : ${a.times} attaques en 72 h.` : `I keep an eye on ${a.who}: ${a.times} attacks in 72 h.`);
+  }
+  return out;
+}
+
 /** Deterministic briefing, always available. */
 export function templateBriefing(input: BriefingInput): string {
   const d = digest(input);
@@ -88,6 +123,7 @@ export function templateBriefing(input: BriefingInput): string {
     if (d.treaties) lines.push(`Diplomatie : ${d.treaties} traité${d.treaties > 1 ? 's' : ''} signé${d.treaties > 1 ? 's' : ''}.`);
     if (d.beacons) lines.push(`Un Phare rallumé. Le Signal se souvient.`);
     if (v.draw?.event.kind === 'storm') lines.push('Tempête en cours : certains relais sont hors de portée pour l\'heure.');
+    lines.push(...recallLines(input, d));
     const opt = input.analysis?.options[0];
     lines.push(`Recommandation : ${opt ? opt.label.fr : v.me.stock.energy < 60 ? 'achète de l\'Énergie avant le prochain Tirage' : v.me.connectedCount < 4 ? 'relie une étoile de plus, la plus proche' : 'double ton pont le plus fragile'}.`);
     lines.push(voice.signoff.fr);
@@ -103,6 +139,7 @@ export function templateBriefing(input: BriefingInput): string {
     if (d.treaties) lines.push(`Diplomacy: ${d.treaties} treat${d.treaties > 1 ? 'ies' : 'y'} signed.`);
     if (d.beacons) lines.push(`A Beacon lit. The Signal remembers.`);
     if (v.draw?.event.kind === 'storm') lines.push('Storm in progress: some relays are out of range this hour.');
+    lines.push(...recallLines(input, d));
     const opt = input.analysis?.options[0];
     lines.push(`Recommendation: ${opt ? opt.label.en : v.me.stock.energy < 60 ? 'buy Energy before the next Draw' : v.me.connectedCount < 4 ? 'link one more star, the nearest' : 'double your weakest bridge'}.`);
     lines.push(voice.signoff.en);
@@ -126,6 +163,7 @@ export async function writeBriefing(input: BriefingInput, client: LlmClient | nu
     contract: [
       'TASK: rewrite the report of the absence as a briefing in your voice: 5 to 8 short lines, second person, plain text (no JSON, no title, no bullets).',
       'Keep every fact and every figure of the report; add nothing that is not in the report or the analysis. End with your sign-off.',
+      'If the report names a decision the player made ("you had said yes to", "you had set aside") or a name you do not forget, keep that sentence in your own words: it is why they come back to you.',
       `Sign-off: ${voice.signoff[L]}`,
     ],
   });

@@ -2,9 +2,9 @@
 // the quotas, the memory, the pending doctrines and the caches; the engine only exposes the world. No
 // method here is called from the simulation step: the Draw never waits for a model.
 import type { Policy } from '@aurane/protocol';
-import { apply, viewFor, type Colony, type World } from '@aurane/sim';
+import { apply, isAlly, viewFor, type Colony, type World } from '@aurane/sim';
 import {
-  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, emptyMemory, factsFrom, fromSimCounsel,
+  HttpMemoryStore, InMemoryMemoryStore, LlmMetrics, MemoryJobStore, MirroredMemoryStore, PlayerQuota, Scheduler, analyze, compileDoctrine, converse, counselAck, degradedReply, describeChoice, emptyMemory, factsFrom, fromSimCounsel,
   metrics as globalMetrics, recordChoice, recordEpisode, rememberPhrases, renderMemory, stackFromEnv, writeBriefing, writeCounsel, writeEpisode, writeGazette, choicesOf,
   type Analysis, type CompiledDoctrine, type ConverseResult, type CounselCard, type CounselOption, type CounselResult, type DoctrineContext, type GazetteIssue, type JobStore, type LlmStack, type MemoryRecord, type MemoryStore, type Turn,
 } from '@aurane/general';
@@ -123,12 +123,15 @@ export class GeneralService {
     for (const o of Object.values(w.colonies)) if (o.id !== c.id) colonies[o.id] = o.name;
     const alliances: Record<string, string> = {};
     for (const a of Object.values(w.alliances)) alliances[a.id] = a.name;
-    return { lang, current: c.policy, systems, colonies, alliances, persona: c.persona };
+    const treatyWith = (o: string): boolean => Object.values(w.treaties).some((t) => (t.until === null || t.until > w.time) && ((t.a === c.id && t.b === o) || (t.b === c.id && t.a === o)));
+    const allies = Object.values(w.colonies).filter((o) => o.id !== c.id && (isAlly(w, c.id, o.id) || treatyWith(o.id))).map((o) => o.id);
+    return { lang, current: c.policy, systems, colonies, alliances, allies, persona: c.persona };
   }
 
-  private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string }> {
+  private async memoryOf(c: Colony, lang: 'fr' | 'en'): Promise<{ record: MemoryRecord; text: string; facts: ReturnType<typeof factsFrom> }> {
     const record = withJournalChoices((await this.memoryStore.load(c.id)) ?? emptyMemory(), c);
-    return { record, text: renderMemory(factsFrom(this.deps.world(), c), record, lang) };
+    const facts = factsFrom(this.deps.world(), c);
+    return { record, text: renderMemory(facts, record, lang), facts };
   }
 
   private analysisOf(c: Colony): Analysis { return analyze(this.deps.world(), c); }
@@ -258,19 +261,20 @@ export class GeneralService {
     return n;
   }
 
-  private briefingInput(c: Colony, lang: 'fr' | 'en', since: number, awaySeconds: number): Parameters<typeof writeBriefing>[0] {
+  /** The report's input, memory included: the template names the player's last choice and the names it holds against. */
+  private async briefingInput(c: Colony, lang: 'fr' | 'en', since: number, awaySeconds: number): Promise<Parameters<typeof writeBriefing>[0]> {
     const w = this.deps.world();
     const events = w.events.filter((e) => e.at > since && (e.actors.includes(c.id) || e.kind === 'draw'));
     const names: Record<string, string> = {};
     for (const o of Object.values(w.colonies)) names[o.id] = o.name;
-    return { view: viewFor(w, c), events, awaySeconds, persona: c.persona, lang, names, analysis: this.analysisOf(c), seed: `${c.id}:${since}` };
+    const mem = await this.memoryOf(c, lang);
+    return { view: viewFor(w, c), events, awaySeconds, persona: c.persona, lang, names, analysis: this.analysisOf(c), seed: `${c.id}:${since}`, memory: mem.text, record: mem.record, facts: mem.facts };
   }
 
   private async runBriefing(p: BriefingJob): Promise<{ text: string; source: string }> {
     const c = this.colony(p.colonyId);
     if (!c) throw new Error('colony gone');
-    const mem = await this.memoryOf(c, p.lang);
-    const r = await writeBriefing({ ...this.briefingInput(c, p.lang, p.since, p.awaySeconds), memory: mem.text }, this.stack.voice);
+    const r = await writeBriefing(await this.briefingInput(c, p.lang, p.since, p.awaySeconds), this.stack.voice);
     this.briefings.set(`${c.id}:${p.lang}`, { text: r.text, source: r.source, eventMark: this.eventMark(c, p.since), awaySeconds: p.awaySeconds });
     return r;
   }
@@ -294,10 +298,10 @@ export class GeneralService {
     let out: { text: string; source: string };
     if (worth && !overQuota && this.stack.voice && !this.scheduler.active) out = await this.runBriefing({ colonyId: c.id, lang, since, awaySeconds });
     else if (!worth || overQuota || !this.stack.voice) {
-      out = await writeBriefing({ ...this.briefingInput(c, lang, since, awaySeconds), overQuota }, null);
+      out = await writeBriefing({ ...(await this.briefingInput(c, lang, since, awaySeconds)), overQuota }, null);
       if (overQuota && !this.metrics.overBudget()) this.metrics.degradation('voice', 'briefing', 'quota');
     } else {
-      const input = this.briefingInput(c, lang, since, awaySeconds);
+      const input = await this.briefingInput(c, lang, since, awaySeconds);
       const template = (): { text: string; source: string } => { this.metrics.degradation('voice', 'briefing', 'deadline'); return writeBriefingSync(input); };
       out = (await this.scheduler.enqueueWithDeadline<BriefingJob, { text: string; source: string }>('briefing', 'briefing', { colonyId: c.id, lang, since, awaySeconds }, this.cfg.briefingDeadlineMs, template, { colony: c.id, key: `briefing:${c.id}:${lang}:${since}`, ttlMs: 900000 })).result;
     }
@@ -420,7 +424,8 @@ export class GeneralService {
     const names: Record<string, string> = {}; for (const o of Object.values(w.colonies)) names[o.id] = o.name;
     const mem = (await this.memoryStore.load(c.id)) ?? emptyMemory();
     const choices = choicesOf(mem);
-    const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).join(', ')}.`) : ''].filter(Boolean).join('\n');
+    const label = (id: string): string => describeChoice(id, p.lang, (x) => w.galaxy.systems[x]?.name ?? names[x] ?? x);
+    const facts = [templateBriefing({ view: viewFor(w, c), events, awaySeconds: 86400, persona: c.persona, lang: p.lang, names }), choices.taken.length ? (p.lang === 'fr' ? `Le joueur a suivi : ${choices.taken.slice(-5).map(label).join(', ')}.` : `The player followed: ${choices.taken.slice(-5).map(label).join(', ')}.`) : '', choices.skipped.length ? (p.lang === 'fr' ? `Il a écarté : ${choices.skipped.slice(-5).map(label).join(', ')}.` : `Set aside: ${choices.skipped.slice(-5).map(label).join(', ')}.`) : ''].filter(Boolean).join('\n');
     const r = await writeEpisode({ persona: c.persona, lang: p.lang, day: p.day, facts, seed: `${c.id}:${p.day}` }, this.capped('episode') ? null : this.stack.voice);
     await this.memoryStore.save(c.id, recordEpisode(mem, p.day, r.text, Date.now()));
     return r.text;
