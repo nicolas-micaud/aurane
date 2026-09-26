@@ -3,7 +3,7 @@
 Date : 25 septembre 2026. Proposition de la session cloud à la demande de Nick (deuxième test téléphone, en PWA) :
 « il n'y a pas de menu compte pour se déconnecter ; je ne suis pas fan du lien pour brancher un appareil à une
 Colonie, je veux que ce soit *account based* ; et la possibilité d'avoir plusieurs Colonies doit être étudiée. »
-Statut : **tranché par Nick le 26.09.2026** (réponses en fin de document) ; lots A et B livrés le même jour, C attend le SMTP.
+Statut : **tranché par Nick le 26.09.2026** (réponses en fin de document) ; lots A, B et C livrés le même jour (C en mode logs tant que l'expéditeur n'est pas monté).
 
 ## Le constat
 
@@ -165,6 +165,23 @@ e-mails ; le calendrier lié au domaine ; le sort du lien d'appareil.
   « Ajouter une passkey » dans l'onglet Compte, statut *Protégé*, liste et retrait ; « Se connecter avec une
   passkey » sur l'accueil ; la déconnexion d'un compte protégé ne fait plus peur, celle d'un invité propose la
   passkey avant. Vérifié de bout en bout avec l'authentificateur virtuel de Chromium.
-- **Reste** : lot C (code par e-mail, SMTP Infomaniak à monter), lot D (règles multi-comptes sur le compte,
-  invitations par compte, « Recommencer »), lot E (retrait du lien d'appareil, une semaine après B en production).
+- **Lot C, livré (PR 24)** : l'**e-mail de secours**. `POST /api/account/email/start` (adresse ; crée le compte si la
+  Colonie n'en a pas, comme la première passkey ; refuse une adresse qui protège déjà une autre Colonie, 409) puis
+  `POST /api/account/email/verify` (le code) ; `DELETE /api/account/email`. Connexion sans session :
+  `POST /api/auth/email/start` (rend toujours un `handle`, n'envoie un code que si l'adresse est connue : pas
+  d'énumération) puis `POST /api/auth/email/verify` (ouvre la Colonie du compte avec une nouvelle session
+  d'appareil). Le code : six chiffres, dix minutes, cinq essais, un envoi par minute et par adresse, haché en
+  mémoire, comparé en temps constant. Modèles FR/EN en texte brut (`apps/world/src/mail.ts`), sujet « Aurane : ton
+  code est 123 456 ». **L'expéditeur** : `SmtpMailer` (nodemailer, STARTTLS exigé hors 465) quand
+  `SMTP_HOST/PORT/USER/PASS/MAIL_FROM` sont posées ; sinon `LogMailer` écrit le message entier dans les logs de
+  `world`, ce qui permet de tester et de dépanner en bêta fermée sans expéditeur. Client : section « E-mail de
+  secours » dans l'onglet Compte (adresse, puis le code, `autocomplete="one-time-code"` pour la saisie automatique
+  sur iOS), « Se connecter par e-mail » sur l'accueil, statut *Protégé* et déconnexion rassurante dès qu'un e-mail
+  ou une passkey existe. Vérifié de bout en bout en Chromium (ajout, déconnexion, connexion depuis un second
+  navigateur). Test serveur : cérémonie complète, mauvais code, code épuisé, adresse prise, cinq essais, throttle.
+- **Expéditeur** (session locale, `docs/ops/REQUESTS.md`) : Ninabot n'a pas d'hébergement mail Infomaniak ; en
+  attente de Nick entre le Service Mail Infomaniak (produit payant) et Resend (`smtp.resend.com:587`, déjà
+  expéditeur de la liste d'attente). Les cinq variables sont le contrat dans les deux cas.
+- **Reste** : lot D (règles multi-comptes sur le compte, invitations par compte, « Recommencer »), lot E (retrait
+  du lien d'appareil, une semaine après B en production).
 

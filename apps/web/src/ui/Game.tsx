@@ -3,7 +3,7 @@ import { signal } from '@preact/signals';
 import { DECREES, type Command, type Resource } from '@aurane/protocol';
 import { AGENT_COST_INFLUENCE, BUILDING_ORBIT, DECREE_COST_CREDITS, DECREE_HOURS, counselLine, counselTitle, type PlayerView, type ShowTarget, type SystemView } from '@aurane/sim';
 import { GalaxyMap } from '../map/GalaxyMap.js';
-import { act, addPasskey, answerCounsel, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, passkeysSupported, removePasskey, revokeSession, status, talk as sendTalk, toast, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
+import { act, addPasskey, answerCounsel, eraseMemory, exportMemory, fetchAccount, fetchBriefing, fetchCounsel, fetchSessions, fetchTalk, logout, passkeysSupported, removeEmail, removePasskey, revokeSession, startEmail, status, talk as sendTalk, toast, verifyEmail, view, requestLink, type AccountInfo, type CounselCard, type CounselView, type SessionInfo, type Turn } from '../net.js';
 import { lang, setLang, t, tError } from '../i18n/index.js';
 import { useSig } from './useSig.js';
 import { Icon } from './Icon.js';
@@ -728,6 +728,57 @@ function GeneralPanel({ v }: { v: PlayerView }) {
 
 /** The Account tab (decision 0010, lot A): who I am, the devices holding this Colony, the General's memory, language,
  *  installation, and the way out. Guests are told what leaving costs; the passkey comes with lot B. */
+/** The rescue e-mail (decision 0010, lot C): address, then the six-digit code, typed here, never a link. */
+function EmailSection({ email, onChange, say }: { email: string | null; onChange: () => void; say: (text: string, kind?: 'ok' | 'err') => void }) {
+  const [step, setStep] = useState<'idle' | 'address' | 'code'>('idle');
+  const [addr, setAddr] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const l = useSig(lang);
+  const send = async (e: Event) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const r = await startEmail(addr.trim(), l);
+    setBusy(false);
+    if (r.ok) { setStep('code'); setCode(''); } else setErr(tError(r.reason ?? ''));
+  };
+  const confirm = async (e: Event) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const r = await verifyEmail(code);
+    setBusy(false);
+    if (r.ok) { say(t('emailAdded')); setStep('idle'); onChange(); } else setErr(tError(r.reason ?? ''));
+  };
+  const drop = async () => { if (await removeEmail()) { say(t('emailRemoved')); onChange(); } };
+  if (step === 'idle') {
+    return (
+      <>
+        <p class="muted small">{t('rescueEmailHelp')}</p>
+        {email ? (
+          <ul class="list"><li><span><b>{email}</b></span><span class="actions"><button onClick={() => { setAddr(email); setStep('address'); }}>{t('changeEmail')}</button><button onClick={() => void drop()}>{t('emailRemove')}</button></span></li></ul>
+        ) : <button class="primary" onClick={() => setStep('address')}>{t('addEmail')}</button>}
+      </>
+    );
+  }
+  return (
+    <form class="selbox emailform" onSubmit={(e) => void (step === 'address' ? send(e) : confirm(e))}>
+      {step === 'address' ? (
+        <label>{t('emailAddress')}<input type="email" inputMode="email" autoComplete="email" value={addr} onInput={(e) => setAddr((e.target as HTMLInputElement).value)} required autoFocus /></label>
+      ) : (
+        <>
+          <p class="muted small">{t('codeSentTo').replace('{e}', addr.trim().toLowerCase())}</p>
+          <label>{t('typeCode')}<input class="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} value={code} onInput={(e) => setCode((e.target as HTMLInputElement).value)} required autoFocus /></label>
+        </>
+      )}
+      {err && <p class="error">{err}</p>}
+      <div class="actions">
+        <button class="primary" disabled={busy || (step === 'address' ? !addr.includes('@') : code.replace(/\D/g, '').length !== 6)}>{step === 'address' ? t('sendCode') : t('confirmCode')}</button>
+        {step === 'code' && <button type="button" disabled={busy} onClick={() => setStep('address')}>{t('back')}</button>}
+        <button type="button" onClick={() => { setStep('idle'); setErr(null); }}>{t('cancel')}</button>
+      </div>
+    </form>
+  );
+}
+
 function AccountPanel({ v }: { v: PlayerView }) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [account, setAccount] = useState<AccountInfo | null>(null);
@@ -737,7 +788,9 @@ function AccountPanel({ v }: { v: PlayerView }) {
   const l = useSig(lang);
   const load = () => { void fetchSessions().then(setSessions); void fetchAccount().then(setAccount); };
   useEffect(load, []);
-  const protectedBy = (account?.passkeys.length ?? 0) > 0;
+  const hasKeys = (account?.passkeys.length ?? 0) > 0;
+  const hasEmail = !!account?.account?.email;
+  const protectedBy = hasKeys || hasEmail;
   const say = (text: string, kind: 'ok' | 'err' = 'ok') => { toast.value = { text, kind }; setTimeout(() => { if (toast.value?.text === text) toast.value = null; }, 3000); };
   const enroll = async () => {
     setKeying(true);
@@ -761,7 +814,7 @@ function AccountPanel({ v }: { v: PlayerView }) {
     <div class="account">
       <h2>{v.me.name} <small class={`f-${v.me.faction}`}>{t(v.me.faction as 'guild')}</small></h2>
       <p class="muted">{t(v.me.persona as 'vane')} · <span class={`tag ${protectedBy ? 'ok' : ''}`}>{protectedBy ? t('accountProtected') : t('accountGuest')}</span></p>
-      <p class="muted small">{protectedBy ? t('accountProtectedHelp') : t('accountGuestHelp')}</p>
+      <p class="muted small">{hasKeys ? t('accountProtectedHelp') : hasEmail ? t('accountProtectedEmail') : t('accountGuestHelp')}</p>
       <h3>{t('passkeys')} {account && account.passkeys.length > 0 && <small>{account.passkeys.length}</small>}</h3>
       {!protectedBy && <p class="muted small">{t('addPasskeyHelp')}</p>}
       <ul class="list">
@@ -773,6 +826,8 @@ function AccountPanel({ v }: { v: PlayerView }) {
         ))}
       </ul>
       {passkeysSupported() ? <button class="primary" disabled={keying} onClick={() => void enroll()}>{t('addPasskey')}</button> : <p class="muted small">{t('passkeyUnsupported')}</p>}
+      <h3>{t('rescueEmail')}</h3>
+      <EmailSection email={account?.account?.email ?? null} onChange={load} say={say} />
       <h3>{t('devices')} {sessions && <small>{sessions.length}</small>}</h3>
       <ul class="list">
         {(sessions ?? []).map((s) => (
@@ -795,7 +850,7 @@ function AccountPanel({ v }: { v: PlayerView }) {
       <h3>{t('logout')}</h3>
       {!leaving ? <button onClick={() => setLeaving(true)}>{t('logout')}</button> : protectedBy ? (
         <div class="selbox">
-          <p class="muted">{t('logoutSafe')}</p>
+          <p class="muted">{hasKeys ? t('logoutSafe') : t('logoutSafeEmail')}</p>
           <div class="actions"><button class="primary" onClick={() => void logout()}>{t('logout')}</button><button onClick={() => setLeaving(false)}>{t('cancel')}</button></div>
         </div>
       ) : (

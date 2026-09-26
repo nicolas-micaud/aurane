@@ -27,6 +27,9 @@ export interface Store {
   updatePlayer(id: string, patch: Partial<Pick<PlayerRecord, 'label' | 'lastSeenAt' | 'revokedAt' | 'accountId'>>): Promise<void>;
   createAccount(a: AccountRecord): Promise<void>;
   findAccount(id: string): Promise<AccountRecord | null>;
+  /** The account that verified this e-mail address (compared case-insensitively). */
+  findAccountByEmail(email: string): Promise<AccountRecord | null>;
+  updateAccount(id: string, patch: Partial<Pick<AccountRecord, 'email' | 'emailVerifiedAt' | 'lang'>>): Promise<void>;
   /** The account that holds this colony, if a passkey was ever added. */
   accountOfColony(colonyId: string): Promise<string | null>;
   /** The colonies of an account (one active per season; past seasons keep theirs). */
@@ -122,6 +125,18 @@ export class FileStore implements Store {
 
   async createAccount(a: AccountRecord): Promise<void> { await this.ensure(); this.accounts.set(a.id, a); await this.flushAccounts(); }
   async findAccount(id: string): Promise<AccountRecord | null> { await this.ensure(); return this.accounts.get(id) ?? null; }
+  async findAccountByEmail(email: string): Promise<AccountRecord | null> {
+    await this.ensure();
+    const e = email.toLowerCase();
+    return [...this.accounts.values()].find((a) => a.email?.toLowerCase() === e) ?? null;
+  }
+  async updateAccount(id: string, patch: Partial<Pick<AccountRecord, 'email' | 'emailVerifiedAt' | 'lang'>>): Promise<void> {
+    await this.ensure();
+    const a = this.accounts.get(id);
+    if (!a) return;
+    Object.assign(a, patch);
+    await this.flushAccounts();
+  }
   async accountOfColony(colonyId: string): Promise<string | null> { await this.ensure(); return this.links.find((l) => l.colonyId === colonyId)?.accountId ?? null; }
   async coloniesOfAccount(accountId: string): Promise<string[]> { await this.ensure(); return this.links.filter((l) => l.accountId === accountId).map((l) => l.colonyId); }
   async linkColony(accountId: string, colonyId: string, at: number): Promise<void> {
@@ -187,6 +202,7 @@ export class PgStore implements Store {
       alter table players add column if not exists account_id text;
       create index if not exists players_colony_idx on players (colony_id);
       create table if not exists accounts (id text primary key, created_at bigint not null, lang text not null default 'fr', email text, email_verified_at bigint);
+      create unique index if not exists accounts_email_idx on accounts (lower(email)) where email is not null;
       create table if not exists credentials (id text primary key, account_id text not null references accounts(id), public_key text not null, counter bigint not null default 0, transports jsonb not null default '[]', label text not null default '', created_at bigint not null, last_used_at bigint);
       create index if not exists credentials_account_idx on credentials (account_id);
       create table if not exists account_colonies (account_id text not null references accounts(id), colony_id text not null, created_at bigint not null, primary key (account_id, colony_id));
@@ -249,6 +265,18 @@ export class PgStore implements Store {
     const r = await this.pool.query<{ id: string; created_at: string; lang: string; email: string | null; email_verified_at: string | null }>('select * from accounts where id = $1', [id]);
     const row = r.rows[0];
     return row ? { id: row.id, createdAt: Number(row.created_at), lang: row.lang === 'en' ? 'en' : 'fr', email: row.email, emailVerifiedAt: row.email_verified_at !== null ? Number(row.email_verified_at) : null } : null;
+  }
+  async findAccountByEmail(email: string): Promise<AccountRecord | null> {
+    const r = await this.pool.query<{ id: string }>('select id from accounts where lower(email) = lower($1)', [email]);
+    return r.rows[0] ? this.findAccount(r.rows[0].id) : null;
+  }
+  async updateAccount(id: string, patch: Partial<Pick<AccountRecord, 'email' | 'emailVerifiedAt' | 'lang'>>): Promise<void> {
+    const sets: string[] = []; const vals: unknown[] = [id];
+    if (patch.email !== undefined) { vals.push(patch.email); sets.push(`email = $${vals.length}`); }
+    if (patch.emailVerifiedAt !== undefined) { vals.push(patch.emailVerifiedAt); sets.push(`email_verified_at = $${vals.length}`); }
+    if (patch.lang !== undefined) { vals.push(patch.lang); sets.push(`lang = $${vals.length}`); }
+    if (!sets.length) return;
+    await this.pool.query(`update accounts set ${sets.join(', ')} where id = $1`, vals);
   }
   async accountOfColony(colonyId: string): Promise<string | null> {
     const r = await this.pool.query<{ account_id: string }>('select account_id from account_colonies where colony_id = $1 order by created_at limit 1', [colonyId]);

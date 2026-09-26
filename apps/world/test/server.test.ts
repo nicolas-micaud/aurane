@@ -8,6 +8,7 @@ import { loadConfig } from '../src/config.js';
 import { Engine } from '../src/engine.js';
 import { createHttpServer } from '../src/http.js';
 import { FileStore } from '../src/store.js';
+import type { MailMessage, Mailer } from '../src/mail.js';
 
 let engine: Engine;
 let base: string;
@@ -172,12 +173,15 @@ describe('world server', () => {
 
 describe('closed beta', () => {
   let eng: Engine; let srv: ReturnType<typeof createHttpServer>; let url: string;
+  const sent: MailMessage[] = [];
+  const outbox: Mailer = { kind: 'log', send: async (m) => { sent.push(m); } };
+  const lastCode = (): string => /(\d{3}) (\d{3})/.exec(sent[sent.length - 1]!.text)!.slice(1).join('');
   beforeAll(async () => {
     const d = await mkdtemp(join(tmpdir(), 'aurane-beta-'));
     const cfg = loadConfig({ SNAPSHOT_DIR: d, GALAXY_RADIUS: '4', NPC_COUNT: '3', SEASON_SEED: 'beta-test', REQUIRE_INVITE: '1', INVITE_CODES: 'aur-friend1', ADMIN_TOKEN: 'adm', AUTH_SECRET: 'secret', PUBLIC_ORIGIN: 'https://example.test' });
     eng = new Engine(cfg, new FileStore(d));
     await eng.init();
-    srv = createHttpServer(eng);
+    srv = createHttpServer(eng, { mailer: outbox, codeResendMs: 1500 });
     await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
     url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
   });
@@ -262,5 +266,63 @@ describe('closed beta', () => {
     expect((await fetch(`${url}/api/auth/passkey/login/verify`, { method: 'POST', body: JSON.stringify({ handle: login.handle, response: assertion }) })).status).toBe(403);
     expect((await fetch(`${url}/api/auth/passkey/login/verify`, { method: 'POST', body: JSON.stringify({ handle: login.handle, response: assertion }) })).status).toBe(403); // the handle was spent
     expect((await fetch(`${url}/api/account/passkeys/nope`, { method: 'DELETE', headers: auth })).status).toBe(404);
+  });
+
+  it('attaches a rescue e-mail with a six-digit code and signs in with one from another device (decision 0010, lot C)', async () => {
+    const minted = await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 1 }) })).json() as { codes: string[] };
+    const { token, colonyId } = await (await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Mailed', faction: 'oracles', persona: 'vane', invite: minted.codes[0] }) })).json() as { token: string; colonyId: string };
+    const auth = { authorization: `Bearer ${token}` };
+    expect((await fetch(`${url}/api/account/email/start`, { method: 'POST', headers: auth, body: JSON.stringify({ email: 'not-an-address' }) })).status).toBe(400);
+    // The first code creates the account; the mail is in French, plain text, with the code spaced in two groups.
+    sent.length = 0;
+    expect((await fetch(`${url}/api/account/email/start`, { method: 'POST', headers: auth, body: JSON.stringify({ email: ' Nick@Example.test ', lang: 'fr' }) })).status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe('nick@example.test');
+    expect(sent[0]!.subject).toMatch(/^Aurane : ton code est \d{3} \d{3}$/);
+    expect(sent[0]!.text).toContain('Mailed');
+    // One code a minute per address.
+    expect((await fetch(`${url}/api/account/email/start`, { method: 'POST', headers: auth, body: JSON.stringify({ email: 'nick@example.test' }) })).status).toBe(429);
+    // A wrong code is refused and the right one, typed with a space, verifies the address on the account.
+    expect((await fetch(`${url}/api/account/email/verify`, { method: 'POST', headers: auth, body: JSON.stringify({ code: '000000' }) })).status).toBe(400);
+    const code = lastCode();
+    const ok = await (await fetch(`${url}/api/account/email/verify`, { method: 'POST', headers: auth, body: JSON.stringify({ code: `${code.slice(0, 3)} ${code.slice(3)}` }) })).json() as { ok: boolean; email: string };
+    expect(ok).toEqual({ ok: true, email: 'nick@example.test' });
+    const account = await (await fetch(`${url}/api/account`, { headers: auth })).json() as { account: { id: string; email: string | null } | null };
+    expect(account.account?.email).toBe('nick@example.test');
+    expect(await eng.persistence.accountOfColony(colonyId)).toBe(account.account!.id);
+    // A spent code does not work twice.
+    expect((await fetch(`${url}/api/account/email/verify`, { method: 'POST', headers: auth, body: JSON.stringify({ code }) })).status).toBe(400);
+    // Another colony cannot take the same address.
+    const other = await (await fetch(`${url}/api/guest`, { method: 'POST', body: JSON.stringify({ name: 'Other', faction: 'guild', persona: 'oriel', invite: (await (await fetch(`${url}/api/admin/invites`, { method: 'POST', headers: { 'x-admin-token': 'adm' }, body: JSON.stringify({ count: 1 }) })).json() as { codes: string[] }).codes[0] }) })).json() as { token: string };
+    expect((await fetch(`${url}/api/account/email/start`, { method: 'POST', headers: { authorization: `Bearer ${other.token}` }, body: JSON.stringify({ email: 'nick@example.test' }) })).status).toBe(409);
+    // Sign in by e-mail from a fresh device: an unknown address gets a handle but no mail; the known one gets a code.
+    sent.length = 0;
+    const ghost = await (await fetch(`${url}/api/auth/email/start`, { method: 'POST', body: JSON.stringify({ email: 'nobody@example.test', lang: 'en' }) })).json() as { handle: string };
+    expect(ghost.handle.length).toBeGreaterThan(8);
+    expect(sent).toHaveLength(0);
+    expect((await fetch(`${url}/api/auth/email/verify`, { method: 'POST', body: JSON.stringify({ handle: ghost.handle, code: '123456' }) })).status).toBe(403);
+    // The per-address window (a minute in production, 1.5 s here) has not passed since the add code left.
+    const login = await (await fetch(`${url}/api/auth/email/start`, { method: 'POST', body: JSON.stringify({ email: 'NICK@example.test', lang: 'en' }) })).json() as { handle: string };
+    expect(sent).toHaveLength(0); // throttled: the add code left less than a minute ago
+    expect((await fetch(`${url}/api/auth/email/verify`, { method: 'POST', body: JSON.stringify({ handle: login.handle, code: '123456' }) })).status).toBe(403);
+    // Five wrong tries burn a code.
+    await new Promise((r) => setTimeout(r, 1600));
+    const login2 = await (await fetch(`${url}/api/auth/email/start`, { method: 'POST', body: JSON.stringify({ email: 'nick@example.test', lang: 'en' }) })).json() as { handle: string };
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.subject).toMatch(/^Aurane: your sign-in code is \d{3} \d{3}$/);
+    const good = lastCode();
+    for (let i = 0; i < 5; i++) expect((await fetch(`${url}/api/auth/email/verify`, { method: 'POST', body: JSON.stringify({ handle: login2.handle, code: '000000' }) })).status).toBe(403);
+    expect((await fetch(`${url}/api/auth/email/verify`, { method: 'POST', body: JSON.stringify({ handle: login2.handle, code: good }) })).status).toBe(403);
+    // A fresh code opens the colony with a new device session bound to the account.
+    await new Promise((r) => setTimeout(r, 1600));
+    const login3 = await (await fetch(`${url}/api/auth/email/start`, { method: 'POST', body: JSON.stringify({ email: 'nick@example.test', lang: 'fr' }) })).json() as { handle: string };
+    const opened = await (await fetch(`${url}/api/auth/email/verify`, { method: 'POST', headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' }, body: JSON.stringify({ handle: login3.handle, code: lastCode() }) })).json() as { token: string; colonyId: string };
+    expect(opened.colonyId).toBe(colonyId);
+    const sessions = await (await fetch(`${url}/api/sessions`, { headers: { authorization: `Bearer ${opened.token}` } })).json() as { sessions: { label: string; current: boolean }[] };
+    expect(sessions.sessions.find((x) => x.current)?.label).toContain('iPhone');
+    expect(sessions.sessions).toHaveLength(2);
+    // Removing the address leaves the account and its colony in place.
+    expect((await fetch(`${url}/api/account/email`, { method: 'DELETE', headers: auth })).status).toBe(200);
+    expect(((await (await fetch(`${url}/api/account`, { headers: auth })).json()) as { account: { email: string | null } }).account.email).toBeNull();
   });
 });

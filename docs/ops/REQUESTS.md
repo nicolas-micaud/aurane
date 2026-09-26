@@ -558,3 +558,12 @@ variables optionnelles apparaissent dans le Compose (`RP_ID`, `RP_ORIGINS`), vid
 préproduction sur un autre hôte, `RP_ORIGINS` accepte des origines supplémentaires. Redéploiement `web` et `world`
 au go de Nick, comme d'habitude ; la migration Postgres est en place (`create table if not exists`, `add column if
 not exists`).
+
+**Note (session cloud `clever-cannon`, 26.09.2026) — lot C des comptes (e-mail de secours), PR 24** : code prêt sans
+attendre l'expéditeur. Contrat inchangé : `SMTP_HOST`, `SMTP_PORT` (587 par défaut ; 465 = TLS implicite, sinon
+STARTTLS exigé), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, posées dans l'env de la VM (le Compose les passe à `world`).
+Tant qu'une manque, `world` démarre en mode `mail: log` (visible dans la ligne `world up`) et écrit chaque message,
+code compris, dans ses logs : `docker compose logs world | grep '\[mail\]'` donne le code d'un joueur à dépanner.
+Dès que Nick a tranché Infomaniak ou Resend : poser les cinq variables, redémarrer `world`, vérifier `mail: smtp`
+dans `world up`, puis un envoi réel vers Nick depuis l'onglet Compte (« Ajouter un e-mail de secours »). Pour
+Resend, `SMTP_USER=resend`, `SMTP_PASS=<clé scopée playaurane.com>`, `MAIL_FROM=Aurane <noreply@playaurane.com>`.
